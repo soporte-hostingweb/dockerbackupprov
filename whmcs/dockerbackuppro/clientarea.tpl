@@ -15,7 +15,7 @@
         <p class="text-muted"><small>Keep this token secret. Do not share it.</small></p>
         
         <br>
-        <a href="https://panel.dockerbackuppro.com/login?sso={$dbpToken}" target="_blank" class="btn btn-success btn-block" style="background-color: #10b981; border-color: #059669;">
+        <a href="https://portal.hwperu.com/login?sso={$dbpToken}" target="_blank" class="btn btn-success btn-block" style="background-color: #10b981; border-color: #059669;">
             <i class="fas fa-lock"></i> Open Cloud Dashboard
         </a>
     </div>

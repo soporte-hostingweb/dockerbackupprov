@@ -97,7 +97,7 @@ function dockerbackuppro_ClientArea(array $params)
         'templateVariables' => array(
             'dbpToken' => $token,
             'apiEndpoint' => $params['configoption2'],
-            'installCommand' => "curl -sSL https://install.dockerbackuppro.com | bash -s -- --token {$token}",
+            'installCommand' => "curl -sSL https://api.hwperu.com/install.sh | bash -s -- --token {$token}",
         ),
     );
 }
