@@ -34,7 +34,7 @@ El proyecto consta de 4 componentes que se distribuyen geográficamente. Es **cr
 - **Ruta Recomendada:** `/var/www/dbp-ui/`
 - **Variables de Entorno (`ui/.env.local`):**
   ```env
-  NEXT_PUBLIC_API_URL=https://api.tuempresa.com/v1
+  NEXT_PUBLIC_API_URL=https://api.hwperu.com/v1
   ```
 
 ### 3. Agente Cliente (Go / Restic SDK)
@@ -42,7 +42,7 @@ El proyecto consta de 4 componentes que se distribuyen geográficamente. Es **cr
 - **Variables de Entorno (Dentro del `docker-compose.yml` del cliente):**
   ```env
   DBP_API_TOKEN=EL_TOKEN_QUE_PROVEYÓ_TU_WHMCS
-  DBP_API_ENDPOINT=https://api.tuempresa.com/v1
+  DBP_API_ENDPOINT=https://api.hwperu.com/v1
   AWS_ACCESS_KEY_ID=tu_wasabi_key
   AWS_SECRET_ACCESS_KEY=tu_wasabi_secret
   RESTIC_REPOSITORY=s3:s3.wasabisys.com/tu-bucket-general
@@ -94,7 +94,7 @@ Esta es la forma más profesional y costo-efectiva. Tu panel correrá sin manten
 
 **2. Variables de Entorno en Vercel:**
 - Antes de dar click en Deploy, anda a *Environment Variables* y pega la que tienes en tu `.env.example`:
-  - `NEXT_PUBLIC_API_URL` apuntando a tu dominio final (ej. `https://api.backup.tuempresa.com/v1`).
+  - `NEXT_PUBLIC_API_URL` apuntando a tu dominio final (ej. `https://api.backup.hwperu.com/v1`).
 
 **3. Despliegue Automático:**
 - Haz clic en Deploy. Vercel se encargará de cualquier validación (no es necesario levantar el NodeJS localmente). A partir de ahora, cada "Push" actualizará tu panel comercial de forma totalmente desatendida.
