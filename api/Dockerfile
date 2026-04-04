@@ -1,12 +1,13 @@
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
+# Copiamos el módulo y el código
 COPY go.mod ./
-# Descomentar al generar el go.sum:
-# COPY go.sum ./
-# RUN go mod download
-
 COPY . .
+
+# Descargamos e instalamos dependencias generando el go.sum automáticamente
+RUN go mod tidy
+
 # Binario estático puro
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o dbp-api .
 

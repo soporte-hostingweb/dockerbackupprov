@@ -2,11 +2,11 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 COPY go.mod ./
-# Recomendable descomentar la siguiente línea cuando se genere el go.sum localmente
-# COPY go.sum ./
-# RUN go mod download
-
 COPY . .
+
+# Automáticamente reconcilia las dependencias y crea el go.sum que faltaba
+RUN go mod tidy
+
 # Compilamos el binario estático optimizado
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o dbp-agent .
 
