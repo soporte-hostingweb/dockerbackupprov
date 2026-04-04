@@ -1,0 +1,15 @@
+# Node
+ui/node_modules/
+node_modules/
+.next/
+out/
+ui/.next/
+
+# Go
+agent/dbp-agent
+api/dbp-api
+
+# WHMCS / Env
+.env
+.env.local
+.DS_Store
