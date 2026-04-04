@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	_ "embed"
 	"github.com/gin-gonic/gin"
 )
+
+//go:embed install.sh
+var installScript []byte
 
 func main() {
 	fmt.Println("[BOOT] Starting Docker Backup Pro Control Plane API...")
@@ -16,6 +20,11 @@ func main() {
 	// Health Check / Endpoint Público
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "Active", "service": "Docker Backup Pro API"})
+	})
+
+	// Agente Auto-Instalador Binario (Responde el Bash crudo)
+	r.GET("/install.sh", func(c *gin.Context) {
+		c.Data(200, "text/x-shellscript", installScript)
 	})
 
 	// Agrupar endpoints y protegerlos con Middleware de Autenticación
