@@ -1,6 +1,6 @@
 module github.com/hwperu/dbp-agent
 
-go 1.21
+go 1.25
 
 require (
 	github.com/docker/docker v25.0.3+incompatible
