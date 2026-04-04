@@ -1,4 +1,4 @@
-module github.com/tuempresa/dbp-api
+module github.com/hwperu/dbp-api
 
 go 1.21
 
