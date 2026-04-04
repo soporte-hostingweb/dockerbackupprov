@@ -31,7 +31,7 @@ cd /opt/docker-backup-pro
 
 # Creamos el Docker-compose al vuelo asimilando su Token único de WHMCS
 cat <<EOF > docker-compose.yml
-version: '3.8'
+version: '3.3'
 services:
   agent:
     # La próxima vez que subas esto a la nube pública usa soportehostingweb/dbp-agent
