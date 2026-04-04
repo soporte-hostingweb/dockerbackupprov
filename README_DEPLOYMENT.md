@@ -50,110 +50,54 @@ El proyecto consta de 4 componentes que se distribuyen geográficamente. Es **cr
 
 ---
 
-## 🚀 Guía de Despliegue Extendido
+## 🚀 Guía de Despliegue Extendido (Vía Docker & Vercel)
 
-A continuación, los comandos exactos a ejecutar como usuario `root` en un servidor Ubuntu 22.04 limpio para levantar la plataforma real.
+A continuación explicaremos el despliegue moderno utilizando **Docker Compose** para orquestar la API y la Base de datos en un solo movimiento limpio, y enviando el Dashboard al CDN global de Vercel.
 
-### Paso 1: Levantar la API Central (Comandos Ubuntu 22.04)
+### Paso 1: Levantar la API Central (Con Docker)
 
-**1. Instalar dependencias esenciales (Go y PostgreSQL):**
+En tu Servidor Ubuntu 22.04 limpio, asegúrate de tener instalado `docker` y `docker-compose`.
+
+**1. Clonar el Repositorio Central y Configurar Variables:**
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y postgresql postgresql-contrib golang-go git nano curl
+git clone https://github.com/soporte-hostingweb/dockerbackupprov.git /opt/docker-backup-pro
+cd /opt/docker-backup-pro
+
+# Clonar la plantilla de variables de entorno (NUNCA SUBIR EL .env REAL A GITHUB)
+cp .env.example .env
+nano .env 
+# Personaliza el valor de DB_PASS y JWT_SECRET.
 ```
 
-**2. Aprovisionar y Configurar la Base de Datos Relacional:**
+**2. Desplegar el Motor Backend (API + PostgreSQL):**
 ```bash
-sudo -u postgres psql -c "CREATE DATABASE dbp_data;"
-sudo -u postgres psql -c "CREATE USER dbpuser WITH ENCRYPTED PASSWORD 'SecretoSeguro123';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE dbp_data TO dbpuser;"
+docker-compose up -d --build
 ```
+*Este único comando hará todo: Descargar Postgres, crear su volumen interno, compilar tu código de Go de la API nativamente en un contenedor Alpine minimalista y conectar ambas existencias dentro de su propia red inviolable.*
 
-**3. Descargar y Compilar la API de Go:**
+**3. Revisar Estado Local de los Servicios:**
 ```bash
-mkdir -p /var/www/dbp/
-cd /var/www/dbp/
-
-# Clonar del repositorio (Requerirás ingresar credenciales si es privado):
-git clone https://github.com/soporte-hostingweb/dockerbackupprov.git .
-
-# Ingresar al componente API y Construir
-cd api/
-go mod tidy
-go build -o dbp-api .
+docker-compose ps
+docker logs -f dbp-api
 ```
-
-**4. Crear un Demonio (SystemD) para ejecución 24/7 en segundo plano:**
-```bash
-sudo nano /etc/systemd/system/dbp-api.service
-```
-*Pega el siguiente contenido en el editor nano, cuidando de que las rutas relativas sean exactas:*
-```ini
-[Unit]
-Description=Docker Backup Pro API Central
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/var/www/dbp/api
-ExecStart=/var/www/dbp/api/dbp-api
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-*Guarda los cambios (Ctrl+O, Enter) y cierra (Ctrl+X).*
-
-**5. Encender y Activar Servicio API en Automático:**
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable dbp-api
-sudo systemctl start dbp-api
-sudo systemctl status dbp-api 
-# Validar en los logs que dice "[BOOT] Server listening on port 8080..."
-```
+*(Asegúrate de que la API muestre `[BOOT] Server listening on port 8080...`)*
 
 ---
 
-### Paso 2: Desplegar el Panel UI (Next.js con Node.js & PM2)
+### Paso 2: Desplegar el Panel UI (En Vercel.com)
 
-Ejecutaremos el panel web en el mismo Servidor VPS.
+Esta es la forma más profesional y costo-efectiva. Tu panel correrá sin mantenimiento de servidor.
 
-**1. Enganchar repositorio NodeSource (Node.js 20 Lts) e instalar PM2:**
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo npm install -g pm2
-```
+**1. En Vercel:**
+- Conéctate a Vercel y enlaza tu repositorio Github (`dockerbackupprov`).
+- Durante la configuración de importación, establece el **Framework Preset** como `Next.js` y asegúrate de que el **Root Directory** a compilar sea: `ui`.
 
-**2. Compilar de Desarrollo a Entorno Producción Optimizado:**
-```bash
-cd /var/www/dbp/ui/
+**2. Variables de Entorno en Vercel:**
+- Antes de dar click en Deploy, anda a *Environment Variables* y pega la que tienes en tu `.env.example`:
+  - `NEXT_PUBLIC_API_URL` apuntando a tu dominio final (ej. `https://api.backup.tuempresa.com/v1`).
 
-# Instalar los paquetes Node
-npm install
-
-# Declarar e inyectar el entorno apuntando a nuestra API interna en el puerto 8080
-echo 'NEXT_PUBLIC_API_URL=http://localhost:8080/v1' > .env.local
-
-# Compilar frontend
-npm run build
-```
-
-**3. Encender el Dashboard permanente usando PM2:**
-```bash
-# pm2 start tomará el mando de next.js
-pm2 start npm --name "dbp-dashboard" -- run start
-
-# Guardar estado actual de PM2 para resistir reinicios de servidor
-pm2 startup
-pm2 save
-```
-*Con este comando se lanzará el frontend internamente en el puerto `:3000` de forma persistente.*
-
-*(Nota Administrativa: Para que tu interfaz web Next.js y el API estén expuestos de una forma amigable como `https://panel.hwperu.com`, debes colocar **NGINX** (proxyPass inverso) al puerto `3000` y `8080` de ese servidor acompañado de SSL con Certbot).*
+**3. Despliegue Automático:**
+- Haz clic en Deploy. Vercel se encargará de cualquier validación (no es necesario levantar el NodeJS localmente). A partir de ahora, cada "Push" actualizará tu panel comercial de forma totalmente desatendida.
 
 ---
 
