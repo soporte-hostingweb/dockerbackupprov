@@ -5,6 +5,9 @@ WORKDIR /app
 COPY go.mod ./
 COPY . .
 
+# git es necesario internamente para que go mod tidy descargue ciertos paquetes
+RUN apk add --no-cache git
+
 # Descargamos e instalamos dependencias generando el go.sum automáticamente
 RUN go mod tidy
 

@@ -4,6 +4,9 @@ WORKDIR /app
 COPY go.mod ./
 COPY . .
 
+# git es necesario en Alpine para que go mod tidy resuelva dependencias externas
+RUN apk add --no-cache git
+
 # Automáticamente reconcilia las dependencias y crea el go.sum que faltaba
 RUN go mod tidy
 
