@@ -81,11 +81,17 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("[API ERROR] Failed to send heartbeat: %v\n", err)
+		fmt.Printf("[API ERROR] Network failure sending heartbeat: %v\n", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("[API] Heartbeat (Containers: %d) sent. Status: %s\n", len(containers), resp.Status)
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("[API ERROR] Heartbeat REJECTED by server. Status: %s. Check your DBP_API_TOKEN!\n", resp.Status)
+		return
+	}
+
+	fmt.Printf("[API] Heartbeat (Containers: %d) sent. Status: OK\n", len(containers))
 }
+
 

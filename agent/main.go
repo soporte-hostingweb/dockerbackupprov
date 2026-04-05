@@ -81,10 +81,16 @@ func main() {
 			agentID = hostname
 		}
 
-		// 1. Reportar Heartbeat (Lista de contenedores en vivo + Explorer Data)
+		// 1. Reportar Heartbeat (Lista de contenedores en vivo + Explorer Data) - ¡PRIMERO!
 		ReportHeartbeat(agentID, containerNames, explorerData)
 
-		// 2. Ejecutar proceso de respaldo real
+		// 2. Asegurar Repo e Inicializar Respaldo
+		if err := EnsureResticRepo(); err != nil {
+			fmt.Printf("[ERROR] S3 Repo check failed: %v. Skipping backup this cycle.\n", err)
+			time.Sleep(60 * time.Second)
+			continue
+		}
+
 		err = RunResticBackup(backupPaths)
 		finalStatus := "SUCCESS"
 		if err != nil {
@@ -101,6 +107,7 @@ func main() {
 			Timestamp:    time.Now().Unix(),
 		}
 		ReportMetrics(metrics)
+
 
 		fmt.Println("[INFO] Cycle completed. Sleeping for 60 seconds...")
 		time.Sleep(60 * time.Second)

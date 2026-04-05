@@ -38,13 +38,19 @@ func AuthMiddleware() gin.HandlerFunc {
 // ReceiveHeartbeat recibe la información pasiva del servidor del cliente para mostrarlo "Verde" en el UI
 func ReceiveHeartbeat(c *gin.Context) {
 	var payload HeartbeatPayload
+	token := c.GetString("token")
+	
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		fmt.Printf("[API ERROR] Malformed heartbeat from %s: %v\n", token, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Payload format"})
 		return
 	}
 
+	fmt.Printf("[HEARTBEAT] Received from Agent: %s (Token: %s...)\n", payload.AgentID, token[:10])
+
 	agentStatusStore[payload.AgentID] = gin.H{
-		"token":       c.GetString("token"),
+		"token":       token,
+
 		"agent_id":    payload.AgentID,
 		"status":      "Healthy",
 		"last_sync":   "Just now",
