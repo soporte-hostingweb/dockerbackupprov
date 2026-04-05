@@ -9,12 +9,14 @@ interface AgentStatus {
   agent_id: string;
   status: string;
   last_sync: string;
+  last_seen_unix?: number;
   containers: string[];
   explorer: Record<string, string[]>;
   token?: string;
   os: string;
   type: string;
 }
+
 
 
 export default function ServerList() {
@@ -46,6 +48,28 @@ export default function ServerList() {
     const interval = setInterval(fetchAgents, 15000); // 15s refresh
     return () => clearInterval(interval);
   }, []);
+
+  const removeAgent = async (id: string) => {
+    if (!confirm(`¿Eliminar servidor "${id}" del panel?`)) return;
+    
+    const token = localStorage.getItem("dbp_sso_token");
+    try {
+      const response = await fetch(`https://api.hwperu.com/v1/agent/status/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": token || "" }
+      });
+      if (response.ok) {
+        setAgents(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error("Error removing agent:", err);
+    }
+  };
+
 
 
   if (loading) return (
@@ -108,18 +132,39 @@ export default function ServerList() {
             </div>
 
             <div className="flex items-center gap-8">
-              <div className="hidden lg:flex flex-col items-end">
-                <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Services Discovery</span>
-                <span className="text-xl font-bold text-white">{data.containers?.length || 0}</span>
-              </div>
-              
-              <div className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest border uppercase ${
-                data.status === 'Healthy' || data.status === 'SUCCESS'
-                ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' 
-                : 'bg-red-400/10 text-red-400 border-red-400/20'
-              }`}>
-                {data.status || 'Active'}
-              </div>
+              {/* OFFLINE DETECTION LOGIC */}
+              {(() => {
+                const now = Math.floor(Date.now() / 1000);
+                const isOffline = data.last_seen_unix ? (now - data.last_seen_unix > 65) : false;
+                
+                return (
+                  <>
+                    {isOffline && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); removeAgent(id); }}
+                        className="text-[9px] bg-red-950/40 text-red-500 hover:bg-red-500 hover:text-white px-2 py-1 rounded border border-red-900/30 font-black uppercase transition-all"
+                      >
+                        Remove Offline Agent
+                      </button>
+                    )}
+                    
+                    <div className="hidden lg:flex flex-col items-end">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Services Discovery</span>
+                      <span className="text-xl font-bold text-white">{data.containers?.length || 0}</span>
+                    </div>
+                    
+                    <div className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest border uppercase ${
+                      isOffline 
+                      ? 'bg-gray-800 text-gray-500 border-gray-700'
+                      : (data.status === 'Healthy' || data.status === 'SUCCESS')
+                        ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' 
+                        : 'bg-red-400/10 text-red-400 border-red-400/20'
+                    }`}>
+                      {isOffline ? 'OFFLINE' : (data.status || 'Active')}
+                    </div>
+                  </>
+                );
+              })()}
               
               {expandedAgent === id ? <ChevronUp className="h-5 w-5 text-emerald-500" /> : <ChevronDown className="h-5 w-5 text-gray-700" />}
             </div>

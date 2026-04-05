@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, Terminal, HelpCircle, ShieldCheck } from "lucide-react";
+import { AlertCircle, Terminal, HelpCircle, ShieldCheck, Activity, Network, Database } from "lucide-react";
+
 import ServerList from "@/components/ServerList";
 
 
@@ -11,6 +12,9 @@ export default function DashboardPage() {
   const isEmbed = searchParams.get("embed") === "1";
   const [agentCount, setAgentCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [wasabiStatus, setWasabiStatus] = useState<{ status: string; latency_ms: number; bucket: string } | null>(null);
+  const [testingWasabi, setTestingWasabi] = useState(false);
+
 
   useEffect(() => {
     // Capturamos el token de la URL si viene de WHMCS (SSO)
@@ -50,6 +54,26 @@ export default function DashboardPage() {
     fetchStats();
   }, [searchParams]);
 
+  const testWasabi = async () => {
+    const token = localStorage.getItem("dbp_sso_token");
+    if (!token) return;
+    setTestingWasabi(true);
+    try {
+      const resp = await fetch("https://api.hwperu.com/v1/admin/wasabi/ping", {
+        headers: { "Authorization": token }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setWasabiStatus(data);
+      }
+    } catch (err) {
+      console.error("Wasabi test failed:", err);
+    } finally {
+      setTestingWasabi(false);
+    }
+  };
+
+
 
   const isDebug = searchParams.get("debug") === "1";
   const currentToken = typeof window !== 'undefined' ? localStorage.getItem("dbp_sso_token") : null;
@@ -76,8 +100,57 @@ export default function DashboardPage() {
       </div>
 
 
+      {/* MASTER INFRASTRUCTURE STATUS (Only for Admin) */}
+      {searchParams.get("admin") === "1" && (
+        <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-6 mb-8 animate-in zoom-in-95 duration-500">
+           <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                 <Network className="text-emerald-500" size={24} />
+                 <div>
+                    <h3 className="text-sm font-black uppercase text-emerald-500">Infrastucture Global Health</h3>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Master Connectivity & Restic Sync Check</p>
+                 </div>
+              </div>
+              <button 
+                onClick={testWasabi}
+                disabled={testingWasabi}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-lg border border-emerald-400/20 uppercase transition-all shadow-xl shadow-emerald-950/50"
+              >
+                {testingWasabi ? 'Probing Cloud...' : 'Verify Wasabi S3 Link'}
+              </button>
+           </div>
+
+           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-black/40 p-4 rounded-lg border border-gray-900">
+                 <p className="text-[9px] text-gray-600 font-black uppercase mb-1">S3 Connectivity</p>
+                 <div className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${wasabiStatus ? 'bg-emerald-500 animate-pulse' : 'bg-gray-700'}`}></div>
+                    <span className="text-xs font-bold text-gray-200">{wasabiStatus ? 'ONLINE' : 'PENDING'}</span>
+                 </div>
+              </div>
+              <div className="bg-black/40 p-4 rounded-lg border border-gray-900">
+                 <p className="text-[9px] text-gray-600 font-black uppercase mb-1">Wasabi Latency</p>
+                 <span className="text-xs font-mono text-emerald-400">
+                    {wasabiStatus ? `${wasabiStatus.latency_ms} ms` : '---'}
+                 </span>
+              </div>
+              <div className="bg-black/40 p-4 rounded-lg border border-gray-900">
+                 <p className="text-[9px] text-gray-600 font-black uppercase mb-1">Core Repository</p>
+                 <span className="text-[10px] font-mono text-gray-400 truncate block">
+                    {wasabiStatus ? wasabiStatus.bucket : 'Not Tested'}
+                 </span>
+              </div>
+              <div className="bg-black/40 p-4 rounded-lg border border-gray-900">
+                 <p className="text-[9px] text-gray-600 font-black uppercase mb-1">API Cluster</p>
+                 <span className="text-[10px] font-mono text-blue-400">AWS / HWPeru-1</span>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* DIAGNOSTIC PANEL (Only if debug=1) */}
       {isDebug && (
+
         <div className="bg-amber-950/20 border border-amber-900/50 rounded-xl p-6 animate-in slide-in-from-top-4 duration-500">
           <div className="flex items-center gap-3 mb-4">
              <Terminal className="text-amber-500" size={20} />

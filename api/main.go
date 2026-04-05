@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 	_ "embed"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -109,11 +110,10 @@ func main() {
 			return
 		}
 
-		// Simulamos un ping a Wasabi (En prod usaría el SDK de S3 para un list buckets rápido)
-		// Por ahora validamos que las variables existan en el entorno
+		// Simulamos un ping a Wasabi
 		s3Repo := os.Getenv("RESTIC_REPOSITORY")
 		if s3Repo == "" {
-			c.JSON(500, gin.H{"status": "Error", "message": "Wasabi S3 Repository is NOT configured in .env"})
+			c.JSON(500, gin.H{"status": "Error", "message": "S3 Repo NOT configured"})
 			return
 		}
 
@@ -121,10 +121,58 @@ func main() {
 			"status": "Online",
 			"latency_ms": 145, 
 			"bucket": s3Repo,
-			"region": "us-east-1",
 		})
 	})
 
+	// --- ELIMINACION DE AGENTES INACTIVOS ---
+	v1Agent.DELETE("/status/:id", AuthMiddleware(), func(c *gin.Context) {
+		id := c.Param("id")
+		token := c.GetString("token")
+		
+		status, exists := agentStatusStore[id]
+		if !exists {
+			c.JSON(404, gin.H{"error": "Agent not found"})
+			return
+		}
+
+		// Solo permitir borrar si es SUYO o es ADMIN
+		if status["token"] != token && !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Unauthorized to delete this agent"})
+			return
+		}
+
+		delete(agentStatusStore, id)
+		c.JSON(200, gin.H{"status": "Deleted", "id": id})
+	})
+
+	v1Agent.POST("/heartbeat", AuthMiddleware(), func(c *gin.Context) {
+		var payload struct {
+			AgentID      string              `json:"agent_id"`
+			Containers   []string            `json:"containers"`
+			ExplorerData map[string][]string `json:"explorer_data"`
+			OS           string              `json:"os"`
+		}
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid heartbeat payload"})
+			return
+		}
+
+		token := c.GetString("token")
+		agentID := payload.AgentID
+		
+		agentStatusStore[agentID] = gin.H{
+			"agent_id":      agentID,
+			"token":         token,
+			"status":        "Healthy",
+			"last_sync":     time.Now().Format(time.RFC3339),
+			"last_seen_unix": time.Now().Unix(), // TIMESTAMP CRITICO PARA CALCULAR OFFLINE
+			"containers":    payload.Containers,
+			"explorer":      payload.ExplorerData,
+			"os":            payload.OS,
+		}
+
+		c.JSON(200, gin.H{"status": "recorded", "time": time.Now().Format(time.RFC3339)})
+	})
 
 
 	// --- CONFIGURACIÓN DE RESPALDOS (SELECTIVE BACKUP) ---
