@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
+
 	_ "embed"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
@@ -12,22 +15,21 @@ import (
 //go:embed install.sh
 var installScript []byte
 
-// Memory Storage para el MVP (En prod usar PostgreSQL)
-var agentStatusStore = make(map[string]gin.H)
-var agentConfigStore = make(map[string][]string) // Almacena qué rutas respalda cada agente
-
 func main() {
-	// 0. Cargar variables de entorno desde .env local si existe
-	_ = godotenv.Load() 
+	// 0. Cargar variables de entorno
+	_ = godotenv.Load()
 
 	fmt.Println("[BOOT] Starting Docker Backup Pro Control Plane API...")
 
+	// 1. Inicializar Base de Datos (PostgreSQL)
+	InitDB()
+
 	// Desactiva el debug log intenso de gin para producción
 	gin.SetMode(gin.ReleaseMode)
-	
+
 	r := gin.Default()
 
-	// CORS simple para que el dashboard en Vercel pueda consultar la API
+	// CORS
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
@@ -39,162 +41,213 @@ func main() {
 		c.Next()
 	})
 
-	// Health Check / Endpoint Público
+	// Health Check
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "Active", "service": "Docker Backup Pro API"})
 	})
 
-	// Agente Auto-Instalador Binario (Responde el Bash crudo)
 	r.GET("/install.sh", func(c *gin.Context) {
 		c.Data(200, "text/x-shellscript", installScript)
 	})
 
-	// Agrupar endpoints y protegerlos con Middleware de Autenticación
 	v1Agent := r.Group("/v1/agent")
-	
-	// Endpoint para el Dashboard (Pone el filtro según quién llame)
+
+	// --- ENDPOINTS DE ESTADO ---
+
 	v1Agent.GET("/status", AuthMiddleware(), func(c *gin.Context) {
 		isAdmin := c.GetBool("is_admin")
 		clientToken := c.GetString("token")
 
+		var agents []AgentStatus
 		if isAdmin {
-			c.JSON(200, agentStatusStore)
-			return
+			DB.Find(&agents)
+		} else {
+			DB.Where("token = ?", clientToken).Find(&agents)
 		}
 
-		// Si no es admin, filtramos por Token
-		filtered := make(map[string]gin.H)
-		for id, status := range agentStatusStore {
-			if status["token"] == clientToken {
-				filtered[id] = status
+		// Convertimos a mapa para mantener compatibilidad con el UI actual
+		resp := make(map[string]interface{})
+		for _, a := range agents {
+			var containers []string
+			var explorer map[string][]string
+			var snapshots []interface{} // Genérico para restic JSON
+			json.Unmarshal([]byte(a.Containers), &containers)
+			json.Unmarshal([]byte(a.Explorer), &explorer)
+			json.Unmarshal([]byte(a.Snapshots), &snapshots)
+
+			resp[a.ID] = gin.H{
+				"agent_id":       a.ID,
+				"status":         a.Status,
+				"last_sync":      a.LastSeen.Format(time.RFC3339),
+				"last_seen_unix": a.LastSeenUnix,
+				"os":             a.OS,
+				"containers":     containers,
+				"explorer":       explorer,
+				"snapshots":      snapshots,
 			}
+
 		}
-		c.JSON(200, filtered)
+		c.JSON(200, resp)
 	})
 
-	// --- ELIMINACION DE AGENTES INACTIVOS ---
 	v1Agent.DELETE("/status/:id", AuthMiddleware(), func(c *gin.Context) {
 		id := c.Param("id")
 		token := c.GetString("token")
-		
-		status, exists := agentStatusStore[id]
-		if !exists {
+		isAdmin := c.GetBool("is_admin")
+
+		var agent AgentStatus
+		if err := DB.First(&agent, "id = ?", id).Error; err != nil {
 			c.JSON(404, gin.H{"error": "Agent not found"})
 			return
 		}
 
-		// Solo permitir borrar si es SUYO o es ADMIN
-		if status["token"] != token && !c.GetBool("is_admin") {
-			c.JSON(403, gin.H{"error": "Unauthorized to delete this agent"})
+		if agent.Token != token && !isAdmin {
+			c.JSON(403, gin.H{"error": "Unauthorized"})
 			return
 		}
 
-		delete(agentStatusStore, id)
+		DB.Delete(&agent)
 		c.JSON(200, gin.H{"status": "Deleted", "id": id})
 	})
 
-	// --- CONFIGURACIÓN DE RESPALDOS SELECTIVOS ---
+	// --- ENDPOINTS DE CONFIGURACIÓN ---
+
 	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
 		var payload struct {
-			Paths []string `json:"paths"`
+			AgentID string   `json:"agent_id"`
+			Paths   []string `json:"paths"`
 		}
 		if err := c.ShouldBindJSON(&payload); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid configuration format"})
+			c.JSON(400, gin.H{"error": "Invalid format"})
 			return
 		}
-		
+
 		token := c.GetString("token")
-		agentConfigStore[token] = payload.Paths
-		c.JSON(200, gin.H{"status": "Configuration saved", "paths_count": len(payload.Paths)})
+		pathsJSON, _ := json.Marshal(payload.Paths)
+
+		config := BackupConfig{
+			Token:   token,
+			AgentID: payload.AgentID,
+			Paths:   string(pathsJSON),
+		}
+
+		// Upsert (usando Token + AgentID como clave lógica si la tuviéramos única)
+		// Por sencillez en el MVP, buscamos primero
+		var existing BackupConfig
+		if err := DB.Where("token = ? AND agent_id = ?", token, payload.AgentID).First(&existing).Error; err == nil {
+			existing.Paths = string(pathsJSON)
+			DB.Save(&existing)
+		} else {
+			DB.Create(&config)
+		}
+
+		c.JSON(200, gin.H{"status": "Configuration saved"})
 	})
 
 	v1Agent.GET("/config", AuthMiddleware(), func(c *gin.Context) {
 		token := c.GetString("token")
-		paths, ok := agentConfigStore[token]
-		if !ok {
-			c.JSON(404, gin.H{"error": "No backup selection found for this server"})
+		agentID := c.Query("agent_id") // El agente envía su ID
+
+		var config BackupConfig
+		if err := DB.Where("token = ? AND agent_id = ?", token, agentID).First(&config).Error; err != nil {
+			c.JSON(404, gin.H{"error": "No config found"})
 			return
 		}
+
+		var paths []string
+		json.Unmarshal([]byte(config.Paths), &paths)
 		c.JSON(200, gin.H{"paths": paths})
 	})
 
-	// --- RECEPCIÓN DE TELEMETRÍA (HEARTBEAT) ---
+	// --- HEARTBEAT ---
+
 	v1Agent.POST("/heartbeat", AuthMiddleware(), func(c *gin.Context) {
 		var payload struct {
 			AgentID      string              `json:"agent_id"`
 			Containers   []string            `json:"containers"`
 			ExplorerData map[string][]string `json:"explorer_data"`
+			Snapshots    []interface{}       `json:"snapshots"`
 			OS           string              `json:"os"`
 		}
 		if err := c.ShouldBindJSON(&payload); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid heartbeat payload"})
+			c.JSON(400, gin.H{"error": "Invalid payload"})
 			return
 		}
 
 		token := c.GetString("token")
-		agentID := payload.AgentID
-		
-		agentStatusStore[agentID] = gin.H{
-			"agent_id":      agentID,
-			"token":         token,
-			"status":        "Healthy",
-			"last_sync":     time.Now().Format(time.RFC3339),
-			"last_seen_unix": time.Now().Unix(),
-			"containers":    payload.Containers,
-			"explorer":      payload.ExplorerData,
-			"os":            payload.OS,
+		contJSON, _ := json.Marshal(payload.Containers)
+		expJSON, _ := json.Marshal(payload.ExplorerData)
+		snapJSON, _ := json.Marshal(payload.Snapshots)
+
+		agent := AgentStatus{
+			ID:           payload.AgentID,
+			Token:        token,
+			Status:       "Healthy",
+			LastSeen:     time.Now().UTC(),
+			LastSeenUnix: time.Now().Unix(),
+			OS:           payload.OS,
+			Containers:   string(contJSON),
+			Explorer:     string(expJSON),
+			Snapshots:    string(snapJSON),
 		}
 
-		c.JSON(200, gin.H{"status": "recorded", "time": time.Now().Format(time.RFC3339)})
+
+		if err := DB.Save(&agent).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Database error"})
+			return
+		}
+
+		c.JSON(200, gin.H{"status": "recorded"})
 	})
 
-	// --- RECEPCIÓN DE MÉTRICAS DE BACKUP ---
-	v1Agent.POST("/backup/complete", AuthMiddleware(), func(c *gin.Context) {
-		// Por ahora solo logueamos que el backup terminó
-		c.JSON(200, gin.H{"status": "ACK"})
+	// --- AJUSTES DE USUARIO (WASABI) ---
+
+	r.POST("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
+		var settings UserSettings
+		if err := c.ShouldBindJSON(&settings); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid settings"})
+			return
+		}
+
+		settings.Token = c.GetString("token")
+
+		var existing UserSettings
+		if err := DB.Where("token = ?", settings.Token).First(&existing).Error; err == nil {
+			settings.ID = existing.ID
+			DB.Save(&settings)
+		} else {
+			DB.Create(&settings)
+		}
+
+		c.JSON(200, gin.H{"status": "Settings saved"})
 	})
 
-	// --- DIAGNÓSTICOS PARA EL ADMINISTRADOR ---
+	r.GET("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var settings UserSettings
+		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
+			c.JSON(404, gin.H{"error": "No settings found"})
+			return
+		}
+		c.JSON(200, settings)
+	})
+
+	// --- DIAGNÓSTICOS ---
+
 	r.GET("/v1/admin/wasabi/ping", AuthMiddleware(), func(c *gin.Context) {
 		if !c.GetBool("is_admin") {
-			c.JSON(403, gin.H{"error": "Admin privileges required"})
+			c.JSON(403, gin.H{"error": "Admin required"})
 			return
 		}
-
 		s3Repo := os.Getenv("RESTIC_REPOSITORY")
-		if s3Repo == "" {
-			c.JSON(500, gin.H{"status": "Error", "message": "S3 Repo NOT configured"})
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"status": "Online",
-			"latency_ms": 145, 
-			"bucket": s3Repo,
-		})
+		c.JSON(200, gin.H{"status": "Online", "latency_ms": 145, "bucket": s3Repo})
 	})
 
-	// SEGURIDAD: Comprobamos si el token maestro existe
-	masterToken := os.Getenv("MASTER_ADMIN_TOKEN")
-	if masterToken == "" {
-		fmt.Println("############################################################")
-		fmt.Println("# [CRITICAL WARNING] MASTER_ADMIN_TOKEN is NOT SET!        #")
-		fmt.Println("# Received: [EMPTY]                                         #")
-		fmt.Println("# Please check your .env file and Move it to ROOT folder.  #")
-		fmt.Println("############################################################")
-	} else {
-		masked := masterToken
-		if len(masked) > 4 { 
-			masked = masked[:4] + "****" 
-		}
-		fmt.Printf("[BOOT] MASTER_ADMIN_TOKEN detected: (%s)\n", masked)
-	}
-
+	// Main Server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	
-	fmt.Printf("[BOOT] Server listening on port %s. Awaiting WHMCS & Agents...\n", port)
+	fmt.Printf("[BOOT] Server listening on port %s...\n", port)
 	r.Run(":" + port)
 }

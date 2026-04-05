@@ -210,9 +210,11 @@ export default function ServerList() {
                     
                     {/* El explorer data está mappeado por los primeros 10 caracteres del ID o nombre en el agente */}
                     <FileExplorer 
+                      agentId={id}
                       containerName={container} 
                       folders={data.explorer ? data.explorer[container] || [] : []} 
                     />
+
 
                   </div>
                 ))}

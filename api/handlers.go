@@ -21,83 +21,21 @@ func AuthMiddleware() gin.HandlerFunc {
 		
 		// MVP: Permitimos tokens que empiecen con dbp_tenant_ o el de dev
 		masterToken := os.Getenv("MASTER_ADMIN_TOKEN")
-		isAdmin := (token == masterToken)
+		isAdmin := (token != "" && masterToken != "" && token == masterToken)
 		
 		if !isAdmin && token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
-			tLog := token
-			if len(tLog) > 10 { tLog = tLog[:10] }
-			mLog := masterToken
-			if len(mLog) > 5 { mLog = mLog[:5] }
-			
-			fmt.Printf("[AUTH REJECTED] Received: [%s...], Expected Master: [%s...]\n", tLog, mLog)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return
 		}
 
-		
 		c.Set("token", token)
 		c.Set("is_admin", isAdmin)
 		c.Next()
 	}
 }
 
-
-
-// ReceiveHeartbeat recibe la información pasiva del servidor del cliente para mostrarlo "Verde" en el UI
-func ReceiveHeartbeat(c *gin.Context) {
-	var payload HeartbeatPayload
-	token := c.GetString("token")
-	
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		fmt.Printf("[API ERROR] Malformed heartbeat from %s: %v\n", token, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Payload format"})
-		return
-	}
-
-	tLog := token
-	if len(tLog) > 10 { tLog = tLog[:10] }
-	fmt.Printf("[HEARTBEAT] Received from Agent: %s (Token: %s...)\n", payload.AgentID, tLog)
-
-
-	agentStatusStore[payload.AgentID] = gin.H{
-		"token":       token,
-
-		"agent_id":    payload.AgentID,
-		"status":      "Healthy",
-		"last_sync":   "Just now",
-		"containers":  payload.Containers,
-		"explorer":    payload.ExplorerData,
-		"os":          payload.OS,
-		"type":        "Heartbeat",
-	}
-
-
-
-	
-	c.JSON(http.StatusOK, gin.H{"message": "Heartbeat updated"})
-}
-
-// ReceiveBackupCompletion registra cuando un trabajo de Restic finaliza con sus métricas completas
-func ReceiveBackupCompletion(c *gin.Context) {
-	var payload BackupCompletePayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Almacenamos en memoria para el Dashboard
-	agentStatusStore[payload.AgentID] = gin.H{
-		"token":         c.GetString("token"),
-		"agent_id":      payload.AgentID,
-		"status":        payload.Status,
-		"total_size_mb": payload.TotalSizeMB,
-		"snapshot_id":   payload.SnapshotID,
-		"last_sync":     "1 min ago",
-		"health":        "Healthy",
-	}
-
-
-	fmt.Printf("[DB INSERT] Agent %s reported snapshot %s\n", payload.AgentID, payload.SnapshotID)
-	c.JSON(http.StatusOK, gin.H{"message": "Metrics logged", "id": payload.SnapshotID})
+// Global Log Helper
+func Log(msg string) {
+	fmt.Printf("[API] %s\n", msg)
 }

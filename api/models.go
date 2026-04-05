@@ -1,6 +1,6 @@
 package main
 
-// BackupCompletePayload mapea el JSON que nos envía el Agente luego de usar Restic
+// BackupCompletePayload mapea el JSON que nos envía el Agente después de usar Restic
 type BackupCompletePayload struct {
 	AgentID      string `json:"agent_id"`
 	Status       string `json:"status"`
@@ -18,4 +18,11 @@ type HeartbeatPayload struct {
 	ExplorerData map[string][]string `json:"explorer_data"`
 }
 
-
+// UserSettingsPayload mapea el JSON de configuración de Wasabi
+type UserSettingsPayload struct {
+	WasabiKey    string `json:"wasabi_key"`
+	WasabiSecret string `json:"wasabi_secret"`
+	WasabiBucket string `json:"wasabi_bucket"`
+	WasabiRegion string `json:"wasabi_region"`
+	ResticPass   string `json:"restic_password"`
+}

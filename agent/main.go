@@ -2,17 +2,25 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// CONFIGURACIÓN HORARIA: Operamos en UTC por defecto para evitar discrepancias SaaS
+	time.Local = time.UTC
+	fmt.Println("[INFO] Local time synchronized to UTC.")
+
+	godotenv.Load()
 	fmt.Println("[INFO] DBP Agent Booting...")
 
 	// 0. Asegurar Repositorio S3 (Wasabi)
@@ -48,13 +56,12 @@ func main() {
 		explorerData := make(map[string][]string)
 
 		for _, c := range containers {
-			// IDENTIFICAMOS EL NOMBRE DEL CONTENEDOR (sin el slash inicial de Docker)
 			if len(c.Names) == 0 {
 				continue
 			}
 			name := c.Names[0][1:]
 
-			// EXCLUIMOS EL PROPIO AGENTE: No tiene sentido que se respalde a sí mismo
+			// EXCLUIMOS EL PROPIO AGENTE
 			if name == "dbp-client-agent" {
 				continue
 			}
@@ -77,15 +84,13 @@ func main() {
 				if mount.Type == "bind" || mount.Type == "volume" {
 					hostPath := "/host_root" + mount.Source
 					
-					// VERIFICAMOS QUE SEA UN DIRECTORIO antes de escanear
 					info, err := os.Stat(hostPath)
 					if err != nil || !info.IsDir() {
-						continue // Omitimos sockets, archivos sueltos, etc.
+						continue 
 					}
 
 					backupPaths = append(backupPaths, hostPath)
 					
-					// ESENCIAL: Usamos el NOMBRE del contenedor como llave para que el UI lo encuentre
 					subfolders := ScanVolumeFolders(hostPath)
 					explorerData[name] = append(explorerData[name], subfolders...)
 				}
@@ -99,30 +104,31 @@ func main() {
 			agentID = hostname
 		}
 
-		// 1. Reportar Heartbeat (Lista de contenedores en vivo + Explorer Data) - ¡PRIMERO!
-		ReportHeartbeat(agentID, containerNames, explorerData)
+		// Obtenemos historial de snapshots para el Dashboard
+		snapRaw := GetSnapshotsJSON()
+		var snapshots []interface{}
+		json.Unmarshal(snapRaw, &snapshots)
+
+		// 1. Reportar Heartbeat (Lista de contenedores + Explorer Data + Snapshots)
+		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
+		ReportHeartbeat(agentID, containerNames, explorerData, snapshots)
+
 
 		// 2. Obtener la SELECCIÓN del cliente desde la API
-		selectedPaths, err := GetAgentConfig()
+		selectedPaths, err := GetAgentConfig(agentID)
 		if err != nil {
 			fmt.Printf("[API ERROR] Could not fetch backup config: %v\n", err)
-			selectedPaths = backupPaths // Fallback a todo si falla (mejor sobrar que faltar)
+			selectedPaths = backupPaths 
 		}
 
 		// Si el cliente no ha seleccionado nada, no respaldamos (SaaS behavior)
 		if len(selectedPaths) == 0 && len(backupPaths) > 0 {
-			fmt.Println("[INFO] No paths selected by user yet. Skipping backup.")
+			fmt.Println("[INFO] No paths selected by user yet. Skipping backup cycle.")
 			time.Sleep(60 * time.Second)
 			continue
 		}
 
-		// 3. Asegurar Repo e Inicializar Respaldo
-		if err := EnsureResticRepo(); err != nil {
-			fmt.Printf("[ERROR] S3 Repo check failed: %v. Skipping backup this cycle.\n", err)
-			time.Sleep(60 * time.Second)
-			continue
-		}
-
+		// 3. Ejecutar Respaldo Restic
 		err = RunResticBackup(selectedPaths)
 
 		finalStatus := "SUCCESS"
@@ -130,17 +136,16 @@ func main() {
 			finalStatus = "FAILED"
 		}
 
-		// 3. Enviar Telemetría de Respaldo
+		// 4. Enviar Telemetría de Respaldo
 		metrics := BackupMetrics{
 			AgentID:      agentID,
 			Status:       finalStatus,
-			TotalSizeMB:  2450, 
-			DurationSecs: 180,  
-			SnapshotID:   "8f9b2a1a",
+			TotalSizeMB:  0, // TODO: Calcular desde restic output
+			DurationSecs: 0,
+			SnapshotID:   "auto",
 			Timestamp:    time.Now().Unix(),
 		}
 		ReportMetrics(metrics)
-
 
 		fmt.Println("[INFO] Cycle completed. Sleeping for 60 seconds...")
 		time.Sleep(60 * time.Second)
@@ -155,17 +160,14 @@ func ScanVolumeFolders(path string) []string {
 	var items []string
 	files, err := os.ReadDir(path)
 	if err != nil {
-		fmt.Printf("[SCAN ERROR] Path: %s - Error: %v (Usually permissions)\n", path, err)
 		return items
 	}
 	for _, f := range files {
-		// Enviamos la ruta absoluta del host para que la UI pueda enviarla de vuelta tal cual
 		fullPath := path
 		if !strings.HasSuffix(fullPath, "/") {
 			fullPath += "/"
 		}
 		
-		// Añadimos una marca visual si es carpeta o archivo para la UI
 		prefix := "📄 "
 		if f.IsDir() {
 			prefix = "📂 "
@@ -174,5 +176,3 @@ func ScanVolumeFolders(path string) []string {
 	}
 	return items
 }
-
-

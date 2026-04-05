@@ -105,3 +105,21 @@ func ApplyRetentionPolicy() error {
 	return nil
 }
 
+// GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo
+func GetSnapshotsJSON() []byte {
+	repo := os.Getenv("RESTIC_REPOSITORY")
+	if repo == "" {
+		return []byte("[]")
+	}
+
+	cmd := exec.Command("restic", "snapshots", "--json")
+	cmd.Env = os.Environ()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("[RESTIC ERROR] Failed to list snapshots: %v\n", err)
+		return []byte("[]")
+	}
+	return output
+}
+
+

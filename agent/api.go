@@ -27,6 +27,7 @@ type HeartbeatPayload struct {
 	AgentID      string              `json:"agent_id"`
 	Containers   []string            `json:"containers"`
 	ExplorerData map[string][]string `json:"explorer_data"`
+	Snapshots    []interface{}       `json:"snapshots"`
 	OS           string              `json:"os"`
 }
 
@@ -60,8 +61,8 @@ func ReportMetrics(metrics BackupMetrics) {
 	fmt.Printf("[API] Metrics sent to %s. Status: %s\n", url, resp.Status)
 }
 
-// ReportHeartbeat envía el estado pasivo del servidor (lista de contenedores y sus carpetas)
-func ReportHeartbeat(agentID string, containers []string, explorerData map[string][]string) {
+// ReportHeartbeat envía el estado pasivo del servidor (lista de contenedores, carpetas y snapshots)
+func ReportHeartbeat(agentID string, containers []string, explorerData map[string][]string, snapshots []interface{}) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
@@ -72,6 +73,7 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 		AgentID:      agentID,
 		Containers:   containers,
 		ExplorerData: explorerData,
+		Snapshots:    snapshots,
 		OS:           "Linux (Docker)",
 	}
 
@@ -93,17 +95,18 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 		return
 	}
 
-	fmt.Printf("[API] Heartbeat (Containers: %d) sent. Status: OK\n", len(containers))
+	fmt.Printf("[API] Heartbeat (Containers: %d, Snapshots: %d) sent. Status: OK\n", len(containers), len(snapshots))
 }
 
 
-// GetAgentConfig consulta a la API la selección de carpetas a respaldar
-func GetAgentConfig() ([]string, error) {
+// GetAgentConfig consulta a la API la selección de carpetas específica para este VPS
+func GetAgentConfig(agentID string) ([]string, error) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
 	}
-	url := fmt.Sprintf("%s/v1/agent/config", apiEndpoint)
+	// Importante: Pasamos el agent_id como query param para que la API sepa qué config devolver
+	url := fmt.Sprintf("%s/v1/agent/config?agent_id=%s", apiEndpoint, agentID)
 
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
@@ -127,6 +130,3 @@ func GetAgentConfig() ([]string, error) {
 	}
 	return config.Paths, nil
 }
-
-
-
