@@ -22,15 +22,17 @@
 </div>
 
 <!-- DASHBOARD EMBEDDED -->
-<div class="panel panel-default" style="margin-top: 20px; border: 1px solid #1f2937; background: #000;">
-    <div class="panel-heading" style="background: #111827; color: #fff; border-bottom: 1px solid #1f2937;">
-        <h3 class="panel-title"><i class="fas fa-desktop"></i> Live Backup Control Panel</h3>
+<div style="margin-top: 20px; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid #1f2937;">
+    <div style="background: #111827; padding: 15px 20px; border-bottom: 1px solid #1f2937; display: flex; align-items: center; justify-content: space-between;">
+        <h3 style="margin: 0; color: #fff; font-size: 16px;"><i class="fas fa-desktop"></i> Live Backup Control Panel</h3>
+        <span class="label label-success">Connected Live</span>
     </div>
-    <div class="panel-body" style="padding: 0; background: #000;">
+    <div style="padding: 0; background: #000;">
         <iframe 
             src="https://portal.hwperu.com/login?sso={$dbpToken}&embed=1" 
-            style="width: 100%; height: 750px; border: none; overflow: hidden;"
+            style="width: 100%; height: 800px; border: none; display: block;"
             scrolling="no"
         ></iframe>
     </div>
 </div>
+

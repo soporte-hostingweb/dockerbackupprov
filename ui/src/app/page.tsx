@@ -1,46 +1,81 @@
+'use client';
+
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import ServerList from "@/components/ServerList";
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const isEmbed = searchParams.get("embed") === "1";
+  const [agentCount, setAgentCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const response = await fetch("https://api.hwperu.com/v1/agent/status");
+        if (response.ok) {
+          const data = await response.json();
+          setAgentCount(Object.keys(data).length);
+        }
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchStats();
+  }, []);
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className={`mx-auto space-y-8 ${isEmbed ? 'max-w-full p-2' : 'max-w-7xl p-8'}`}>
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Overview</h1>
-        <button className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md font-medium transition-colors">
-          Add New VPS
-        </button>
+        <h1 className={`${isEmbed ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight`}>System Overview</h1>
+
+        <div className="flex gap-2">
+          <span className="px-3 py-1 bg-emerald-950 text-emerald-400 text-xs font-mono rounded-full border border-emerald-800">
+            CONTROL PLANE LIVE
+          </span>
+        </div>
       </div>
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gray-900 border border-gray-800 p-6 rounded-lg shadow-sm">
-          <p className="text-sm text-gray-400 font-medium">Total Storage Used</p>
+        <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl shadow-sm">
+          <p className="text-sm text-gray-400 font-medium font-mono uppercase tracking-widest">Total Storage</p>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-white">45.2</span>
-            <span className="text-gray-400">GB / 100 GB</span>
+            <span className="text-3xl font-bold text-white">0.0</span>
+            <span className="text-gray-400">GB / 50 GB</span>
           </div>
-          <div className="w-full bg-gray-800 h-2 mt-4 rounded-full overflow-hidden">
-            <div className="bg-emerald-500 h-full w-[45%]"></div>
+          <div className="w-full bg-gray-800 h-1.5 mt-4 rounded-full overflow-hidden">
+            <div className="bg-emerald-500 h-full w-[2%]"></div>
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 p-6 rounded-lg shadow-sm">
-          <p className="text-sm text-gray-400 font-medium">Active Agents</p>
-          <div className="mt-2 text-3xl font-bold text-emerald-400">3</div>
-          <p className="text-xs text-gray-400 mt-2">All systems responding correctly to Heartbeats</p>
+        <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl shadow-sm border-l-4 border-l-emerald-500">
+          <p className="text-sm text-gray-400 font-medium font-mono uppercase tracking-widest">Active Agents</p>
+          <div className="mt-2 text-3xl font-bold text-white">
+            {loading ? "..." : agentCount}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Connecting from your protected VPS servers</p>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 p-6 rounded-lg shadow-sm">
-          <p className="text-sm text-gray-400 font-medium">Recent Snapshots</p>
-          <div className="mt-2 text-3xl font-bold text-white">128</div>
-          <p className="text-xs text-gray-400 mt-2">Safe snapshots across all VPS servers</p>
+        <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl shadow-sm">
+          <p className="text-sm text-gray-400 font-medium font-mono uppercase tracking-widest">Global Status</p>
+          <div className="mt-2 text-3xl font-bold text-white">HEALTHY</div>
+          <p className="text-xs text-emerald-500 mt-2">All API systems operational</p>
         </div>
       </div>
 
       {/* Server List view */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4 text-white">Protected Servers</h2>
+      <div className="pt-4">
+        <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          Protected Environments
+        </h2>
         <ServerList />
       </div>
     </div>
   );
 }
+
