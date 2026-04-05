@@ -67,11 +67,17 @@ func main() {
 
 			for _, mount := range inspect.Mounts {
 				if mount.Type == "bind" || mount.Type == "volume" {
-					backupPaths = append(backupPaths, mount.Source)
-					// Escaneamos carpetas para el Explorer del UI
-					explorerData[c.ID[:10]] = append(explorerData[c.ID[:10]], ScanVolumeFolders(mount.Source)...)
+					hostPath := "/host_root" + mount.Source
+					backupPaths = append(backupPaths, hostPath)
+					
+					// Escaneamos carpetas para el Explorer del UI 
+					// Ahora guardamos la ruta COMPLETA del host para cada subcarpeta
+					subfolders := ScanVolumeFolders(hostPath)
+					explorerData[c.ID[:10]] = append(explorerData[c.ID[:10]], subfolders...)
 				}
 			}
+
+
 		}
 
 		// Determinar ID del Agente
@@ -84,14 +90,29 @@ func main() {
 		// 1. Reportar Heartbeat (Lista de contenedores en vivo + Explorer Data) - ¡PRIMERO!
 		ReportHeartbeat(agentID, containerNames, explorerData)
 
-		// 2. Asegurar Repo e Inicializar Respaldo
+		// 2. Obtener la SELECCIÓN del cliente desde la API
+		selectedPaths, err := GetAgentConfig()
+		if err != nil {
+			fmt.Printf("[API ERROR] Could not fetch backup config: %v\n", err)
+			selectedPaths = backupPaths // Fallback a todo si falla (mejor sobrar que faltar)
+		}
+
+		// Si el cliente no ha seleccionado nada, no respaldamos (SaaS behavior)
+		if len(selectedPaths) == 0 && len(backupPaths) > 0 {
+			fmt.Println("[INFO] No paths selected by user yet. Skipping backup.")
+			time.Sleep(60 * time.Second)
+			continue
+		}
+
+		// 3. Asegurar Repo e Inicializar Respaldo
 		if err := EnsureResticRepo(); err != nil {
 			fmt.Printf("[ERROR] S3 Repo check failed: %v. Skipping backup this cycle.\n", err)
 			time.Sleep(60 * time.Second)
 			continue
 		}
 
-		err = RunResticBackup(backupPaths)
+		err = RunResticBackup(selectedPaths)
+
 		finalStatus := "SUCCESS"
 		if err != nil {
 			finalStatus = "FAILED"
@@ -122,12 +143,19 @@ func ScanVolumeFolders(path string) []string {
 	var folders []string
 	files, err := os.ReadDir(path)
 	if err != nil {
+		fmt.Printf("[SCAN ERROR] %v\n", err)
 		return folders
 	}
 	for _, f := range files {
 		if f.IsDir() {
-			folders = append(folders, f.Name())
+			// Enviamos la ruta absoluta del host para que la UI pueda enviarla de vuelta tal cual
+			fullPath := path
+			if !strings.HasSuffix(fullPath, "/") {
+				fullPath += "/"
+			}
+			folders = append(folders, fullPath+f.Name())
 		}
 	}
 	return folders
 }
+

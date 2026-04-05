@@ -11,13 +11,16 @@ import (
 
 // BackupMetrics representa el payload de telemetría a enviar al Control Plane
 type BackupMetrics struct {
-	AgentID      string `json:"agent_id"`
-	Status       string `json:"status"`
-	TotalSizeMB  int    `json:"total_size_mb"`
-	DurationSecs int    `json:"duration_secs"`
-	SnapshotID   string `json:"snapshot_id"`
-	Timestamp    int64  `json:"timestamp"`
+	AgentID          string `json:"agent_id"`
+	Status           string `json:"status"`
+	TotalSizeMB      int    `json:"total_size_mb"`
+	FileCount        int    `json:"file_count"`
+	UploadSpeedKbps  int    `json:"upload_speed_kbps"`
+	DurationSecs     int    `json:"duration_secs"`
+	SnapshotID       string `json:"snapshot_id"`
+	Timestamp        int64  `json:"timestamp"`
 }
+
 
 // HeartbeatPayload para enviar la lista de contenedores y estado del sistema
 type HeartbeatPayload struct {
@@ -73,7 +76,6 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 	}
 
 	payload, _ := json.Marshal(payloadObj)
-
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
@@ -93,5 +95,38 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 
 	fmt.Printf("[API] Heartbeat (Containers: %d) sent. Status: OK\n", len(containers))
 }
+
+
+// GetAgentConfig consulta a la API la selección de carpetas a respaldar
+func GetAgentConfig() ([]string, error) {
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" {
+		apiEndpoint = "https://api.hwperu.com"
+	}
+	url := fmt.Sprintf("%s/v1/agent/config", apiEndpoint)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		return nil, nil // Sin configuración aún
+	}
+
+	var config struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		return nil, err
+	}
+	return config.Paths, nil
+}
+
 
 

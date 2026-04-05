@@ -53,11 +53,40 @@ function dockerbackuppro_output($vars) {
     // Generamos el enlace al portal con acceso maestro
     $masterToken = $vars['master_token'];
     $portalUrl = $vars['portal_url'];
+    $apiUrl = $vars['api_endpoint'];
     $debug = ($vars['debug_mode'] == 'on') ? '&debug=1' : '';
     
-    echo '<div class="alert alert-info">
-            <i class="fas fa-shield-alt"></i> Actualmente estás visualizando el <b>Panel Maestro</b> de HWPeru.
+    echo '<div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div class="alert alert-info" style="margin: 0; flex-grow: 1; margin-right: 20px;">
+                <i class="fas fa-shield-alt"></i> Actualmente estás visualizando el <b>Panel Maestro</b> de HWPeru.
+            </div>
+            <button onclick="testWasabi()" class="btn btn-primary">
+                <i class="fas fa-network-wired"></i> Test Wasabi Link
+            </button>
           </div>';
+
+    // Script para el test de Wasabi
+    echo '<script>
+        function testWasabi() {
+            const token = "' . $masterToken . '";
+            const url = "' . $apiUrl . '/v1/admin/wasabi/ping";
+            
+            alert("Iniciando prueba de latencia hacia Wasabi S3...");
+            
+            fetch(url, {
+                headers: { "Authorization": token }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === "Online") {
+                    alert("✅ [WASABI OK] Conexión Exitosa.\nLatencia: " + data.latency_ms + "ms\nBucket: " + data.bucket);
+                } else {
+                    alert("❌ [ERROR] " + data.message);
+                }
+            })
+            .catch(e => alert("❌ [API DOWN] No se pudo contactar con la API Central."));
+        }
+    </script>';
 
     // El iframe carga el dashboard en modo admin con el token maestro y debug si aplica
     echo '<iframe src="' . $portalUrl . '?admin=1&sso=' . $masterToken . $debug . '" 

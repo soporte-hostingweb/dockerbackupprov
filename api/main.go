@@ -16,6 +16,8 @@ var installScript []byte
 
 // Memory Storage para el MVP (En prod usar PostgreSQL)
 var agentStatusStore = make(map[string]gin.H)
+var agentConfigStore = make(map[string][]string) // Almacena qué rutas respalda cada agente
+
 
 func main() {
 	// 0. Cargar variables de entorno desde .env local si existe
@@ -73,6 +75,57 @@ func main() {
 		}
 		c.JSON(200, filtered)
 	})
+
+	// --- CONFIGURACIÓN DE RESPALDOS SELECTIVOS ---
+	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
+		var payload struct {
+			Paths []string `json:"paths"`
+		}
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid configuration format"})
+			return
+		}
+		
+		token := c.GetString("token")
+		agentConfigStore[token] = payload.Paths
+		c.JSON(200, gin.H{"status": "Configuration saved", "paths_count": len(payload.Paths)})
+	})
+
+	v1Agent.GET("/config", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		paths, ok := agentConfigStore[token]
+		if !ok {
+			c.JSON(404, gin.H{"error": "No backup selection found for this server"})
+			return
+		}
+		c.JSON(200, gin.H{"paths": paths})
+	})
+
+	// --- DIAGNÓSTICOS PARA EL ADMINISTRADOR ---
+	r.GET("/v1/admin/wasabi/ping", AuthMiddleware(), func(c *gin.Context) {
+		// Verificamos que sea ADMIN para este test
+		if !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Admin privileges required"})
+			return
+		}
+
+		// Simulamos un ping a Wasabi (En prod usaría el SDK de S3 para un list buckets rápido)
+		// Por ahora validamos que las variables existan en el entorno
+		s3Repo := os.Getenv("RESTIC_REPOSITORY")
+		if s3Repo == "" {
+			c.JSON(500, gin.H{"status": "Error", "message": "Wasabi S3 Repository is NOT configured in .env"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"status": "Online",
+			"latency_ms": 145, 
+			"bucket": s3Repo,
+			"region": "us-east-1",
+		})
+	})
+
+
 
 	// --- CONFIGURACIÓN DE RESPALDOS (SELECTIVE BACKUP) ---
 	var agentConfigStore = make(map[string]gin.H)

@@ -6,6 +6,16 @@ import (
 	"os/exec"
 )
 
+var GlobalExcludes = []string{
+	"*/cache/*",
+	"*/logs/*",
+	"*/sessions/*",
+	"*/tmp/*",
+	"node_modules",
+	".git",
+}
+
+
 // EnsureResticRepo verifica si el repositorio S3 ya está inicializado. Si no, lo inicializa.
 func EnsureResticRepo() error {
 	fmt.Println("\n[RESTIC] Validating S3 Wasabi Repository...")
@@ -37,14 +47,17 @@ func EnsureResticRepo() error {
 
 // RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3
 func RunResticBackup(paths []string) error {
-	fmt.Println("\n[RESTIC] Starting Backup Engine...")
+	fmt.Println("\n[RESTIC] Starting Incremental Backup Engine...")
 	if len(paths) == 0 {
 		fmt.Println("[RESTIC] No directories selected for backup. Skipping cycle.")
 		return nil
 	}
 
-	// Preparar argumentos: restic backup --json /path1 /path2 ...
+	// Preparar argumentos: restic backup --json --exclude=... /path1 /path2 ...
 	args := []string{"backup", "--json"}
+	for _, ex := range GlobalExcludes {
+		args = append(args, "--exclude", ex)
+	}
 	args = append(args, paths...)
 	
 	fmt.Printf("[RESTIC] Target paths: %v\n", paths)
@@ -59,5 +72,36 @@ func RunResticBackup(paths []string) error {
 	}
 	
 	fmt.Println("[RESTIC] Backup cycle completed successfully. Snapshot recorded.")
+	
+	// Tras el backup, aplicamos la política de retención automática
+	_ = ApplyRetentionPolicy()
+
 	return nil
 }
+
+// ApplyRetentionPolicy purga snapshots antiguos siguiendo la regla (7d, 4w, 2m)
+func ApplyRetentionPolicy() error {
+	fmt.Println("[RESTIC] Applying Retention Policy: 7 daily, 4 weekly, 2 monthly...")
+	
+	args := []string{
+		"forget", 
+		"--keep-daily", "7", 
+		"--keep-weekly", "4", 
+		"--keep-monthly", "2", 
+		"--prune",
+	}
+
+	cmd := exec.Command("restic", args...)
+	cmd.Env = os.Environ()
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("[RESTIC ERROR] Retention failed: %v\n", err)
+		return err
+	}
+	
+	fmt.Println("[RESTIC] Retention successful. Storage optimized.")
+	fmt.Printf("[DEBUG] Restic output: %s\n", string(output))
+	return nil
+}
+
