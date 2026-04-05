@@ -14,11 +14,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <Suspense fallback={<body className="bg-black text-white">Loading...</body>}>
-        <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
-      </Suspense>
+      <body className="flex h-screen bg-black text-white p-0 m-0 overflow-hidden">
+        <Suspense fallback={<div className="bg-black text-white p-8">Loading Dashboard...</div>}>
+          <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
+        </Suspense>
+      </body>
     </html>
   );
 }
+
 
 

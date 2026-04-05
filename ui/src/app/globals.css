@@ -15,5 +15,14 @@ body {
       transparent,
       rgb(var(--background-end-rgb))
     )
-    rgb(var(--background-start-rgb));
 }
+
+/* HIDDEN STATE FOR EMBEDDED VIEW */
+.no-sidebar {
+  display: none !important;
+}
+
+.no-padding {
+  padding: 0 !important;
+}
+
