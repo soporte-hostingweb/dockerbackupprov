@@ -16,9 +16,13 @@ export default function DashboardPage() {
     // Capturamos el token de la URL si viene de WHMCS (SSO)
     const token = searchParams.get("sso");
     if (token) {
+      console.log("[SSO] New token detected in URL, updating storage...");
       localStorage.setItem("dbp_sso_token", token);
+      // Forzamos un refresco de estado si el token ha cambiado
+      window.dispatchEvent(new Event("storage"));
     }
   }, [searchParams]);
+
 
   useEffect(() => {
     async function fetchStats() {
