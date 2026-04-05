@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useEffect, useState } from "react";
 import { HardDrive, Server, ShieldCheck, ShieldAlert, RefreshCcw } from "lucide-react";
 
