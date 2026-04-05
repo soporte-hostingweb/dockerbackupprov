@@ -140,22 +140,27 @@ func containsString(str, substr string) bool {
 }
 
 func ScanVolumeFolders(path string) []string {
-	var folders []string
+	var items []string
 	files, err := os.ReadDir(path)
 	if err != nil {
-		fmt.Printf("[SCAN ERROR] %v\n", err)
-		return folders
+		fmt.Printf("[SCAN ERROR] Path: %s - Error: %v (Usually permissions)\n", path, err)
+		return items
 	}
 	for _, f := range files {
-		if f.IsDir() {
-			// Enviamos la ruta absoluta del host para que la UI pueda enviarla de vuelta tal cual
-			fullPath := path
-			if !strings.HasSuffix(fullPath, "/") {
-				fullPath += "/"
-			}
-			folders = append(folders, fullPath+f.Name())
+		// Enviamos la ruta absoluta del host para que la UI pueda enviarla de vuelta tal cual
+		fullPath := path
+		if !strings.HasSuffix(fullPath, "/") {
+			fullPath += "/"
 		}
+		
+		// Añadimos una marca visual si es carpeta o archivo para la UI
+		prefix := "📄 "
+		if f.IsDir() {
+			prefix = "📂 "
+		}
+		items = append(items, prefix+fullPath+f.Name())
 	}
-	return folders
+	return items
 }
+
 
