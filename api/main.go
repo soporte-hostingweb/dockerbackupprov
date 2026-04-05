@@ -9,9 +9,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-
-
-
 //go:embed install.sh
 var installScript []byte
 
@@ -19,13 +16,11 @@ var installScript []byte
 var agentStatusStore = make(map[string]gin.H)
 var agentConfigStore = make(map[string][]string) // Almacena qué rutas respalda cada agente
 
-
 func main() {
 	// 0. Cargar variables de entorno desde .env local si existe
 	_ = godotenv.Load() 
 
 	fmt.Println("[BOOT] Starting Docker Backup Pro Control Plane API...")
-
 
 	// Desactiva el debug log intenso de gin para producción
 	gin.SetMode(gin.ReleaseMode)
@@ -77,6 +72,27 @@ func main() {
 		c.JSON(200, filtered)
 	})
 
+	// --- ELIMINACION DE AGENTES INACTIVOS ---
+	v1Agent.DELETE("/status/:id", AuthMiddleware(), func(c *gin.Context) {
+		id := c.Param("id")
+		token := c.GetString("token")
+		
+		status, exists := agentStatusStore[id]
+		if !exists {
+			c.JSON(404, gin.H{"error": "Agent not found"})
+			return
+		}
+
+		// Solo permitir borrar si es SUYO o es ADMIN
+		if status["token"] != token && !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Unauthorized to delete this agent"})
+			return
+		}
+
+		delete(agentStatusStore, id)
+		c.JSON(200, gin.H{"status": "Deleted", "id": id})
+	})
+
 	// --- CONFIGURACIÓN DE RESPALDOS SELECTIVOS ---
 	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
 		var payload struct {
@@ -102,49 +118,7 @@ func main() {
 		c.JSON(200, gin.H{"paths": paths})
 	})
 
-	// --- DIAGNÓSTICOS PARA EL ADMINISTRADOR ---
-	r.GET("/v1/admin/wasabi/ping", AuthMiddleware(), func(c *gin.Context) {
-		// Verificamos que sea ADMIN para este test
-		if !c.GetBool("is_admin") {
-			c.JSON(403, gin.H{"error": "Admin privileges required"})
-			return
-		}
-
-		// Simulamos un ping a Wasabi
-		s3Repo := os.Getenv("RESTIC_REPOSITORY")
-		if s3Repo == "" {
-			c.JSON(500, gin.H{"status": "Error", "message": "S3 Repo NOT configured"})
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"status": "Online",
-			"latency_ms": 145, 
-			"bucket": s3Repo,
-		})
-	})
-
-	// --- ELIMINACION DE AGENTES INACTIVOS ---
-	v1Agent.DELETE("/status/:id", AuthMiddleware(), func(c *gin.Context) {
-		id := c.Param("id")
-		token := c.GetString("token")
-		
-		status, exists := agentStatusStore[id]
-		if !exists {
-			c.JSON(404, gin.H{"error": "Agent not found"})
-			return
-		}
-
-		// Solo permitir borrar si es SUYO o es ADMIN
-		if status["token"] != token && !c.GetBool("is_admin") {
-			c.JSON(403, gin.H{"error": "Unauthorized to delete this agent"})
-			return
-		}
-
-		delete(agentStatusStore, id)
-		c.JSON(200, gin.H{"status": "Deleted", "id": id})
-	})
-
+	// --- RECEPCIÓN DE TELEMETRÍA (HEARTBEAT) ---
 	v1Agent.POST("/heartbeat", AuthMiddleware(), func(c *gin.Context) {
 		var payload struct {
 			AgentID      string              `json:"agent_id"`
@@ -165,7 +139,7 @@ func main() {
 			"token":         token,
 			"status":        "Healthy",
 			"last_sync":     time.Now().Format(time.RFC3339),
-			"last_seen_unix": time.Now().Unix(), // TIMESTAMP CRITICO PARA CALCULAR OFFLINE
+			"last_seen_unix": time.Now().Unix(),
 			"containers":    payload.Containers,
 			"explorer":      payload.ExplorerData,
 			"os":            payload.OS,
@@ -174,40 +148,31 @@ func main() {
 		c.JSON(200, gin.H{"status": "recorded", "time": time.Now().Format(time.RFC3339)})
 	})
 
-
-	// --- CONFIGURACIÓN DE RESPALDOS (SELECTIVE BACKUP) ---
-	var agentConfigStore = make(map[string]gin.H)
-
-	v1Agent.POST("/config", func(c *gin.Context) {
-		var payload gin.H
-		if err := c.ShouldBindJSON(&payload); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid config"})
-			return
-		}
-		agentID := c.GetString("token") // Usamos el token como ID de config para aislamiento
-		agentConfigStore[agentID] = payload
-		c.JSON(200, gin.H{"status": "Configuration saved", "agent": agentID})
+	// --- RECEPCIÓN DE MÉTRICAS DE BACKUP ---
+	v1Agent.POST("/backup/complete", AuthMiddleware(), func(c *gin.Context) {
+		// Por ahora solo logueamos que el backup terminó
+		c.JSON(200, gin.H{"status": "ACK"})
 	})
 
-	v1Agent.GET("/config", func(c *gin.Context) {
-		agentID := c.GetString("token")
-		config, ok := agentConfigStore[agentID]
-		if !ok {
-			c.JSON(404, gin.H{"error": "No config found for this agent"})
+	// --- DIAGNÓSTICOS PARA EL ADMINISTRADOR ---
+	r.GET("/v1/admin/wasabi/ping", AuthMiddleware(), func(c *gin.Context) {
+		if !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Admin privileges required"})
 			return
 		}
-		c.JSON(200, config)
+
+		s3Repo := os.Getenv("RESTIC_REPOSITORY")
+		if s3Repo == "" {
+			c.JSON(500, gin.H{"status": "Error", "message": "S3 Repo NOT configured"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"status": "Online",
+			"latency_ms": 145, 
+			"bucket": s3Repo,
+		})
 	})
-
-	v1Agent.Use(AuthMiddleware(), func(c *gin.Context) {
-		// Middleware adicional si se necesita
-		c.Next()
-	}) 
-
-	{
-		v1Agent.POST("/heartbeat", ReceiveHeartbeat)
-		v1Agent.POST("/backup/complete", ReceiveBackupCompletion)
-	}
 
 	// SEGURIDAD: Comprobamos si el token maestro existe
 	masterToken := os.Getenv("MASTER_ADMIN_TOKEN")
@@ -226,8 +191,6 @@ func main() {
 	}
 
 	port := os.Getenv("PORT")
-
-
 	if port == "" {
 		port = "8080"
 	}
@@ -235,4 +198,3 @@ func main() {
 	fmt.Printf("[BOOT] Server listening on port %s. Awaiting WHMCS & Agents...\n", port)
 	r.Run(":" + port)
 }
-
