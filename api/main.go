@@ -113,12 +113,19 @@ func main() {
 	if masterToken == "" {
 		fmt.Println("############################################################")
 		fmt.Println("# [CRITICAL WARNING] MASTER_ADMIN_TOKEN is NOT SET!        #")
-		fmt.Println("# Admin access via WHMCS and SSO will FAIL (401).         #")
-		fmt.Println("# Please check your .env file and Restart the container.  #")
+		fmt.Println("# Received: [EMPTY]                                         #")
+		fmt.Println("# Please check your .env file and Move it to ROOT folder.  #")
 		fmt.Println("############################################################")
+	} else {
+		masked := masterToken
+		if len(masked) > 4 { 
+			masked = masked[:4] + "****" 
+		}
+		fmt.Printf("[BOOT] MASTER_ADMIN_TOKEN detected: (%s)\n", masked)
 	}
 
 	port := os.Getenv("PORT")
+
 
 	if port == "" {
 		port = "8080"
