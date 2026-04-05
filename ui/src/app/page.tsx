@@ -36,6 +36,10 @@ export default function DashboardPage() {
         if (response.ok) {
           const data = await response.json();
           setAgentCount(Object.keys(data).length);
+        } else if (response.status === 401) {
+          console.warn("[AUTH] Token rejected (401). Purging invalid storage...");
+          localStorage.removeItem("dbp_sso_token");
+          setAgentCount(0);
         }
       } catch (error) {
         console.error("Error fetching stats:", error);
@@ -45,6 +49,7 @@ export default function DashboardPage() {
     }
     fetchStats();
   }, [searchParams]);
+
 
   const isDebug = searchParams.get("debug") === "1";
   const currentToken = typeof window !== 'undefined' ? localStorage.getItem("dbp_sso_token") : null;

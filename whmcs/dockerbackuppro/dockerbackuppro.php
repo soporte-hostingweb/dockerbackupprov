@@ -22,9 +22,11 @@ function dockerbackuppro_ConfigOptions()
 {
     return array(
         "Storage Quota GB" => array("Type" => "text", "Size" => "25", "Default" => "50"),
-        "API Endpoint" => array("Type" => "text", "Size" => "25", "Default" => "https://api.dockerbackuppro.com/v1"),
+        "API Endpoint" => array("Type" => "text", "Size" => "25", "Default" => "https://api.hwperu.com"),
+        "Debug Mode" => array("Type" => "yesno", "Description" => "Activa herramientas de diagnóstico en el área de cliente."),
     );
 }
+
 
 // Hook that triggers after successful payment / manual trigger
 function dockerbackuppro_CreateAccount(array $params)
@@ -92,12 +94,16 @@ function dockerbackuppro_ClientArea(array $params)
     $token = "dbp_tenant_" . md5($params['userid'] . $params['serviceid']); 
     
     // Inyectamos las variables al TPL
+    $debug = ($params['configoption3'] == 'on') ? '&debug=1' : '';
+
     return array(
         'tabOverviewReplacementTemplate' => 'clientarea.tpl',
         'templateVariables' => array(
             'dbpToken' => $token,
             'apiEndpoint' => $params['configoption2'],
+            'debug' => $debug,
             'installCommand' => "curl -sSL https://api.hwperu.com/install.sh | bash -s -- --token {$token}",
         ),
     );
 }
+
