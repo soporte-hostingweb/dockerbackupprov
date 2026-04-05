@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 	_ "embed"
 	"github.com/gin-gonic/gin"
 )
+
 
 
 //go:embed install.sh
@@ -100,6 +102,12 @@ func main() {
 		v1Agent.POST("/backup/complete", ReceiveBackupCompletion)
 	}
 
-	fmt.Println("[BOOT] Server listening on port 8080. Awaiting WHMCS & Agents...")
-	r.Run(":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	
+	fmt.Printf("[BOOT] Server listening on port %s. Awaiting WHMCS & Agents...\n", port)
+	r.Run(":" + port)
 }
+
