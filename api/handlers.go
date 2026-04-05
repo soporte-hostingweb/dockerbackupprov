@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,15 +19,21 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		
-		// MVP: Permitimos cualquier token que empiece con dbp_tenant_ (generados por WHMCS) o el de dev
-		if token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
+		// MVP: Permitimos tokens que empiecen con dbp_tenant_ o el de dev
+		isAdmin := (token == os.Getenv("MASTER_ADMIN_TOKEN"))
+		
+		if !isAdmin && token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return
 		}
+		
+		c.Set("token", token)
+		c.Set("is_admin", isAdmin)
 		c.Next()
 	}
 }
+
 
 // ReceiveHeartbeat recibe la información pasiva del servidor del cliente para mostrarlo "Verde" en el UI
 func ReceiveHeartbeat(c *gin.Context) {
@@ -37,14 +44,16 @@ func ReceiveHeartbeat(c *gin.Context) {
 	}
 
 	agentStatusStore[payload.AgentID] = gin.H{
-		"agent_id":     payload.AgentID,
+		"token":       c.GetString("token"),
+		"agent_id":    payload.AgentID,
 		"status":      "Healthy",
 		"last_sync":   "Just now",
 		"containers":  payload.Containers,
-		"explorer":    payload.ExplorerData, // Nueva estructura de carpetas
+		"explorer":    payload.ExplorerData,
 		"os":          payload.OS,
 		"type":        "Heartbeat",
 	}
+
 
 
 	
@@ -61,6 +70,7 @@ func ReceiveBackupCompletion(c *gin.Context) {
 
 	// Almacenamos en memoria para el Dashboard
 	agentStatusStore[payload.AgentID] = gin.H{
+		"token":         c.GetString("token"),
 		"agent_id":      payload.AgentID,
 		"status":        payload.Status,
 		"total_size_mb": payload.TotalSizeMB,
@@ -68,6 +78,7 @@ func ReceiveBackupCompletion(c *gin.Context) {
 		"last_sync":     "1 min ago",
 		"health":        "Healthy",
 	}
+
 
 	fmt.Printf("[DB INSERT] Agent %s reported snapshot %s\n", payload.AgentID, payload.SnapshotID)
 	c.JSON(http.StatusOK, gin.H{"message": "Metrics logged", "id": payload.SnapshotID})

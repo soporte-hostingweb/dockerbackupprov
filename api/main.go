@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+
 //go:embed install.sh
 var installScript []byte
 
@@ -45,9 +46,24 @@ func main() {
 	// Agrupar endpoints y protegerlos con Middleware de Autenticación
 	v1Agent := r.Group("/v1/agent")
 	
-	// Endpoint para el Dashboard (Público para el MVP, en prod requiere otro Auth)
-	v1Agent.GET("/status", func(c *gin.Context) {
-		c.JSON(200, agentStatusStore)
+	// Endpoint para el Dashboard (Pone el filtro según quién llame)
+	v1Agent.GET("/status", AuthMiddleware(), func(c *gin.Context) {
+		isAdmin := c.GetBool("is_admin")
+		clientToken := c.GetString("token")
+
+		if isAdmin {
+			c.JSON(200, agentStatusStore)
+			return
+		}
+
+		// Si no es admin, filtramos por Token
+		filtered := make(map[string]gin.H)
+		for id, status := range agentStatusStore {
+			if status["token"] == clientToken {
+				filtered[id] = status
+			}
+		}
+		c.JSON(200, filtered)
 	})
 
 	// --- CONFIGURACIÓN DE RESPALDOS (SELECTIVE BACKUP) ---
@@ -74,7 +90,11 @@ func main() {
 		c.JSON(200, config)
 	})
 
-	v1Agent.Use(AuthMiddleware()) // <-- Cada Request a esta URL debe tener Token
+	v1Agent.Use(AuthMiddleware(), func(c *gin.Context) {
+		// Middleware adicional si se necesita
+		c.Next()
+	}) 
+
 	{
 		v1Agent.POST("/heartbeat", ReceiveHeartbeat)
 		v1Agent.POST("/backup/complete", ReceiveBackupCompletion)

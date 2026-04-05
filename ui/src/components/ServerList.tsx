@@ -11,9 +11,11 @@ interface AgentStatus {
   last_sync: string;
   containers: string[];
   explorer: Record<string, string[]>;
+  token?: string;
   os: string;
   type: string;
 }
+
 
 export default function ServerList() {
   const [agents, setAgents] = useState<Record<string, AgentStatus>>({});
@@ -22,8 +24,13 @@ export default function ServerList() {
 
   useEffect(() => {
     async function fetchAgents() {
+      const token = localStorage.getItem("dbp_sso_token");
+      if (!token) return;
+
       try {
-        const response = await fetch("https://api.hwperu.com/v1/agent/status");
+        const response = await fetch("https://api.hwperu.com/v1/agent/status", {
+          headers: { "Authorization": token }
+        });
         if (response.ok) {
           const data = await response.json();
           setAgents(data);
@@ -39,6 +46,7 @@ export default function ServerList() {
     const interval = setInterval(fetchAgents, 15000); // 15s refresh
     return () => clearInterval(interval);
   }, []);
+
 
   if (loading) return (
     <div className="flex items-center justify-center p-12 bg-gray-900/20 border border-gray-800 rounded-xl">
@@ -81,7 +89,13 @@ export default function ServerList() {
                   <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
                     {data.os || 'Linux'}
                   </span>
+                  {localStorage.getItem("dbp_sso_token")?.startsWith("dbp_admin_") && data.token && (
+                     <span className="text-[9px] bg-blue-950 text-blue-400 px-2 py-0.5 rounded border border-blue-800 font-bold uppercase tracking-widest">
+                       Account: {data.token.substring(0, 15)}...
+                     </span>
+                  )}
                 </h3>
+
                 <p className="text-xs text-gray-500 mt-1 font-mono">Real-time Telemetry: {data.last_sync || 'Connected'}</p>
               </div>
             </div>

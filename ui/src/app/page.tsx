@@ -11,9 +11,22 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Capturamos el token de la URL si viene de WHMCS (SSO)
+    const token = searchParams.get("sso");
+    if (token) {
+      localStorage.setItem("dbp_sso_token", token);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     async function fetchStats() {
+      const token = localStorage.getItem("dbp_sso_token");
+      if (!token) return;
+
       try {
-        const response = await fetch("https://api.hwperu.com/v1/agent/status");
+        const response = await fetch("https://api.hwperu.com/v1/agent/status", {
+          headers: { "Authorization": token }
+        });
         if (response.ok) {
           const data = await response.json();
           setAgentCount(Object.keys(data).length);
@@ -27,17 +40,26 @@ export default function DashboardPage() {
     fetchStats();
   }, []);
 
+
   return (
     <div className={`mx-auto space-y-8 ${isEmbed ? 'max-w-full p-2' : 'max-w-7xl p-8'}`}>
-      <div className="flex justify-between items-center">
-        <h1 className={`${isEmbed ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight`}>System Overview</h1>
+      <div className="flex justify-between items-center bg-gray-950/50 p-6 rounded-2xl border border-gray-900 shadow-2xl">
+        <div className="flex flex-col">
+          <h1 className={`${isEmbed ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight text-white`}>
+            {searchParams.get("admin") === "1" ? "Master Control Panel" : "System Overview"}
+          </h1>
+          <p className="text-xs text-gray-500 uppercase tracking-widest mt-1 font-bold">
+            {searchParams.get("admin") === "1" ? "HWPERU GLOBAL INFRASTRUCTURE" : "PROTECTED CLIENT VPS"}
+          </p>
+        </div>
 
         <div className="flex gap-2">
-          <span className="px-3 py-1 bg-emerald-950 text-emerald-400 text-xs font-mono rounded-full border border-emerald-800">
+          <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-black rounded-full border border-emerald-500/20 uppercase tracking-widest">
             CONTROL PLANE LIVE
           </span>
         </div>
       </div>
+
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
