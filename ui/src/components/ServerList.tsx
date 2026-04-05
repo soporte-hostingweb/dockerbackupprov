@@ -1,14 +1,61 @@
-import React from "react";
-import { HardDrive, Server, ShieldCheck, ShieldAlert } from "lucide-react";
-
-// Mock para simular los datos que vendrían de la API Central de Go
-const servers = [
-  { id: "vps-01", name: "Production Web", ip: "192.168.1.50", os: "Ubuntu 22.04", status: "ok", lastBackup: "10 mins ago", size: "15.0 GB" },
-  { id: "vps-02", name: "Database Master", ip: "192.168.1.51", os: "Debian 12", status: "ok", lastBackup: "1 hr ago", size: "28.5 GB" },
-  { id: "vps-03", name: "Staging Test Area", ip: "192.168.1.52", os: "Ubuntu 22.04", status: "error", lastBackup: "Failing (3 days)", size: "1.7 GB" },
-];
+import React, { useEffect, useState } from "react";
+import { HardDrive, Server, ShieldCheck, ShieldAlert, RefreshCcw } from "lucide-react";
 
 export default function ServerList() {
+  const [servers, setServers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch("https://api.hwperu.com/v1/agent/status");
+        const data = await res.json();
+        
+        // Convertimos el mapa de la API a un array para el componente
+        const serverList = Object.values(data).map((s: any) => ({
+          id: s.agent_id,
+          name: s.agent_id.split('_')[0], // Usamos el prefijo como nombre
+          ip: "10.0.0.1", // IP simulada
+          os: "Linux VPS",
+          status: s.status === "SUCCESS" || s.status === "Healthy" ? "ok" : "error",
+          lastBackup: s.last_sync || "Just now",
+          size: s.total_size_mb ? `${(s.total_size_mb / 1024).toFixed(1)} GB` : "0 GB"
+        }));
+        
+        setServers(serverList);
+      } catch (error) {
+        console.error("Failed to fetch DBP status:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000); // Auto-refresh cada 30seg
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 border border-dashed border-gray-800 rounded-lg">
+         <RefreshCcw className="h-8 w-8 animate-spin text-emerald-500 mb-4" />
+         <p className="text-gray-400">Consulting HWPeru Cloud Control...</p>
+      </div>
+    );
+  }
+
+  if (servers.length === 0) {
+    return (
+      <div className="text-center p-12 border border-dashed border-gray-800 rounded-lg bg-gray-950">
+        <Server className="h-12 w-12 text-gray-700 mx-auto mb-4" />
+        <h3 className="text-white font-semibold">No active agents found</h3>
+        <p className="text-gray-500 text-sm mt-2 max-w-xs mx-auto">
+          Please run the installation command in your VPS to start monitoring.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="border border-gray-800 rounded-lg overflow-hidden bg-gray-900">
       <table className="min-w-full divide-y divide-gray-800">

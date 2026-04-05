@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,21 +13,17 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
 		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header. Token is required."})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header."})
 			c.Abort()
 			return
 		}
 		
-		// TODO: Validar token contra base de datos PostgreSQL
-		// Ejemplo pseudocódigo: SELECT tenant_id FROM agents WHERE token = '...'
-		if token != "Bearer vps_token_dev" && token != "vps_token_dev" {
-			fmt.Printf("[AUTH] Invalid Agent Token: %s\n", token)
+		// MVP: Permitimos cualquier token que empiece con dbp_tenant_ (generados por WHMCS) o el de dev
+		if token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return
 		}
-		
-		// Pasamos validación
 		c.Next()
 	}
 }
@@ -39,8 +36,13 @@ func ReceiveHeartbeat(c *gin.Context) {
 		return
 	}
 
-	// Logging/Mock insertion for PG DB
-	fmt.Printf("[DB UPDATE] \u001b[32mAgent is %s\u001b[0m. Containers: %d\n", payload.AgentStatus, payload.Containers)
+	agentStatusStore[payload.AgentID] = gin.H{
+		"agent_id":     payload.AgentID,
+		"status":      "Healthy",
+		"last_sync":   "Just now",
+		"containers":  payload.Containers,
+		"type":        "Heartbeat",
+	}
 	
 	c.JSON(http.StatusOK, gin.H{"message": "Heartbeat updated"})
 }
@@ -53,12 +55,16 @@ func ReceiveBackupCompletion(c *gin.Context) {
 		return
 	}
 
-	// Pseudo-inserción a un PostgreSQL para registrar la factura de datos o la interfaz de historial
-	fmt.Printf("[DB INSERT] \u001b[34mSnapshot Received\u001b[0m -> ID: %s | Status: %s | Size: %d MB\n",
-		payload.SnapshotID, payload.Status, payload.TotalSizeMB)
+	// Almacenamos en memoria para el Dashboard
+	agentStatusStore[payload.AgentID] = gin.H{
+		"agent_id":      payload.AgentID,
+		"status":        payload.Status,
+		"total_size_mb": payload.TotalSizeMB,
+		"snapshot_id":   payload.SnapshotID,
+		"last_sync":     "1 min ago",
+		"health":        "Healthy",
+	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Backup metrics safely logged to Data Warehouse",
-		"id": payload.SnapshotID,
-	})
+	fmt.Printf("[DB INSERT] Agent %s reported snapshot %s\n", payload.AgentID, payload.SnapshotID)
+	c.JSON(http.StatusOK, gin.H{"message": "Metrics logged", "id": payload.SnapshotID})
 }

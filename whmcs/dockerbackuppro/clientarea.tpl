@@ -15,8 +15,22 @@
         <p class="text-muted"><small>Keep this token secret. Do not share it.</small></p>
         
         <br>
-        <a href="https://portal.hwperu.com/login?sso={$dbpToken}" target="_blank" class="btn btn-success btn-block" style="background-color: #10b981; border-color: #059669;">
-            <i class="fas fa-lock"></i> Open Cloud Dashboard
+        <a href="https://portal.hwperu.com/login?sso={$dbpToken}" target="_blank" class="btn btn-default btn-block">
+            <i class="fas fa-external-link-alt"></i> Open Dashboard in New Tab
         </a>
+    </div>
+</div>
+
+<!-- DASHBOARD EMBEDDED -->
+<div class="panel panel-default" style="margin-top: 20px; border: 1px solid #1f2937; background: #000;">
+    <div class="panel-heading" style="background: #111827; color: #fff; border-bottom: 1px solid #1f2937;">
+        <h3 class="panel-title"><i class="fas fa-desktop"></i> Live Backup Control Panel</h3>
+    </div>
+    <div class="panel-body" style="padding: 0; background: #000;">
+        <iframe 
+            src="https://portal.hwperu.com/login?sso={$dbpToken}&embed=1" 
+            style="width: 100%; height: 750px; border: none; overflow: hidden;"
+            scrolling="no"
+        ></iframe>
     </div>
 </div>

@@ -12,6 +12,7 @@ type BackupCompletePayload struct {
 
 // HeartbeatPayload mapea el JSON del chequeo periódico de estado
 type HeartbeatPayload struct {
+	AgentID     string `json:"agent_id"`
 	OS          string `json:"os"`
 	Containers  int    `json:"containers"`
 	Volumes     int    `json:"volumes"`
