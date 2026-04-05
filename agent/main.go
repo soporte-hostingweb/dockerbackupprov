@@ -48,10 +48,18 @@ func main() {
 		explorerData := make(map[string][]string)
 
 		for _, c := range containers {
-			if len(c.Names) > 0 {
-				name := strings.TrimPrefix(c.Names[0], "/")
-				containerNames = append(containerNames, name)
+			// IDENTIFICAMOS EL NOMBRE DEL CONTENEDOR (sin el slash inicial de Docker)
+			if len(c.Names) == 0 {
+				continue
 			}
+			name := c.Names[0][1:]
+
+			// EXCLUIMOS EL PROPIO AGENTE: No tiene sentido que se respalde a sí mismo
+			if name == "dbp-client-agent" {
+				continue
+			}
+
+			containerNames = append(containerNames, name)
 
 			inspect, err := cli.ContainerInspect(ctx, c.ID)
 			if err != nil {
@@ -68,16 +76,20 @@ func main() {
 			for _, mount := range inspect.Mounts {
 				if mount.Type == "bind" || mount.Type == "volume" {
 					hostPath := "/host_root" + mount.Source
+					
+					// VERIFICAMOS QUE SEA UN DIRECTORIO antes de escanear
+					info, err := os.Stat(hostPath)
+					if err != nil || !info.IsDir() {
+						continue // Omitimos sockets, archivos sueltos, etc.
+					}
+
 					backupPaths = append(backupPaths, hostPath)
 					
-					// Escaneamos carpetas para el Explorer del UI 
-					// Ahora guardamos la ruta COMPLETA del host para cada subcarpeta
+					// ESENCIAL: Usamos el NOMBRE del contenedor como llave para que el UI lo encuentre
 					subfolders := ScanVolumeFolders(hostPath)
-					explorerData[c.ID[:10]] = append(explorerData[c.ID[:10]], subfolders...)
+					explorerData[name] = append(explorerData[name], subfolders...)
 				}
 			}
-
-
 		}
 
 		// Determinar ID del Agente
