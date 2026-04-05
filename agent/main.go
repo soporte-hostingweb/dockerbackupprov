@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,11 @@ import (
 
 func main() {
 	fmt.Println("[INFO] DBP Agent Booting...")
+
+	// 0. Asegurar Repositorio S3 (Wasabi)
+	if err := EnsureResticRepo(); err != nil {
+		log.Printf("[WARNING] Restic Repo check failed: %v. Backups might fail until S3 is ready.", err)
+	}
 
 	// Inicializa el cliente Docker
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -38,8 +44,15 @@ func main() {
 
 		fmt.Printf("[INFO] Discovered %d containers.\n", len(containers))
 		var backupPaths []string
+		var containerNames []string
+		explorerData := make(map[string][]string)
 
 		for _, c := range containers {
+			if len(c.Names) > 0 {
+				name := strings.TrimPrefix(c.Names[0], "/")
+				containerNames = append(containerNames, name)
+			}
+
 			inspect, err := cli.ContainerInspect(ctx, c.ID)
 			if err != nil {
 				continue
@@ -48,26 +61,39 @@ func main() {
 			// Lógica de descubrimiento de Bases de Datos
 			imageName := inspect.Config.Image
 			if containsString(imageName, "mysql") || containsString(imageName, "mariadb") || containsString(imageName, "postgres") {
-				backupPaths = append(backupPaths, "/tmp/dbp_dump_"+c.ID[:10]+".sql")
+				dumpPath := "/tmp/dbp_dump_" + c.ID[:10] + ".sql"
+				backupPaths = append(backupPaths, dumpPath)
 			}
 
 			for _, mount := range inspect.Mounts {
 				if mount.Type == "bind" || mount.Type == "volume" {
 					backupPaths = append(backupPaths, mount.Source)
+					// Escaneamos carpetas para el Explorer del UI
+					explorerData[c.ID[:10]] = append(explorerData[c.ID[:10]], ScanVolumeFolders(mount.Source)...)
 				}
 			}
 		}
 
-		// Ejecutar proceso de respaldo unificado
+		// Determinar ID del Agente
+		agentID := os.Getenv("DBP_AGENT_ID")
+		if agentID == "" {
+			hostname, _ := os.Hostname()
+			agentID = hostname
+		}
+
+		// 1. Reportar Heartbeat (Lista de contenedores en vivo + Explorer Data)
+		ReportHeartbeat(agentID, containerNames, explorerData)
+
+		// 2. Ejecutar proceso de respaldo real
 		err = RunResticBackup(backupPaths)
 		finalStatus := "SUCCESS"
 		if err != nil {
 			finalStatus = "FAILED"
 		}
 
-		// Enviar Telemetría (Heartbeat Real)
+		// 3. Enviar Telemetría de Respaldo
 		metrics := BackupMetrics{
-			AgentID:      "emitepe_hwperu_server", // En prod esto viene de una variable de entorno
+			AgentID:      agentID,
 			Status:       finalStatus,
 			TotalSizeMB:  2450, 
 			DurationSecs: 180,  
@@ -81,7 +107,20 @@ func main() {
 	}
 }
 
-// Función auxiliar simple para buscar subcadenas (similar a strings.Contains)
 func containsString(str, substr string) bool {
 	return strings.Contains(strings.ToLower(str), strings.ToLower(substr))
+}
+
+func ScanVolumeFolders(path string) []string {
+	var folders []string
+	files, err := os.ReadDir(path)
+	if err != nil {
+		return folders
+	}
+	for _, f := range files {
+		if f.IsDir() {
+			folders = append(folders, f.Name())
+		}
+	}
+	return folders
 }

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"time"
 )
 
@@ -16,35 +19,73 @@ type BackupMetrics struct {
 	Timestamp    int64  `json:"timestamp"`
 }
 
+// HeartbeatPayload para enviar la lista de contenedores y estado del sistema
+type HeartbeatPayload struct {
+	AgentID      string              `json:"agent_id"`
+	Containers   []string            `json:"containers"`
+	ExplorerData map[string][]string `json:"explorer_data"`
+	OS           string              `json:"os"`
+}
+
+
 // ReportMetrics envía el estado final al API Central HTTP
 func ReportMetrics(metrics BackupMetrics) {
-	fmt.Println("\n[API] Compiling Telemetry Data...")
-
-	payload, err := json.MarshalIndent(metrics, "", "  ")
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" {
+		apiEndpoint = "https://api.hwperu.com"
+	}
+	url := fmt.Sprintf("%s/v1/agent/backup/complete", apiEndpoint)
+	
+	payload, err := json.Marshal(metrics)
 	if err != nil {
 		fmt.Printf("[API ERROR] Could not marshal metrics: %v\n", err)
 		return
 	}
 
-	// Mocking request
-	fmt.Printf("[API POST] https://api.dockerbackuppro.com/v1/agent/backup/complete\n%s\n", string(payload))
-
-	// Simular envío
-	time.Sleep(300 * time.Millisecond)
-
-	fmt.Println("[API] Server responded: 200 OK (Job status recorded)")
-	
-	/* Ejecución Real
-	req, _ := http.NewRequest("POST", "https://api.dockerbackuppro.com/v1/agent/backup/complete", bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
 	
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("API Error: %v\n", err)
+		fmt.Printf("[API ERROR] Failed to send metrics: %v\n", err)
 		return
 	}
 	defer resp.Body.Close()
-	*/
+	
+	fmt.Printf("[API] Metrics sent to %s. Status: %s\n", url, resp.Status)
 }
+
+// ReportHeartbeat envía el estado pasivo del servidor (lista de contenedores y sus carpetas)
+func ReportHeartbeat(agentID string, containers []string, explorerData map[string][]string) {
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" {
+		apiEndpoint = "https://api.hwperu.com"
+	}
+	url := fmt.Sprintf("%s/v1/agent/heartbeat", apiEndpoint)
+
+	payloadObj := HeartbeatPayload{
+		AgentID:      agentID,
+		Containers:   containers,
+		ExplorerData: explorerData,
+		OS:           "Linux (Docker)",
+	}
+
+	payload, _ := json.Marshal(payloadObj)
+
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[API ERROR] Failed to send heartbeat: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Printf("[API] Heartbeat (Containers: %d) sent. Status: %s\n", len(containers), resp.Status)
+}
+

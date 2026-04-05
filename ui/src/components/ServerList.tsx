@@ -1,117 +1,182 @@
 'use client';
 
-import React, { useEffect, useState } from "react";
-import { HardDrive, Server, ShieldCheck, ShieldAlert, RefreshCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp } from "lucide-react";
+
+import FileExplorer from "./FileExplorer";
+
+interface AgentStatus {
+  agent_id: string;
+  status: string;
+  last_sync: string;
+  containers: string[];
+  explorer: Record<string, string[]>;
+  os: string;
+  type: string;
+}
 
 export default function ServerList() {
-  const [servers, setServers] = useState<any[]>([]);
+  const [agents, setAgents] = useState<Record<string, AgentStatus>>({});
   const [loading, setLoading] = useState(true);
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchStatus = async () => {
+    async function fetchAgents() {
       try {
-        const res = await fetch("https://api.hwperu.com/v1/agent/status");
-        const data = await res.json();
-        
-        // Convertimos el mapa de la API a un array para el componente
-        const serverList = Object.values(data).map((s: any) => ({
-          id: s.agent_id,
-          name: s.agent_id.split('_')[0], // Usamos el prefijo como nombre
-          ip: "10.0.0.1", // IP simulada
-          os: "Linux VPS",
-          status: s.status === "SUCCESS" || s.status === "Healthy" ? "ok" : "error",
-          lastBackup: s.last_sync || "Just now",
-          size: s.total_size_mb ? `${(s.total_size_mb / 1024).toFixed(1)} GB` : "0 GB"
-        }));
-        
-        setServers(serverList);
+        const response = await fetch("https://api.hwperu.com/v1/agent/status");
+        if (response.ok) {
+          const data = await response.json();
+          setAgents(data);
+        }
       } catch (error) {
-        console.error("Failed to fetch DBP status:", error);
+        console.error("Error fetching agents:", error);
       } finally {
         setLoading(false);
       }
-    };
+    }
 
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 30000); // Auto-refresh cada 30seg
+    fetchAgents();
+    const interval = setInterval(fetchAgents, 15000); // 15s refresh
     return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 border border-dashed border-gray-800 rounded-lg">
-         <RefreshCcw className="h-8 w-8 animate-spin text-emerald-500 mb-4" />
-         <p className="text-gray-400">Consulting HWPeru Cloud Control...</p>
+  if (loading) return (
+    <div className="flex items-center justify-center p-12 bg-gray-900/20 border border-gray-800 rounded-xl">
+      <div className="flex flex-col items-center gap-4">
+        <Activity className="h-8 w-8 text-emerald-500 animate-spin" />
+        <span className="text-gray-500 text-sm font-medium animate-pulse tracking-widest uppercase">Scanning HWPeru Network...</span>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (servers.length === 0) {
+  const agentEntries = Object.entries(agents);
+
+  if (agentEntries.length === 0) {
     return (
-      <div className="text-center p-12 border border-dashed border-gray-800 rounded-lg bg-gray-950">
-        <Server className="h-12 w-12 text-gray-700 mx-auto mb-4" />
-        <h3 className="text-white font-semibold">No active agents found</h3>
-        <p className="text-gray-500 text-sm mt-2 max-w-xs mx-auto">
-          Please run the installation command in your VPS to start monitoring.
+      <div className="bg-gray-900/50 border-2 border-dashed border-gray-800 rounded-xl p-12 text-center animate-in fade-in zoom-in duration-500">
+        <Server className="mx-auto h-12 w-12 text-gray-700 mb-4" />
+        <h3 className="text-lg font-medium text-white">No active agents found</h3>
+        <p className="text-gray-500 max-w-sm mx-auto mt-2 text-sm leading-relaxed">
+          Please run the installation command in your VPS to start monitoring and configuring backups.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="border border-gray-800 rounded-lg overflow-hidden bg-gray-900">
-      <table className="min-w-full divide-y divide-gray-800">
-        <thead className="bg-black/50">
-          <tr>
-            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Server</th>
-            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Health Status</th>
-            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Last Sync</th>
-            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Size</th>
-            <th scope="col" className="relative px-6 py-4"><span className="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody className="bg-gray-900 divide-y divide-gray-800">
-          {servers.map((server) => (
-            <tr key={server.id} className="hover:bg-gray-800/60 transition duration-150">
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 h-10 w-10 bg-gray-800 rounded flex items-center justify-center border border-gray-700">
-                    <Server className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <div className="ml-4">
-                    <div className="text-sm font-medium text-white">{server.name}</div>
-                    <div className="text-sm text-gray-500">{server.ip} &middot; {server.os}</div>
+    <div className="grid grid-cols-1 gap-6 pb-20">
+      {agentEntries.map(([id, data]) => (
+        <div key={id} className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden hover:border-emerald-900/40 transition-all duration-300 shadow-2xl">
+          <div 
+            className="p-6 flex items-center justify-between cursor-pointer group"
+            onClick={() => setExpandedAgent(expandedAgent === id ? null : id)}
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20 transition-all">
+                <Activity className="h-6 w-6 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-wide">
+                  {data.agent_id}
+                  <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
+                    {data.os || 'Linux'}
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-1 font-mono">Real-time Telemetry: {data.last_sync || 'Connected'}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-8">
+              <div className="hidden lg:flex flex-col items-end">
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Services Discovery</span>
+                <span className="text-xl font-bold text-white">{data.containers?.length || 0}</span>
+              </div>
+              
+              <div className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest border uppercase ${
+                data.status === 'Healthy' || data.status === 'SUCCESS'
+                ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' 
+                : 'bg-red-400/10 text-red-400 border-red-400/20'
+              }`}>
+                {data.status || 'Active'}
+              </div>
+              
+              {expandedAgent === id ? <ChevronUp className="h-5 w-5 text-emerald-500" /> : <ChevronDown className="h-5 w-5 text-gray-700" />}
+            </div>
+          </div>
+
+          {/* EXPLORER VIEW SECTION */}
+          {expandedAgent === id && (
+            <div className="bg-black/60 border-t border-gray-900 p-6 animate-in slide-in-from-top-4 duration-300">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="text-emerald-500" size={20} />
+
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-gray-200">Container Data Explorer</h4>
+                    <p className="text-[10px] text-gray-500 uppercase">Select folders below to include in current Wasabi S3 Plan</p>
                   </div>
                 </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                {server.status === "ok" ? (
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">
-                    <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Healthy
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-400/10 text-red-400 border border-red-400/20">
-                    <ShieldAlert className="w-3.5 h-3.5 mr-1" /> Action Required
-                  </span>
-                )}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                {server.lastBackup}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                <div className="flex items-center">
-                  <HardDrive className="w-4 h-4 mr-2 text-gray-500" />
-                  {server.size}
+                <div className="flex gap-2">
+                   <button className="bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 px-3 py-1.5 rounded font-bold transition-all border border-gray-700 uppercase">
+                     Full Reset
+                   </button>
+                   <button className="bg-emerald-600 hover:bg-emerald-500 text-[10px] text-white px-3 py-1.5 rounded font-bold transition-all border border-emerald-500 uppercase">
+                     Sync Selection
+                   </button>
                 </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <a href="#" className="inline-block text-emerald-500 hover:text-emerald-400 mr-5 transition">Manage Options</a>
-                <a href="#" className="inline-block text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded transition">Restore Wizard</a>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {data.containers && data.containers.map((container, idx) => (
+                  <div key={idx} className="space-y-3">
+                    <div className="flex items-center justify-between text-xs px-1">
+                      <div className="flex items-center gap-2 text-gray-200">
+                         {container.toLowerCase().includes('sql') || container.toLowerCase().includes('db') || container.toLowerCase().includes('maria')
+                          ? <Database size={16} className="text-emerald-500 animate-pulse" />
+                          : <HardDrive size={16} className="text-gray-500" />
+                         }
+                         <span className="font-black text-gray-300 uppercase tracking-tighter">{container}</span>
+                      </div>
+                      { (container.toLowerCase().includes('sql') || container.toLowerCase().includes('db')) && (
+                        <span className="text-[9px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800 font-bold">SQL DUMP ENABLED</span>
+                      )}
+                    </div>
+                    
+                    {/* El explorer data está mappeado por los primeros 10 caracteres del ID o nombre en el agente */}
+                    <FileExplorer 
+                      containerName={container} 
+                      folders={data.explorer ? data.explorer[container.substring(0, 10)] || [] : []} 
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-10 pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-4">
+                   <div className="text-center">
+                      <p className="text-[10px] text-gray-600 uppercase font-black">Plan Limit</p>
+                      <p className="text-xs text-white font-bold">100 GB</p>
+                   </div>
+                   <div className="h-8 w-px bg-gray-800"></div>
+                   <div className="text-center">
+                      <p className="text-[10px] text-gray-600 uppercase font-black">Current Usage</p>
+                      <p className="text-xs text-emerald-500 font-bold">12.4 GB</p>
+                   </div>
+                </div>
+                
+                <div className="flex gap-4">
+                  <button className="bg-gray-900 hover:bg-gray-800 text-gray-400 text-[10px] px-6 py-2.5 rounded-lg font-bold border border-gray-800 transition-all uppercase tracking-widest">
+                     Maintenance Mode
+                  </button>
+                  <button className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-8 py-2.5 rounded-lg font-bold shadow-xl shadow-emerald-900/30 transition-all uppercase tracking-widest border border-emerald-400/20">
+                     Force Global Snapshot
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

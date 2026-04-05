@@ -41,8 +41,12 @@ func ReceiveHeartbeat(c *gin.Context) {
 		"status":      "Healthy",
 		"last_sync":   "Just now",
 		"containers":  payload.Containers,
+		"explorer":    payload.ExplorerData, // Nueva estructura de carpetas
+		"os":          payload.OS,
 		"type":        "Heartbeat",
 	}
+
+
 	
 	c.JSON(http.StatusOK, gin.H{"message": "Heartbeat updated"})
 }

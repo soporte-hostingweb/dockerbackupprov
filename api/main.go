@@ -50,6 +50,30 @@ func main() {
 		c.JSON(200, agentStatusStore)
 	})
 
+	// --- CONFIGURACIÓN DE RESPALDOS (SELECTIVE BACKUP) ---
+	var agentConfigStore = make(map[string]gin.H)
+
+	v1Agent.POST("/config", func(c *gin.Context) {
+		var payload gin.H
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid config"})
+			return
+		}
+		agentID := c.GetString("token") // Usamos el token como ID de config para aislamiento
+		agentConfigStore[agentID] = payload
+		c.JSON(200, gin.H{"status": "Configuration saved", "agent": agentID})
+	})
+
+	v1Agent.GET("/config", func(c *gin.Context) {
+		agentID := c.GetString("token")
+		config, ok := agentConfigStore[agentID]
+		if !ok {
+			c.JSON(404, gin.H{"error": "No config found for this agent"})
+			return
+		}
+		c.JSON(200, config)
+	})
+
 	v1Agent.Use(AuthMiddleware()) // <-- Cada Request a esta URL debe tener Token
 	{
 		v1Agent.POST("/heartbeat", ReceiveHeartbeat)
