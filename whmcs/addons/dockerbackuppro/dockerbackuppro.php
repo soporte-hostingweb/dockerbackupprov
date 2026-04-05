@@ -22,7 +22,7 @@ function dockerbackuppro_config() {
                 "FriendlyName" => "Master Admin Token",
                 "Type" => "text",
                 "Size" => "50",
-                "Default" => "dbp_admin_hwperu_master_2024",
+                "Default" => "dbp_admin_hwperu_master_2024_secure_v1",
                 "Description" => "Token maestro configurado en la API Central (api.hwperu.com).",
             ],
             "api_endpoint" => [
