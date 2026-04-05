@@ -5,7 +5,8 @@
 # ==========================================
 
 TOKEN=""
-API_ENDPOINT="https://api.hwperu.com/v1"
+API_ENDPOINT="https://api.hwperu.com"
+
 
 # Extraer los argumentos del CLI
 while [[ "$#" -gt 0 ]]; do
