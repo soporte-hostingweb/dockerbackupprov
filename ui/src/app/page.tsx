@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { AlertCircle, Terminal, HelpCircle, ShieldCheck } from "lucide-react";
 import ServerList from "@/components/ServerList";
+
 
 export default function DashboardPage() {
   const searchParams = useSearchParams();
@@ -38,7 +40,11 @@ export default function DashboardPage() {
       }
     }
     fetchStats();
-  }, []);
+  }, [searchParams]);
+
+  const isDebug = searchParams.get("debug") === "1";
+  const currentToken = typeof window !== 'undefined' ? localStorage.getItem("dbp_sso_token") : null;
+
 
 
   return (
@@ -61,7 +67,45 @@ export default function DashboardPage() {
       </div>
 
 
+      {/* DIAGNOSTIC PANEL (Only if debug=1) */}
+      {isDebug && (
+        <div className="bg-amber-950/20 border border-amber-900/50 rounded-xl p-6 animate-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-3 mb-4">
+             <Terminal className="text-amber-500" size={20} />
+             <h3 className="text-sm font-black uppercase tracking-tighter text-amber-500">Diagnostic & Debugging Console</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+               <div>
+                 <p className="text-[10px] text-gray-500 uppercase font-bold">API endpoint detected</p>
+                 <p className="text-xs font-mono text-gray-300">https://api.hwperu.com/v1/agent/status</p>
+               </div>
+               <div>
+                 <p className="text-[10px] text-gray-500 uppercase font-bold">Active Session Token</p>
+                 <p className="text-xs font-mono text-amber-200 break-all bg-black/40 p-2 rounded border border-amber-900/30">
+                    {currentToken || "MISSING / NOT DETECTED"}
+                 </p>
+               </div>
+            </div>
+
+            <div className="bg-black/40 p-4 rounded-lg border border-amber-900/20">
+               <div className="flex gap-2 items-start">
+                  <AlertCircle className="text-amber-500 shrink-0" size={16} />
+                  <div className="text-[11px] text-gray-400 leading-relaxed">
+                     <p className="font-bold text-amber-500 mb-1 uppercase">¿Ves 0 Agentes?</p>
+                     <p>1. Verifica que el token del instalador en tu VPS coincida con el de arriba.</p>
+                     <p>2. El agente necesita hasta 60s para reportar el primer latido.</p>
+                     <p>3. Asegúrate de que el firewall de tu VPS permita salida al puerto 80/443.</p>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Metrics Row */}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl shadow-sm">
           <p className="text-sm text-gray-400 font-medium font-mono uppercase tracking-widest">Total Storage</p>

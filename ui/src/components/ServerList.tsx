@@ -49,10 +49,10 @@ export default function ServerList() {
 
 
   if (loading) return (
-    <div className="flex items-center justify-center p-12 bg-gray-900/20 border border-gray-800 rounded-xl">
+    <div className="flex items-center justify-center p-12 bg-gray-900/10 border border-gray-800/50 rounded-xl animate-pulse">
       <div className="flex flex-col items-center gap-4">
         <Activity className="h-8 w-8 text-emerald-500 animate-spin" />
-        <span className="text-gray-500 text-sm font-medium animate-pulse tracking-widest uppercase">Scanning HWPeru Network...</span>
+        <span className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Polling HWPeru Network...</span>
       </div>
     </div>
   );
@@ -61,15 +61,22 @@ export default function ServerList() {
 
   if (agentEntries.length === 0) {
     return (
-      <div className="bg-gray-900/50 border-2 border-dashed border-gray-800 rounded-xl p-12 text-center animate-in fade-in zoom-in duration-500">
-        <Server className="mx-auto h-12 w-12 text-gray-700 mb-4" />
-        <h3 className="text-lg font-medium text-white">No active agents found</h3>
-        <p className="text-gray-500 max-w-sm mx-auto mt-2 text-sm leading-relaxed">
-          Please run the installation command in your VPS to start monitoring and configuring backups.
+      <div className="bg-gray-950/40 border border-dashed border-gray-800 rounded-xl p-16 text-center animate-in zoom-in duration-500">
+        <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
+           <Server className="h-8 w-8 text-gray-700" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-200 uppercase tracking-tighter">No Protected VPS Found</h3>
+        <p className="text-gray-500 max-w-sm mx-auto mt-2 text-xs leading-relaxed uppercase font-medium">
+          The central API is active, but hasn't received any heartbeat with your session token yet.
         </p>
+        <div className="mt-8 inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-500/5 border border-emerald-500/10 rounded-full">
+           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+           <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">Ready for first report</span>
+        </div>
       </div>
     );
   }
+
 
   return (
     <div className="grid grid-cols-1 gap-6 pb-20">
