@@ -24,11 +24,17 @@ func AuthMiddleware() gin.HandlerFunc {
 		isAdmin := (token == masterToken)
 		
 		if !isAdmin && token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
-			fmt.Printf("[AUTH REJECTED] Received: [%s...], Expected Master: [%s...]\n", token[:10], masterToken[:5])
+			tLog := token
+			if len(tLog) > 10 { tLog = tLog[:10] }
+			mLog := masterToken
+			if len(mLog) > 5 { mLog = mLog[:5] }
+			
+			fmt.Printf("[AUTH REJECTED] Received: [%s...], Expected Master: [%s...]\n", tLog, mLog)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return
 		}
+
 		
 		c.Set("token", token)
 		c.Set("is_admin", isAdmin)
@@ -49,7 +55,10 @@ func ReceiveHeartbeat(c *gin.Context) {
 		return
 	}
 
-	fmt.Printf("[HEARTBEAT] Received from Agent: %s (Token: %s...)\n", payload.AgentID, token[:10])
+	tLog := token
+	if len(tLog) > 10 { tLog = tLog[:10] }
+	fmt.Printf("[HEARTBEAT] Received from Agent: %s (Token: %s...)\n", payload.AgentID, tLog)
+
 
 	agentStatusStore[payload.AgentID] = gin.H{
 		"token":       token,
