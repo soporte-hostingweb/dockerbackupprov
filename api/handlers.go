@@ -20,9 +20,11 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		
 		// MVP: Permitimos tokens que empiecen con dbp_tenant_ o el de dev
-		isAdmin := (token == os.Getenv("MASTER_ADMIN_TOKEN"))
+		masterToken := os.Getenv("MASTER_ADMIN_TOKEN")
+		isAdmin := (token == masterToken)
 		
 		if !isAdmin && token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
+			fmt.Printf("[AUTH REJECTED] Received: [%s...], Expected Master: [%s...]\n", token[:10], masterToken[:5])
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return
@@ -33,6 +35,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
 
 
 // ReceiveHeartbeat recibe la información pasiva del servidor del cliente para mostrarlo "Verde" en el UI
