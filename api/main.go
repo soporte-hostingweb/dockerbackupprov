@@ -5,7 +5,9 @@ import (
 	"os"
 	_ "embed"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
+
 
 
 
@@ -16,7 +18,11 @@ var installScript []byte
 var agentStatusStore = make(map[string]gin.H)
 
 func main() {
+	// 0. Cargar variables de entorno desde .env local si existe
+	_ = godotenv.Load() 
+
 	fmt.Println("[BOOT] Starting Docker Backup Pro Control Plane API...")
+
 
 	// Desactiva el debug log intenso de gin para producción
 	gin.SetMode(gin.ReleaseMode)
