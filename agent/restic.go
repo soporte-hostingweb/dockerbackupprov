@@ -248,13 +248,15 @@ func GetSnapshotsJSON(repo string, password string, s3Key string, s3Secret strin
 	return output
 }
 
-// GetSnapshotContentJSON devuelve el listado de archivos de un snapshot en formato JSON (V4.2.0)
-func GetSnapshotContentJSON(snapshotID string, repo string, password string, s3Key string, s3Secret string) []byte {
+// GetSnapshotContentJSON devuelve el listado de archivos de un snapshot filtrado por profundidad (V4.6.5: Lazy Loading)
+func GetSnapshotContentJSON(snapshotID string, requestPath string, repo string, password string, s3Key string, s3Secret string) []byte {
 	if repo == "" || snapshotID == "" {
 		return []byte("[]")
 	}
 
-	cmd := exec.Command("restic", "-r", repo, "ls", snapshotID, "--json")
+	// 1. Ejecutamos LS completo pero procesamos el stream para no saturar memoria
+	args := []string{"-r", repo, "ls", snapshotID, "--json"}
+	cmd := exec.Command("restic", args...)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
@@ -267,14 +269,59 @@ func GetSnapshotContentJSON(snapshotID string, repo string, password string, s3K
 	}
 	cmd.Env = env
 
-	fmt.Printf("[DEBUG-RESTIC] Listing content for snapshot: %s\n", snapshotID)
-	output, err := cmd.CombinedOutput()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		fmt.Printf("[DEBUG-RESTIC ERROR] LS failed: %v | Output: %s\n", err, string(output))
 		return []byte("[]")
 	}
-	
-	return output
+	if err := cmd.Start(); err != nil {
+		return []byte("[]")
+	}
+
+	var filtered []interface{}
+	decoder := json.NewDecoder(stdout)
+
+	// Normalizar requestPath para comparaciones exactas
+	cleanReq := strings.Trim(requestPath, "/")
+	reqDepth := len(strings.Split(cleanReq, "/"))
+	if cleanReq == "" { reqDepth = 0 }
+
+	for {
+		var item struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+			Type string `json:"type"`
+			Size int64  `json:"size,omitempty"`
+		}
+		if err := decoder.Decode(&item); err != nil {
+			break 
+		}
+
+		// Solo procesamos directorios y archivos normales del snapshot (omitimos el propio snapshot root si viene)
+		if item.Path == "/" || item.Path == "" { continue }
+
+		itemPath := strings.Trim(item.Path, "/")
+		
+		// Lógica de Filtrado por Nivel (Direct Children Only)
+		// 1. Debe empezar por la ruta solicitada
+		if cleanReq != "" && !strings.HasPrefix(itemPath, cleanReq) {
+			continue
+		}
+
+		// 2. Calculamos profundidad del item
+		itemDepth := len(strings.Split(itemPath, "/"))
+
+		// 3. Si req es "", itemDepth debe ser 1 (Raíz del backup)
+		// Si req es "/a/b", itemDepth debe ser 3 (Hijos de b)
+		if itemDepth == reqDepth + 1 {
+			filtered = append(filtered, item)
+		}
+	}
+
+	_ = cmd.Wait()
+
+	resultJSON, _ := json.Marshal(filtered)
+	fmt.Printf("[DEBUG-RESTIC] ⚡ LS Depth Filter: %s -> %d items\n", requestPath, len(filtered))
+	return resultJSON
 }
 
 

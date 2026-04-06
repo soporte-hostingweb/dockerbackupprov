@@ -19,6 +19,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const [explorerContent, setExplorerContent] = useState<any[]>([]);
   const [isLodingContent, setIsLoadingContent] = useState(false);
   const [agentData, setAgentData] = useState<any>(null);
+  const [currentPath, setCurrentPath] = useState(""); // V4.6.5: Ruta actual dentro del snapshot
 
   // Cargar datos del agente al abrir
   useEffect(() => {
@@ -46,21 +47,27 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   };
 
   const selectAll = () => {
-    const allPaths = explorerContent.map(item => typeof item === 'string' ? item : item.path);
-    setSelectedPaths(allPaths);
+    const allPathsInView = explorerContent.map(item => {
+        const name = typeof item === 'string' ? item : item.path;
+        return name;
+    });
+    // Unimos los de la vista actual a los ya seleccionados sin duplicar
+    const newSelection = Array.from(new Set([...selectedPaths, ...allPathsInView]));
+    setSelectedPaths(newSelection);
   };
 
   const clearSelection = () => setSelectedPaths([]);
 
-  // Solicitar listado de archivos del snapshot seleccionado
-  const fetchSnapshotContent = async (snapId: string) => {
+  // Solicitar listado de archivos del snapshot seleccionado (soporta niveles)
+  const fetchSnapshotContent = async (snapId: string, path: string) => {
     setIsLoadingContent(true);
-    setExplorerContent([]); // Limpiar anterior
+    setCurrentPath(path);
+    // No limpiamos explorerContent inmediatamente para evitar parpadeo si es rápido
     try {
         await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
             method: "POST",
             headers: { "Authorization": token, "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "ls_snapshot", snapshot_id: snapId, path: "" }) // Listado raíz
+            body: JSON.stringify({ action: "ls_snapshot", snapshot_id: snapId, path: path })
         });
 
         let attempts = 0;
@@ -77,12 +84,9 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                 try {
                     let parsed = JSON.parse(currentAgent.cmd_result);
                     if (!Array.isArray(parsed)) parsed = [parsed];
-                    
-                    // V4.6.4: Filtrar para mostrar solo el primer nivel si restic devuelve demasiados
-                    // Esto evita el cuelgue inicial. Solo mostramos rutas raíz.
                     setExplorerContent(parsed);
                     setIsLoadingContent(false);
-                    setStep(2); // Pasamos al explorador
+                    if (step === 1) setStep(2); 
                 } catch (e) {
                     console.error("Error parsing content:", e);
                     setIsLoadingContent(false);
@@ -123,6 +127,14 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
     }
   };
 
+  // Helper para volver atrás en breadcrumbs
+  const navigateBack = () => {
+    const parts = currentPath.split('/').filter(p => p !== "");
+    parts.pop();
+    const newPath = parts.length > 0 ? "/" + parts.join('/') : "";
+    fetchSnapshotContent(selectedSnapshot.id, newPath);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-500">
       <div className="bg-gray-950 border border-gray-900 w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
@@ -136,7 +148,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
              <div>
                 <h3 className="text-lg font-black text-white uppercase italic">Restore Wizard Pro</h3>
                 <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/10">V4.6.4 ADVANCED</span>
+                    <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/10">V4.6.5 OPTIMIZED</span>
                     <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{agentId}</span>
                 </div>
              </div>
@@ -146,7 +158,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
           </button>
         </div>
 
-        {/* Wizard Steps Progress (3 STEPS NOW) */}
+        {/* Wizard Steps Progress */}
         <div className="px-12 pt-6 flex items-center justify-between pointer-events-none">
             {[1,2,3].map((s) => (
                 <div key={s} className="flex items-center flex-1 last:flex-none">
@@ -175,7 +187,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                     {sortedSnapshots.map((s: any) => (
                         <button 
                             key={s.id}
-                            onClick={() => { setSelectedSnapshot(s); fetchSnapshotContent(s.id); }}
+                            onClick={() => { setSelectedSnapshot(s); fetchSnapshotContent(s.id, ""); }}
                             disabled={isLodingContent}
                             className="w-full flex items-center justify-between p-5 bg-gray-900/40 border border-gray-800 rounded-3xl hover:border-blue-500/40 hover:bg-blue-500/[0.02] transition-all group text-left"
                         >
@@ -193,30 +205,31 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                             {isLodingContent && selectedSnapshot?.id === s.id ? (
                                 <Activity size={18} className="text-blue-500 animate-spin" />
                             ) : (
-                                <div className="flex items-center gap-3">
-                                    <span className="text-[10px] text-gray-700 font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity">Explorar</span>
-                                    <ChevronRight size={20} className="text-gray-700 group-hover:text-blue-500 transition-all" />
-                                </div>
+                                <ChevronRight size={20} className="text-gray-700 group-hover:text-blue-500 transition-all" />
                             )}
                         </button>
                     ))}
-                    {sortedSnapshots.length === 0 && (
-                        <div className="p-20 text-center border-2 border-dashed border-gray-900 rounded-3xl">
-                            <Database className="mx-auto text-gray-800 mb-4" size={40} />
-                            <p className="text-xs text-gray-600 font-black uppercase italic">No se detectaron recursos en la nube</p>
-                        </div>
-                    )}
                 </div>
             </div>
           )}
 
-          {/* STEP 2: DYNAMIC EXPLORER (JETBACKUP STYLE) */}
+          {/* STEP 2: DYNAMIC EXPLORER (V4.6.5 Lazy Loading) */}
           {step === 2 && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
                 <div className="flex justify-between items-center">
-                    <button onClick={() => setStep(1)} className="text-[10px] text-gray-500 font-black uppercase tracking-widest hover:text-white flex items-center gap-1 transition-colors">
-                        ← Cambiar Fecha
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setStep(1)} className="text-[10px] text-gray-500 font-black uppercase tracking-widest hover:text-white flex items-center gap-1 transition-colors">
+                            ← Inicio
+                        </button>
+                        {currentPath && (
+                            <>
+                                <span className="text-gray-800">/</span>
+                                <button onClick={navigateBack} className="text-[10px] text-blue-500 font-black uppercase tracking-widest hover:text-white transition-colors">
+                                    .. VOLVER
+                                </button>
+                            </>
+                        )}
+                    </div>
                     <div className="flex gap-2">
                         <button onClick={selectAll} className="text-[9px] px-3 py-1 bg-gray-900 text-gray-400 border border-gray-800 rounded-full hover:bg-blue-500/10 hover:text-blue-500 transition-all font-black uppercase">Select All</button>
                         <button onClick={clearSelection} className="text-[9px] px-3 py-1 bg-gray-900 text-gray-400 border border-gray-800 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all font-black uppercase">Clear</button>
@@ -226,37 +239,46 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                 <div className="space-y-2">
                     <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2 italic">
                         <Folder size={14} className="text-emerald-500" />
-                        Explorador de Reconstrucción
+                        {currentPath || "/"}
                     </h4>
-                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Navega y marca qué directorios restaurar</p>
                 </div>
 
                 {/* File List */}
-                <div className="bg-black/30 border border-gray-900 rounded-[2rem] overflow-hidden max-h-[35vh] flex flex-col">
-                    <div className="bg-gray-900/40 p-4 border-b border-gray-900 flex justify-between items-center px-6">
-                        <span className="text-[10px] text-gray-500 font-black uppercase">{selectedSnapshot?.id?.substring(0,12)} :: ROOT DIRECTORY</span>
-                        <span className="text-[10px] text-emerald-500 font-black uppercase">{selectedPaths.length} seleccionados</span>
-                    </div>
+                <div className="bg-black/30 border border-gray-900 rounded-[2rem] overflow-hidden max-h-[35vh] flex flex-col relative">
+                    {isLodingContent && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <Activity size={24} className="text-blue-500 animate-spin" />
+                        </div>
+                    )}
                     <div className="overflow-y-auto custom-scrollbar flex-1">
                         {explorerContent.map((item: any, idx: number) => {
-                            const name = typeof item === 'string' ? item : item.name || item.path;
-                            const isDir = name.startsWith("📂") || (item.type === "dir");
-                            const cleanName = name.replace(/[📂📄]/g, '').trim();
+                            const path = item.path;
+                            const isDir = item.type === "dir";
+                            const cleanName = item.name;
+                            const isSelected = selectedPaths.includes(path);
                             
                             return (
-                                <div key={idx} className="flex items-center justify-between p-4 px-6 border-b border-gray-900/50 group hover:bg-emerald-500/[0.03] transition-all cursor-pointer" onClick={() => togglePath(name)}>
-                                    <div className="flex items-center gap-4">
+                                <div key={idx} className="flex items-center justify-between p-4 px-6 border-b border-gray-900/50 group hover:bg-emerald-500/[0.03] transition-all">
+                                    <div 
+                                        className="flex items-center gap-4 flex-1 cursor-pointer"
+                                        onClick={() => isDir ? fetchSnapshotContent(selectedSnapshot.id, path) : togglePath(path)}
+                                    >
                                         <div className={`p-2 rounded-xl ${isDir ? 'bg-emerald-500/10 text-emerald-500/60' : 'bg-gray-800 text-gray-500'} group-hover:scale-110 transition-transform`}>
                                             {isDir ? <Folder size={16} /> : <FileText size={16} />}
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-gray-200 uppercase tracking-tighter">{cleanName}</span>
-                                            {item.size && <span className="text-[9px] text-gray-600 font-mono">{(item.size / 1024).toFixed(1)} KB</span>}
+                                            <span className={`text-xs font-bold uppercase tracking-tighter ${isDir ? 'text-blue-400' : 'text-gray-200'}`}>
+                                                {cleanName} {isDir && "→"}
+                                            </span>
+                                            {item.size > 0 && <span className="text-[9px] text-gray-600 font-mono">{(item.size / 1024).toFixed(1)} KB</span>}
                                         </div>
                                     </div>
-                                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${selectedPaths.includes(name) ? 'bg-emerald-600 border-emerald-400' : 'bg-gray-900 border-gray-800'}`}>
-                                        {selectedPaths.includes(name) && <ShieldCheck size={14} className="text-white" />}
-                                    </div>
+                                    <button 
+                                        onClick={() => togglePath(path)}
+                                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 border-emerald-400' : 'bg-gray-900 border-gray-800'}`}
+                                    >
+                                        {isSelected && <ShieldCheck size={14} className="text-white" />}
+                                    </button>
                                 </div>
                             );
                         })}
@@ -284,25 +306,12 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                 <div className="space-y-4">
                    <div className="p-6 bg-emerald-500/[0.03] border border-emerald-500/10 rounded-[2rem]">
                         <h4 className="text-[10px] text-emerald-500 font-black uppercase italic mb-4">Resumen de Reconstrucción</h4>
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-[15vh] overflow-y-auto custom-scrollbar">
                             {selectedPaths.map(p => (
-                                <div key={p} className="flex items-center gap-2 text-xs font-mono text-gray-400 truncate bg-black/20 p-2 rounded-xl border border-white/5">
+                                <div key={p} className="flex items-center gap-2 text-[10px] font-mono text-gray-400 truncate bg-black/20 p-2 rounded-xl border border-white/5">
                                     <ShieldCheck size={12} className="text-emerald-500" /> {p}
                                 </div>
                             ))}
-                        </div>
-                   </div>
-
-                   {/* Alerta de Capacidad */}
-                   <div className={`p-4 rounded-2xl border flex items-center gap-4 ${agentData?.free_space?.includes('GB') ? 'bg-blue-500/5 border-blue-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
-                        <div className={agentData?.free_space?.includes('GB') ? 'text-blue-500' : 'text-red-500'}>
-                            <HardDrive size={24} />
-                        </div>
-                        <div>
-                            <p className="text-[10px] text-gray-500 font-black uppercase">Capacidad del Servidor Destino</p>
-                            <p className="text-xs font-black text-white uppercase italic">
-                                {agentData?.free_space || 'Desconocido'} libres de {agentData?.total_space || '---'}
-                            </p>
                         </div>
                    </div>
 
@@ -320,20 +329,13 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                         />
                    </div>
 
-                   <div className="p-5 bg-orange-500/5 border border-orange-500/10 rounded-2xl flex gap-4 items-start">
-                        <AlertCircle className="text-orange-500 shrink-0" size={18} />
-                        <p className="text-[9px] text-orange-400/70 font-black uppercase leading-relaxed tracking-wider">
-                           ADVERTENCIA: Los archivos existentes en la ruta de destino serán SOBRESCRITOS.
-                        </p>
-                   </div>
-
                    <button 
                     onClick={handleRestore}
                     disabled={loading}
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase text-xs py-5 rounded-3xl transition-all shadow-xl shadow-blue-950/40 flex items-center justify-center gap-3 active:scale-[0.98]"
                    >
                     {loading ? <Activity className="animate-spin" size={18} /> : <ShieldCheck size={18} />}
-                    {loading ? 'MODULANDO RECONSTRUCCIÓN...' : 'INICIAR RESTAURACIÓN'}
+                    {loading ? 'Sincronizando...' : 'INICIAR RESTAURACIÓN'}
                   </button>
                 </div>
             </div>
@@ -348,7 +350,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                <div className="space-y-3">
                   <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">RECONSTRUCTION COMMENCED</h3>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest max-w-sm mx-auto leading-relaxed">
-                     La tarea ha sido agendada en el agente. Los archivos aparecerán en <span className="text-emerald-500 font-mono italic">{restorePath}</span> en breves momentos.
+                     La tarea ha sido agendada. Los archivos aparecerán en <span className="text-emerald-500 font-mono italic">{restorePath}</span> pronto.
                   </p>
                </div>
                <button onClick={onClose} className="block w-full text-[10px] text-gray-600 font-black uppercase tracking-widest hover:text-white transition-colors">
