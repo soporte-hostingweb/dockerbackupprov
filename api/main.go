@@ -328,8 +328,9 @@ func main() {
 	// Main Server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8089"
 	}
+
 	fmt.Printf("[BOOT] Server listening on port %s...\n", port)
 	r.Run(":" + port)
 }

@@ -29,7 +29,8 @@ RUN chown -R appuser:appgroup /home/appuser/
 USER appuser
 
 # Exponemos el puerto de Gin
-EXPOSE 8080
+EXPOSE 8089
 
 CMD ["./dbp-api"]
+
 
