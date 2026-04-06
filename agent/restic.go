@@ -3,9 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 var GlobalExcludes = []string{
@@ -17,10 +17,11 @@ var GlobalExcludes = []string{
 	".git",
 }
 
-
 // EnsureResticRepo verifica si el repositorio S3 ya está inicializado. Si no, lo inicializa.
+
 func EnsureResticRepo(repoURL string, password string, s3Key string, s3Secret string) error {
 	fmt.Println("\n[RESTIC] Validating S3 Wasabi Repository...")
+
 	
 	repo := repoURL
 	if repo == "" {
@@ -105,12 +106,15 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 	cmd := exec.Command("restic", args...)
 	cmd.Env = env // Heredar variables S3 (Repository, Keys, Password)
 	
-	// Capturamos salida para depuración (V2.9.2)
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
+	// Real-time Logging with Capture (V2.9.5)
+	var outputBuffer bytes.Buffer
+	// MultiWriter envía a la vez a la consola (Docker) y al buffer de memoria
+	writer := io.MultiWriter(os.Stdout, &outputBuffer)
+	cmd.Stdout = writer
+	cmd.Stderr = writer
 
 	// Iniciamos el proceso y guardamos el PID para el Control Plane
+
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("[RESTIC ERROR] Launch failed: %v\n", err)
 		return err
@@ -125,16 +129,9 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 
 	if err != nil {
 		fmt.Printf("[RESTIC ERROR] Core failure (Wait): %v\n", err)
-		// Mostrar las últimas líneas de error para diagnóstico (V2.9.2)
-		outStr := output.String()
-		lines := strings.Split(outStr, "\n")
-		lastLines := lines
-		if len(lines) > 5 {
-			lastLines = lines[len(lines)-6:]
-		}
-		fmt.Printf("[RESTIC OUTPUT] \n---\n%s\n---\n", strings.Join(lastLines, "\n"))
 		return fmt.Errorf("Restic failed: %v", err)
 	}
+
 
 
 	

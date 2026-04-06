@@ -17,22 +17,26 @@ import (
 )
 
 
+const Version = "V2.9.5"
+
 var (
 	IsSyncing bool
 	ActivePID int
 )
 
-
 func main() {
 	// CONFIGURACIÓN HORARIA: Operamos en UTC por defecto para evitar discrepancias SaaS
 	time.Local = time.UTC
-	fmt.Println("[INFO] Local time synchronized to UTC.")
-	ActivePID := 0
-	IsSyncing := false
+	
+	fmt.Printf("==========================================\n")
+	fmt.Printf("🚀 DBP AGENT %s - BOOTING...\n", Version)
+	fmt.Printf("==========================================\n")
+
+	ActivePID = 0
+	IsSyncing = false
 	var lastBackupUnix int64 = 0
 
 	godotenv.Load()
-	fmt.Println("[INFO] DBP Agent Booting...")
 
 	// Inicializa el cliente Docker
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -47,6 +51,7 @@ func main() {
 	// 1. Identidad Persistente (V2.4)
 	agentID := getPersistentID()
 	fmt.Printf("[BOOT] Agent Identity: %s\n", agentID)
+
 
 	// Ciclo Infinito de Escaneo y Reporte (Cada 1 Minuto)
 
