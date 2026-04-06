@@ -220,11 +220,12 @@ func main() {
 		saveToken := token
 		if isAdmin {
 			var agent AgentStatus
-			if err := DB.Where("agent_id = ?", req.AgentID).First(&agent).Error; err == nil {
+			if err := DB.Where("id = ?", req.AgentID).First(&agent).Error; err == nil {
 				// Usamos el token original del agente para guardar la config
 				saveToken = agent.Token
 			}
 		}
+
 
 		var config BackupConfig
 		if err := DB.Where("token = ? AND agent_id = ?", saveToken, req.AgentID).First(&config).Error; err == nil {
