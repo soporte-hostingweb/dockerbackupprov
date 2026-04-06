@@ -377,23 +377,42 @@ func main() {
 	// --- TELEMETRÍA DE BACKUP (MÉTRICAS) ---
 	v1Agent.POST("/backup/complete", AuthMiddleware(), func(c *gin.Context) {
 		var payload struct {
-			AgentID    string `json:"agent_id"`
-			Status     string `json:"status"`
-			SnapshotID string `json:"snapshot_id"`
-			Timestamp  int64  `json:"timestamp"`
+			AgentID      string `json:"agent_id"`
+			Status       string `json:"status"`
+			TotalSizeMB  int    `json:"total_size_mb"`
+			DurationSecs int    `json:"duration_secs"`
+			SnapshotID   string `json:"snapshot_id"`
+			Timestamp    int64  `json:"timestamp"`
 		}
 		if err := c.ShouldBindJSON(&payload); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid metrics"})
 			return
 		}
 
-		// Actualizamos el último backup exitoso si el estado es SUCCESS
-		if payload.Status == "SUCCESS" {
-			DB.Model(&AgentStatus{}).Where("id = ?", payload.AgentID).Update("last_backup_at", time.Unix(payload.Timestamp, 0).UTC())
+		// 1. Guardamos la actividad histórica (V3.3.4)
+		// Buscamos el agente para obtener su token (ya que el agente no envía SSO token en metrics)
+		var agent AgentStatus
+		if err := DB.First(&agent, "id = ?", payload.AgentID).Error; err == nil {
+			activity := BackupActivity{
+				AgentID:      payload.AgentID,
+				Token:        agent.Token,
+				Status:       payload.Status,
+				SizeMB:       payload.TotalSizeMB,
+				DurationSecs: payload.DurationSecs,
+				SnapshotID:   payload.SnapshotID,
+				CreatedAt:    time.Now(),
+			}
+			DB.Create(&activity)
+			
+			// Actualizamos el último backup exitoso en el estado del agente
+			if payload.Status == "SUCCESS" {
+				DB.Model(&agent).Update("last_backup_at", time.Unix(payload.Timestamp, 0).UTC())
+			}
 		}
 
-		c.JSON(200, gin.H{"status": "Metrics recorded"})
+		c.JSON(200, gin.H{"status": "Metrics recorded and activity saved"})
 	})
+
 
 
 

@@ -19,12 +19,14 @@ interface AgentStatus {
   pending_force?: string;
   is_syncing?: boolean;
   active_pid?: number;
+  snapshots?: any[];
 }
 
+interface ServerListProps {
+  onRestore?: (agentId: string, snapshots: any[]) => void;
+}
 
-
-
-export default function ServerList() {
+export default function ServerList({ onRestore }: ServerListProps) {
   const [agents, setAgents] = useState<Record<string, AgentStatus>>({});
   const [loading, setLoading] = useState(true);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
@@ -298,7 +300,31 @@ export default function ServerList() {
                       <p className="text-xs text-emerald-500 font-bold">12.4 GB</p>
                    </div>
                 </div>
-                                <div className="flex gap-4">
+                
+                <div className="flex flex-col gap-2 w-full md:w-auto">
+                  {data.snapshots && data.snapshots.length > 0 ? (
+                    data.snapshots.map((snap: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-black/40 border border-gray-900 last:border-0 hover:bg-emerald-500/5 transition-colors group">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-mono text-emerald-500 font-bold">{snap.short_id || snap.id}</span>
+                          <span className="text-[10px] text-gray-500">{new Date(snap.time).toLocaleString()}</span>
+                        </div>
+                        <button 
+                          onClick={() => onRestore && onRestore(id, data.snapshots || [])}
+                          className="text-[9px] bg-gray-900 hover:bg-blue-600 text-blue-500 hover:text-white px-3 py-1 rounded border border-gray-800 transition-all font-black uppercase tracking-tighter"
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center border-2 border-dashed border-gray-900 rounded-xl">
+                      <p className="text-[9px] text-gray-600 font-bold uppercase italic">No snapshots available for recovery</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-4">
                   <button 
                     onClick={() => {
                       if (data.is_syncing) {

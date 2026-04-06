@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
+
 
 
 var GlobalExcludes = []string{
@@ -198,10 +200,13 @@ func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secre
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
 	}
 	unlockCmd.Env = env
-	_ = unlockCmd.Run() // Ignoramos si falla (V3.3.3)
+	_ = unlockCmd.Run() // Ignoramos si falla (Intento preventivo)
 
-	// 2. Ejecutar Políticas de Retención
-	args := []string{
+	// 2. Pequeño Delay para consistencia de S3 (V3.3.7)
+	time.Sleep(2 * time.Second)
+
+	// 3. Ejecutar Políticas de Retención
+	retentionArgs := []string{
 		"-r", repo,
 		"forget", 
 		"--keep-daily", "7", 
@@ -210,8 +215,9 @@ func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secre
 		"--prune",
 	}
 
-	cmd := exec.Command("restic", args...)
+	cmd := exec.Command("restic", retentionArgs...)
 	cmd.Env = env
+
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
