@@ -133,7 +133,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
              <div>
                 <h3 className="text-lg font-black text-white uppercase italic">Restore Wizard Pro</h3>
                 <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/10">V4.5.9 Smart Scan</span>
+                    <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/10">V4.6.1 PRECISE</span>
                     <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{agentId}</span>
                 </div>
              </div>
