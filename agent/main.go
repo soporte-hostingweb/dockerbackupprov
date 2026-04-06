@@ -114,27 +114,47 @@ func main() {
 		// ID persistente (V2.4)
 
 
-		// 1. Reportar Heartbeat (Lista de contenedores + Explorer Data + Snapshots)
-		// Usamos el repo base para el primer reporte de snapshots
-		baseRepo := os.Getenv("RESTIC_REPOSITORY") 
-		
+		// 1. Obtener Configuración Primaria (V3.4.2: Movido arriba para resolver repo antes de snapshots)
+		fmt.Printf("[CONFIG] Fetching policy for agent %s...\n", agentID)
+		configFetched, errFetched := GetAgentConfig(agentID)
+		config := configFetched
+		if errFetched != nil {
+			fmt.Printf("[ERROR] Could not fetch config: %v\n", errFetched)
+			config = &AgentConfigV2{Status: "no_config"}
+		}
+
+		// 2. Resolver Repositorio y Credenciales (V3.4.2)
+		var repo, pass, key, secret string
+		if config != nil && config.FullRepoURL != "" {
+			repo = config.FullRepoURL
+			pass = config.ResticPassword
+			key = config.WasabiKey
+			secret = config.WasabiSecret
+		} else {
+			repo = os.Getenv("RESTIC_REPOSITORY")
+			pass = os.Getenv("RESTIC_PASSWORD")
+			key = os.Getenv("AWS_ACCESS_KEY_ID")
+			secret = os.Getenv("AWS_SECRET_ACCESS_KEY")
+		}
+
+
+
+
+		// 3. Reportar Heartbeat (Con Snapshots del repositorio CORRECTO) (V3.4.2)
 		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
 		
-		// V2.4: Intentamos obtener snapshots con el pass local si existe, pero daremos prioridad al del config luego
-		// V2.6.5: No intentamos si no hay variables de entorno (evita logs de error innecesarios al inicio)
 		var snapshots []interface{}
-		if os.Getenv("RESTIC_PASSWORD") != "" || os.Getenv("AWS_ACCESS_KEY_ID") != "" {
-			snapshotsRaw := GetSnapshotsJSON(baseRepo, os.Getenv("RESTIC_PASSWORD"), os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
+		if repo != "" && pass != "" {
+			snapshotsRaw := GetSnapshotsJSON(repo, pass, key, secret)
 			json.Unmarshal(snapshotsRaw, &snapshots)
 		} else {
 			snapshots = []interface{}{}
 		}
 
-
-
 		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
-
-
+		if err != nil {
+			fmt.Printf("[WARNING] Heartbeat failed: %v\n", err)
+		}
 
 		
 		if kill && IsSyncing && ActivePID > 0 {
