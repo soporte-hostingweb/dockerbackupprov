@@ -160,8 +160,10 @@ func Decrypt(cryptoText string) (string, error) {
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return "", err
+		// V2.8.1 Fallback: Si el descifrado GCM falla (ej: texto plano que parece hex), devolvemos el original
+		return cryptoText, nil
 	}
+
 
 	return string(plaintext), nil
 }
