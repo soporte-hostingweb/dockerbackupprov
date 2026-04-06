@@ -188,9 +188,10 @@ func main() {
 		shouldRun := false
 		now := time.Now()
 
-		if force != "none" {
+		if force != "none" && force != "" {
 			shouldRun = true
 		} else if config.Schedule == "every_1h" {
+
 			if time.Now().Unix() - lastBackupUnix > 3600 {
 				shouldRun = true
 			}
@@ -238,6 +239,7 @@ func main() {
 
 		// 4. Enviar Telemetría de Respaldo
 		metrics := BackupMetrics{
+
 			AgentID:      agentID,
 			Status:       finalStatus,
 			TotalSizeMB:  0, // TODO: Calcular desde restic output

@@ -171,12 +171,11 @@ func main() {
 
 
 		if len(configs) == 0 {
-
 			c.JSON(200, gin.H{
-				"status":         "no_config", 
-				"paths":          []string{}, 
-				"schedule":       "daily_2am",
-				"full_repo_url":  fullRepo,
+				"status":          "no_config", 
+				"paths":           []string{}, 
+				"schedule":        "manual", // Por defecto para nuevos agentes (V2.5.2)
+				"full_repo_url":   fullRepo,
 				"restic_password": resticPass,
 			})
 			return
