@@ -90,7 +90,7 @@ func main() {
 
 			// V2.3: Buscamos la configuración de respaldo para obtener el Schedule
 			var config BackupConfig
-			DB.Where("token = ? AND agent_id = ?", a.Token, a.ID).First(&config)
+			DB.Limit(1).Where("token = ? AND agent_id = ?", a.Token, a.ID).Find(&config)
 
 			// Filtramos el dbp-client-agent de los contenedores reportados
 			cleanContainers := []string{}
@@ -175,7 +175,7 @@ func main() {
 		viewToken := token
 		if isAdmin {
 			var agent AgentStatus
-			if err := DB.Where("id = ?", agentID).First(&agent).Error; err == nil {
+			if err := DB.Limit(1).Where("id = ?", agentID).Find(&agent).Error; err == nil && agent.ID != "" {
 				// El admin ve la configuración asociada al token real del agente (el del cliente)
 				viewToken = agent.Token
 			}
@@ -286,7 +286,7 @@ func main() {
 		saveToken := token
 		if isAdmin {
 			var agent AgentStatus
-			if err := DB.Where("id = ?", req.AgentID).First(&agent).Error; err == nil {
+			if err := DB.Limit(1).Where("id = ?", req.AgentID).Find(&agent).Error; err == nil && agent.ID != "" {
 				// Usamos el token original del agente para guardar la config
 				saveToken = agent.Token
 			}
@@ -294,7 +294,7 @@ func main() {
 
 
 		var config BackupConfig
-		if err := DB.Where("token = ? AND agent_id = ?", saveToken, req.AgentID).First(&config).Error; err == nil {
+		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", saveToken, req.AgentID).Find(&config).Error; err == nil && config.ID != 0 {
 			config.Paths = string(pathsJSON)
 			config.Schedule = req.Schedule
 			DB.Save(&config)
@@ -363,7 +363,7 @@ func main() {
 
 		// Importante: No machacar Maintenance, PendingForce y Tareas si ya existen
 		var existing AgentStatus
-		if err := DB.First(&existing, "id = ?", payload.AgentID).Error; err == nil {
+		if err := DB.Where("id = ?", payload.AgentID).First(&existing).Error; err == nil {
 			agent.Maintenance = existing.Maintenance
 			agent.PendingForce = existing.PendingForce
 			agent.KillSync = existing.KillSync

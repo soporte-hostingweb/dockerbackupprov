@@ -264,13 +264,14 @@ func main() {
 
 				// V4.6.3: Refrescar snapshots del API de inmediato si el backup fue exitoso
 				if status == "SUCCESS" {
-					fmt.Println("[ASYNC] Forzando actualización de snapshots en Control Plane...")
+					fmt.Printf("[ASYNC] 🔄 Forzando actualización de snapshots para %s en Control Plane...\n", snapID)
 					rawSnaps := GetSnapshotsJSON(r, p, k, s)
 					var updatedSnapshots []interface{}
 					json.Unmarshal(rawSnaps, &updatedSnapshots)
 					
 					f, t := GetDiskCapacity()
 					ReportHeartbeat(agentID, containerNames, explorerData, updatedSnapshots, false, ActivePID, lastBackupUnix, f, t)
+					fmt.Println("[ASYNC] 🚀 Sincronización de snapshots completada con éxito.")
 				}
 
 				IsSyncing = false
