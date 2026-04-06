@@ -165,9 +165,16 @@ func main() {
 		
 		bucket := settings.WasabiBucket
 		
-		// Construir URL: s3:region.wasabisys.com/bucket/tenant/agent_id (V2.5)
-		fullRepo := fmt.Sprintf("s3:%s.wasabisys.com/%s/%s/%s", 
-			region, bucket, token, agentID)
+		// Construir URL Correcta (V2.6.7): s3:s3.[region].wasabisys.com/bucket/tenant/agent_id
+		// Wasabi usa s3.wasabisys.com para us-east-1, y s3.REGION.wasabisys.com para el resto.
+		endpoint := "s3.wasabisys.com"
+		if region != "us-east-1" {
+			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
+		}
+		
+		fullRepo := fmt.Sprintf("s3:%s/%s/%s/%s", 
+			endpoint, bucket, token, agentID)
+
 
 
 		// Descifrar llaves S3 para el Agente (V2.6.4 - Hotfix)
