@@ -118,11 +118,19 @@ func main() {
 
 		// V4.2.4: Manejo de Tareas Remotas (Comandos desde el API)
 		if strings.HasPrefix(taskInfo, "ls_snapshot:") {
-			snapID := strings.TrimPrefix(taskInfo, "ls_snapshot:")
-			fmt.Printf("[TASK] Executing remote directory listing for snapshot: %s\n", snapID)
+			params := strings.TrimPrefix(taskInfo, "ls_snapshot:")
+			parts := strings.Split(params, "|")
 			
-			// Ejecutar 'ls' y reportar resultado
-			lsResult := GetSnapshotContentJSON(snapID, repo, pass, key, secret)
+			snapID := parts[0]
+			path := ""
+			if len(parts) > 1 {
+				path = parts[1]
+			}
+
+			fmt.Printf("[TASK] Executing remote directory listing for snapshot %s (Filter Path: %s)\n", snapID, path)
+			
+			// Ejecutar 'ls' filtrado y reportar resultado (V4.5.9)
+			lsResult := GetSnapshotContentJSON(snapID, path, repo, pass, key, secret)
 			ReportTaskResult(agentID, "ls_snapshot", string(lsResult))
 			
 			fmt.Println("[TASK] Snapshot listing completed and reported to Control Plane.")
@@ -252,6 +260,7 @@ func main() {
 					Timestamp:    finishedAt,
 					SnapshotID:   snapID,
 					TotalSizeMB:  int(bytesProcessed / (1024 * 1024)),
+					TotalSizeBytes: bytesProcessed, // V4.6.1
 					DurationSecs: duration,
 				})
 			}(currentPaths, repo, pass, key, secret)

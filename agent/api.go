@@ -16,6 +16,7 @@ type BackupMetrics struct {
 	AgentID          string `json:"agent_id"`
 	Status           string `json:"status"`
 	TotalSizeMB      int    `json:"total_size_mb"`
+	TotalSizeBytes   int64  `json:"total_size_bytes"` // V4.6.1: Precisión para archivos pequeños
 	FileCount        int    `json:"file_count"`
 	UploadSpeedKbps  int    `json:"upload_speed_kbps"`
 	DurationSecs     int    `json:"duration_secs"`
@@ -110,7 +111,7 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("[API ERROR] Network failure sending heartbeat: %v\n", err)

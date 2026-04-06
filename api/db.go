@@ -81,6 +81,7 @@ type BackupActivity struct {
 	Status       string    `json:"status"` // SUCCESS, ERROR
 	SnapshotID   string    `json:"snapshot_id"`
 	SizeMB       int       `json:"size_mb"`
+	SizeBytes    int64     `json:"size_bytes"` // V4.6.1: Precisión para archivos pequeños
 	DurationSecs int       `json:"duration_secs"`
 	Message      string    `json:"message"`
 	StartedAt    time.Time `json:"started_at"`

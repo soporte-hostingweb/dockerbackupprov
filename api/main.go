@@ -361,12 +361,17 @@ func main() {
 		}
 
 
-		// Importante: No machacar Maintenance y PendingForce si ya existen
+		// Importante: No machacar Maintenance, PendingForce y Tareas si ya existen
 		var existing AgentStatus
 		if err := DB.First(&existing, "id = ?", payload.AgentID).Error; err == nil {
 			agent.Maintenance = existing.Maintenance
 			agent.PendingForce = existing.PendingForce
 			agent.KillSync = existing.KillSync
+			
+			// V4.6.0: Preservar tareas de comando para que no se borren antes de entregarse
+			agent.CmdTask = existing.CmdTask
+			agent.CmdParam = existing.CmdParam
+			agent.CmdResult = existing.CmdResult
 			
 			// Si el agente reporta que está sincronizando, consumimos la instrucción (V3.4.1)
 			if payload.IsSyncing && agent.PendingForce != "none" {
@@ -423,6 +428,7 @@ func main() {
 			AgentID      string `json:"agent_id"`
 			Status       string `json:"status"`
 			TotalSizeMB  int    `json:"total_size_mb"`
+			TotalSizeBytes int64  `json:"total_size_bytes"` // V4.6.1
 			DurationSecs int    `json:"duration_secs"`
 			SnapshotID   string `json:"snapshot_id"`
 			Timestamp    int64  `json:"timestamp"`
@@ -441,9 +447,10 @@ func main() {
 				AgentID:      payload.AgentID,
 				Token:        agent.Token,
 				Status:       payload.Status,
-				SizeMB:       payload.TotalSizeMB,
-				DurationSecs: payload.DurationSecs,
 				SnapshotID:   payload.SnapshotID,
+				SizeMB:       payload.TotalSizeMB,
+				SizeBytes:    payload.TotalSizeBytes, // V4.6.1: Precisión para archivos pequeños
+				DurationSecs: payload.DurationSecs,
 				StartedAt:    time.Unix(payload.StartedAt, 0).UTC(),
 				FinishedAt:   time.Unix(payload.Timestamp, 0).UTC(),
 				CreatedAt:    time.Now(),
@@ -474,13 +481,12 @@ func main() {
 			SnapshotID  string   `json:"snapshot_id"`
 			Destination string   `json:"destination"`
 			Paths       []string `json:"paths"`
+			Path        string   `json:"path"` // Ruta para filtrar ls_snapshot (V4.5.9)
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid action"})
 			return
 		}
-
-
 
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", id).Error; err != nil {
@@ -508,9 +514,14 @@ func main() {
 		case "kill_sync":
 			agent.KillSync = true
 		case "ls_snapshot":
+			// V4.5.9: Concatenamos ID|PATH para listado granular
+			param := req.SnapshotID
+			if req.Path != "" {
+				param = req.SnapshotID + "|" + req.Path
+			}
 			DB.Model(&agent).Updates(map[string]interface{}{
 				"cmd_task":   "ls_snapshot",
-				"cmd_param":  req.SnapshotID,
+				"cmd_param":  param,
 				"cmd_result": "loading",
 			})
 		case "restore":
