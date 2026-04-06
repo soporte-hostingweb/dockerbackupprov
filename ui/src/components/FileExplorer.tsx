@@ -18,7 +18,8 @@ export default function FileExplorer({ agentId, containerName, folders }: FileEx
   useEffect(() => {
     async function fetchSavedConfig() {
       const token = localStorage.getItem('dbp_sso_token');
-      if (!token) return;
+      if (!token || !agentId || agentId === "") return;
+
 
       try {
         const response = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {

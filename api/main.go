@@ -148,15 +148,27 @@ func main() {
 		token := c.GetString("token")
 		agentID := c.Query("agent_id") // El agente envía su ID
 
-		var config BackupConfig
-		if err := DB.Where("token = ? AND agent_id = ?", token, agentID).First(&config).Error; err != nil {
-			c.JSON(404, gin.H{"error": "No config found"})
+		if agentID == "" {
+			c.JSON(400, gin.H{"error": "AgentID is required"})
+			return
+		}
+
+		var configs []BackupConfig
+		// Usamos Find() en lugar de First() para evitar el log "record not found" de GORM
+		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", token, agentID).Find(&configs).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Database error"})
+			return
+		}
+
+		if len(configs) == 0 {
+			// No hay configuración manual: El agente usará su modo Auto-Discovery
+			c.JSON(200, gin.H{"status": "no_config", "paths": []string{}})
 			return
 		}
 
 		var paths []string
-		json.Unmarshal([]byte(config.Paths), &paths)
-		c.JSON(200, gin.H{"paths": paths})
+		json.Unmarshal([]byte(configs[0].Paths), &paths)
+		c.JSON(200, gin.H{"status": "manual", "paths": paths})
 	})
 
 	// --- HEARTBEAT ---

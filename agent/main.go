@@ -103,12 +103,18 @@ func main() {
 			}
 		}
 
-		// Determinar ID del Agente
+		// Determinar ID del Agente de forma robústa
 		agentID := os.Getenv("DBP_AGENT_ID")
 		if agentID == "" {
-			hostname, _ := os.Hostname()
-			agentID = hostname
+			hostname, err := os.Hostname()
+			if err != nil || hostname == "" {
+				// Fallback definitivo si el sistema no tiene hostname (raro en Linux/Docker)
+				agentID = "vps-agent-" + time.Now().Format("20060102150405")
+			} else {
+				agentID = hostname
+			}
 		}
+
 
 		// Obtenemos historial de snapshots para el Dashboard
 		snapRaw := GetSnapshotsJSON()
@@ -140,10 +146,21 @@ func main() {
 
 		// 2. Obtener la SELECCIÓN del cliente desde la API
 		selectedPaths, err := GetAgentConfig(agentID)
-		if err != nil {
-			fmt.Printf("[API ERROR] Could not fetch backup config: %v\n", err)
-			selectedPaths = backupPaths 
+		
+		// LÓGICA DE AUTO-INTEGRACIÓN (V2.2)
+		if len(selectedPaths) == 0 {
+			if len(backupPaths) > 0 {
+				fmt.Printf("[PROACTIVE] No manual config found. Using AUTO-DISCOVERY mode (SQL Dumps: %d target paths)\n", len(backupPaths))
+				selectedPaths = backupPaths
+			} else {
+				fmt.Println("[INFO] No manual config AND no auto-discovered paths. Skipping backup cycle.")
+				time.Sleep(60 * time.Second)
+				continue
+			}
+		} else {
+			fmt.Printf("[INFO] Using MANUAL configuration (%d paths selected from Dashboard)\n", len(selectedPaths))
 		}
+
 
 		// LOGICA DE FORCE SNAPSHOT
 		if force == "selected" || force == "full" {
