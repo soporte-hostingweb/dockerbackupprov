@@ -238,11 +238,9 @@ func main() {
 				ReportHeartbeat(agentID, containerNames, explorerData, nil, true, ActivePID, lastBackupUnix, f, t)
 				
 				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s)
-				IsSyncing = false
 				
 				finishedAt := time.Now().Unix()
 				duration := int(finishedAt - startedAt)
-
 				status := "SUCCESS"
 				if errB != nil {
 					status = "ERROR"
@@ -263,6 +261,19 @@ func main() {
 					TotalSizeBytes: bytesProcessed, // V4.6.1
 					DurationSecs: duration,
 				})
+
+				// V4.6.3: Refrescar snapshots del API de inmediato si el backup fue exitoso
+				if status == "SUCCESS" {
+					fmt.Println("[ASYNC] Forzando actualización de snapshots en Control Plane...")
+					rawSnaps := GetSnapshotsJSON(r, p, k, s)
+					var updatedSnapshots []interface{}
+					json.Unmarshal(rawSnaps, &updatedSnapshots)
+					
+					f, t := GetDiskCapacity()
+					ReportHeartbeat(agentID, containerNames, explorerData, updatedSnapshots, false, ActivePID, lastBackupUnix, f, t)
+				}
+
+				IsSyncing = false
 			}(currentPaths, repo, pass, key, secret)
 
 		} else {
