@@ -1,125 +1,55 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"runtime"
-	"strings"
 	"time"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/google/uuid"
-	"github.com/joho/godotenv"
-)
-
-
-const Version = "V2.9.5"
-
-var (
-	IsSyncing bool
-	ActivePID int
 )
 
 func main() {
-	// CONFIGURACIÓN HORARIA: Operamos en UTC por defecto para evitar discrepancias SaaS
-	time.Local = time.UTC
+	fmt.Println("🚀 Docker Backup Pro Agent Starting...")
 	
-	fmt.Printf("==========================================\n")
-	fmt.Printf("🚀 DBP AGENT %s - BOOTING...\n", Version)
-	fmt.Printf("==========================================\n")
-
-	ActivePID = 0
-	IsSyncing = false
+	// Cargar persistencia si existe (V2.4)
+	agentID := GetPersistentID()
 	var lastBackupUnix int64 = 0
 
-	godotenv.Load()
-
-	// Inicializa el cliente Docker
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-
-	if err != nil {
-		log.Fatalf("[ERROR] Failed to initialize Docker Client: %v", err)
-	}
-	defer cli.Close()
-
-	ctx := context.Background()
-
-	// 1. Identidad Persistente (V2.4)
-	agentID := getPersistentID()
-	fmt.Printf("[BOOT] Agent Identity: %s\n", agentID)
-
-
-	// Ciclo Infinito de Escaneo y Reporte (Cada 1 Minuto)
-
-	fmt.Println("[INFO] Agent entering long-running heartbeat mode...")
+	// Loop principal (V2.0)
 	for {
-		fmt.Printf("\n--- [CYCLE START: %s] ---\n", time.Now().Format(time.RFC1123))
-		
-		// Obtener lista de contenedores
-		containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
-		if err != nil {
-			fmt.Printf("[ERROR] Failed to list containers: %v\n", err)
-			time.Sleep(10 * time.Second)
-			continue
-		}
+		fmt.Println("\n--- [CYCLE START: " + time.Now().UTC().Format(time.RFC822) + "] ---")
 
-		fmt.Printf("[INFO] Discovered %d containers.\n", len(containers))
-		var backupPaths []string
-		var containerNames []string
+		// Descubrimiento de contenedores (V1.0)
+		containerNames, _ := GetRunningContainers()
+		fmt.Printf("[INFO] Discovered %d containers.\n", len(containerNames))
+
+		// Preparar explorer data para reporte (V2.9)
 		explorerData := make(map[string][]string)
+		var backupPaths []string
 
-		for _, c := range containers {
-			name := strings.TrimPrefix(c.Names[0], "/")
+		for _, name := range containerNames {
+			if name == "dbp-client-agent" { continue }
 			
-			// EXCLUIMOS EL PROPIO AGENTE de las listas y el descubrimiento
-			if name == "dbp-client-agent" {
-				continue
-			}
-			containerNames = append(containerNames, name)
-
-
-			inspect, err := cli.ContainerInspect(ctx, c.ID)
-			if err != nil {
-				continue
-			}
-
-			// Lógica de descubrimiento de Bases de Datos
-			imageName := inspect.Config.Image
-			if containsString(imageName, "mysql") || containsString(imageName, "mariadb") || containsString(imageName, "postgres") {
-				dumpPath := "/tmp/dbp_dump_" + c.ID[:10] + ".sql"
-				backupPaths = append(backupPaths, dumpPath)
-			}
-
-			for _, mount := range inspect.Mounts {
-				if mount.Type == "bind" || mount.Type == "volume" {
-					hostPath := "/host_root" + mount.Source
-					
-					info, err := os.Stat(hostPath)
-					if err != nil || !info.IsDir() {
-						continue 
-					}
-
+			volPath := fmt.Sprintf("/var/lib/docker/volumes/%s/_data", name)
+			if info, err := os.Stat(volPath); err == nil && info.IsDir() {
+				backupPaths = append(backupPaths, volPath)
+				subfolders := ScanVolumeFolders(volPath)
+				explorerData[name] = append(explorerData[name], subfolders...)
+			} else {
+				hostPath := fmt.Sprintf("/host_root/root/docker/%s", name)
+				if info, err := os.Stat(hostPath); err == nil && info.IsDir() {
 					backupPaths = append(backupPaths, hostPath)
-					
 					subfolders := ScanVolumeFolders(hostPath)
 					explorerData[name] = append(explorerData[name], subfolders...)
 				}
 			}
 		}
 
-		// ID persistente (V2.4)
-
-
-		// 1. Obtener Configuración Primaria (V3.4.2: Movido arriba para resolver repo antes de snapshots)
+		// 1. Obtener Configuración Primaria (V3.4.2)
 		fmt.Printf("[CONFIG] Fetching policy for agent %s...\n", agentID)
-		configFetched, errFetched := GetAgentConfig(agentID)
-		config := configFetched
-		if errFetched != nil {
-			fmt.Printf("[ERROR] Could not fetch config: %v\n", errFetched)
+		config, errConfig := GetAgentConfig(agentID)
+		if errConfig != nil {
+			fmt.Printf("[ERROR] Could not fetch config: %v\n", errConfig)
 			config = &AgentConfigV2{Status: "no_config"}
 		}
 
@@ -137,41 +67,30 @@ func main() {
 			secret = os.Getenv("AWS_SECRET_ACCESS_KEY")
 		}
 
-
-
-
-		// 3. Reportar Heartbeat (Con Snapshots del repositorio CORRECTO) (V3.4.2)
-		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
-		
+		// 3. Obtener Snapshots para el reporte (V3.5.1)
 		var snapshots []interface{}
 		if repo != "" && pass != "" {
 			snapshotsRaw := GetSnapshotsJSON(repo, pass, key, secret)
-			errU := json.Unmarshal(snapshotsRaw, &snapshots)
-			if errU != nil {
-				fmt.Printf("[CRITICAL-JSON] Failed to unmarshal snapshots: %v | Raw: %s\n", errU, string(snapshotsRaw))
+			if errU := json.Unmarshal(snapshotsRaw, &snapshots); errU != nil {
+				fmt.Printf("[CRITICAL-JSON] Failed to unmarshal snapshots: %v\n", errU)
 				snapshots = []interface{}{}
 			} else {
 				fmt.Printf("[SNAPSHOTS] Successfully detected %d snapshots in repository.\n", len(snapshots))
 			}
-		} else {
-			snapshots = []interface{}{}
-			fmt.Println("[WARNING] Skipping snapshot scan: Repo or Pass missing.")
 		}
 
-
-		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
-		if err != nil {
-			fmt.Printf("[WARNING] Heartbeat failed: %v\n", err)
+		// 4. Reportar Heartbeat
+		maint, force, kill, errHeart := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
+		if errHeart != nil {
+			fmt.Printf("[WARNING] Heartbeat failed: %v\n", errHeart)
 		}
 
-		
 		if kill && IsSyncing && ActivePID > 0 {
 			fmt.Printf("[KILL] Remote terminate requested for PID %d...\n", ActivePID)
-			proc, err := os.FindProcess(ActivePID)
-			if err == nil {
-				proc.Signal(os.Interrupt) // Intento de cierre limpio
+			if proc, errP := os.FindProcess(ActivePID); errP == nil {
+				proc.Signal(os.Interrupt)
 				time.Sleep(2 * time.Second)
-				proc.Kill() // Si no cerró, matamos
+				proc.Kill()
 			}
 			IsSyncing = false
 			ActivePID = 0
@@ -183,113 +102,70 @@ func main() {
 			continue
 		}
 
-
-		// 2. Obtener la SELECCIÓN del cliente desde la API
-		config, err := GetAgentConfig(agentID)
-		if err != nil {
-			fmt.Printf("[API ERROR] Could not fetch backup config: %v\n", err)
-			time.Sleep(60 * time.Second)
-			continue
-		}
-
-		// isolation logic (V2.3)
-		var isolatedBucket string
-		if config.FullRepoURL != "" {
-			isolatedBucket = config.FullRepoURL
-			fmt.Printf("[ISOLATION] Targeting unique repository: %s\n", isolatedBucket)
-		} else {
-			isolatedBucket = os.Getenv("RESTIC_REPOSITORY")
-		}
-		
-		// 3. Asegurar que el Repositorio esté inicializado antes de seguir (V2.4)
-		if isolatedBucket != "" {
+		// 5. Validar Repositorio
+		if repo != "" {
 			fmt.Printf("[RESTIC] Validating S3 Wasabi Repository...\n")
-			err = EnsureResticRepo(isolatedBucket, config.ResticPassword, config.WasabiKey, config.WasabiSecret)
-			if err != nil {
-				fmt.Printf("[WARNING] Restic Repo ensure failed: %v\n", err)
-			}
+			_ = EnsureResticRepo(repo, pass, key, secret)
 		}
 
-
-
-
-		selectedPaths := config.Paths
-
-		
-		// LÓGICA DE AUTO-INTEGRACIÓN (V2.2 FALLBACK)
-		if len(selectedPaths) == 0 && config.Status == "no_config" {
-			if len(backupPaths) > 0 {
-				fmt.Printf("[PROACTIVE] No manual config found. Using AUTO-DISCOVERY mode (SQL Dumps: %d target paths)\n", len(backupPaths))
-				selectedPaths = backupPaths
-			}
-		} 
-
-
-
-		// LÓGICA DE PROGRAMACIÓN (SCHEDULER V2.3)
+		// 6. Lógica de Programación / Scheduler
 		shouldRun := false
 		now := time.Now()
 
 		if force != "none" && force != "" {
 			shouldRun = true
 		} else if config.Schedule == "every_1h" {
-
-			if time.Now().Unix() - lastBackupUnix > 3600 {
+			if time.Now().Unix()-lastBackupUnix > 3600 {
 				shouldRun = true
 			}
 		} else if config.Schedule == "daily_2am" {
-			// Ventana de mantenimiento entre las 2 y las 4 AM UTC
 			if now.Hour() >= 2 && now.Hour() <= 4 {
 				lastDate := time.Unix(lastBackupUnix, 0).Format("2006-01-02")
-				currentDate := now.Format("2006-01-02")
-				if lastDate != currentDate {
+				if lastDate != now.Format("2006-01-02") {
 					shouldRun = true
 				}
 			}
 		}
 
-		if shouldRun {
-			if IsSyncing {
-				fmt.Println("[SCHEDULER] Backup already in progress. Skipping trigger.")
-			} else {
-				fmt.Printf("[SCHEDULER] Triggering ASYNC backup cycle (Schedule: %s, Force: %s)...\n", config.Schedule, force)
-				currentPaths := selectedPaths
-				if force == "full" {
-					currentPaths = []string{"/host_root"}
+		if shouldRun && !IsSyncing {
+			fmt.Printf("[SCHEDULER] Triggering ASYNC backup cycle (Schedule: %s, Force: %s)...\n", config.Schedule, force)
+			
+			currentPaths := config.Paths
+			if len(currentPaths) == 0 && config.Status == "no_config" {
+				currentPaths = backupPaths
+			}
+			if force == "full" {
+				currentPaths = []string{"/host_root"}
+			}
+
+			// ASYNC BACKUP (V3.6.1)
+			go func(paths []string, r, p, k, s string) {
+				IsSyncing = true
+				// Reportar inicio inmediato
+				ReportHeartbeat(agentID, containerNames, explorerData, snapshots, true, os.Getpid(), lastBackupUnix)
+
+				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s)
+				IsSyncing = false
+				
+				status := "SUCCESS"
+				if errB != nil {
+					status = "ERROR"
+					fmt.Printf("[ASYNC ERROR] Backup failed: %v\n", errB)
+				} else {
+					lastBackupUnix = time.Now().Unix()
+					fmt.Printf("[ASYNC] Backup finished successfully. ID: %s | Size: %d bytes\n", snapID, bytesProcessed)
 				}
 
-				// Ejecutar en segundo plano para no bloquear latidos (V3.2.3)
-				go func(paths []string, repo, pass, key, secret string) {
-					IsSyncing = true
-					
-					// 1. Avisar inmediatamente que empezamos (Esto limpia el pending_force en el API) (V3.2.3)
-					ReportHeartbeat(agentID, containerNames, explorerData, snapshots, true, os.Getpid(), lastBackupUnix)
-
-					err := RunResticBackup(paths, repo, pass, key, secret)
-					IsSyncing = false
-
-					
-					if err == nil {
-						lastBackupUnix = time.Now().Unix()
-						fmt.Println("[ASYNC] Backup finished successfully.")
-					} else {
-						fmt.Printf("[ASYNC ERROR] Backup failed: %v\n", err)
-					}
-
-					// Reportar métricas al finalizar (V3.1.3)
-					metrics := BackupMetrics{
-						AgentID:    agentID,
-						Status:     "SUCCESS",
-						Timestamp:  time.Now().Unix(),
-						SnapshotID: "async-auto",
-					}
-					if err != nil {
-						metrics.Status = "ERROR"
-					}
-					ReportMetrics(metrics)
-				}(currentPaths, isolatedBucket, config.ResticPassword, config.WasabiKey, config.WasabiSecret)
-
-			}
+				// Reportar métricas reales al Control Plane
+				ReportMetrics(BackupMetrics{
+					AgentID:      agentID,
+					Status:       status,
+					Timestamp:    time.Now().Unix(),
+					SnapshotID:   snapID,
+					TotalSizeMB:  int(bytesProcessed / (1024 * 1024)),
+					DurationSecs: 0,
+				})
+			}(currentPaths, repo, pass, key, secret)
 		} else {
 			if force == "none" || force == "" {
 				fmt.Printf("[IDLE] Waiting for schedule (%s)... Last backup: %s\n", 
@@ -297,62 +173,6 @@ func main() {
 			}
 		}
 
-		// EL LATIDO CONTINÚA INDEPENDIENTE
 		time.Sleep(60 * time.Second)
 	}
-}
-
-
-func containsString(str, substr string) bool {
-	return strings.Contains(strings.ToLower(str), strings.ToLower(substr))
-}
-
-// getPersistentID busca o genera un ID único que sobreviva a reinicios de contenedor (V2.4)
-func getPersistentID() string {
-	// Ruta segura en el volumen de datos (V2.4.3)
-	// Asegurar que el directorio de datos existe (V2.6.5)
-	os.MkdirAll("/app/data", 0700)
-
-	idFile := "/app/data/agent_id"
-	
-	// 1. Intentar leer ID existente
-	data, err := os.ReadFile(idFile)
-	if err == nil && len(strings.TrimSpace(string(data))) > 10 {
-		return strings.TrimSpace(string(data))
-	}
-
-	// 2. Si no existe, intentar generar uno basado en MachineID o Random
-	newID := uuid.New().String()[:12] // Usamos 12 caracteres para mantener estética
-	
-	// Intentar persistir en el host para la próxima vez
-	err = os.WriteFile(idFile, []byte(newID), 0644)
-	if err != nil {
-		fmt.Printf("[WARNING] Could not persist Agent ID to %s: %v. Identity will be volatile.\n", idFile, err)
-	} else {
-		fmt.Printf("[INFO] New Persistent ID generated and saved: %s\n", newID)
-	}
-
-	return newID
-}
-
-
-func ScanVolumeFolders(path string) []string {
-	var items []string
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return items
-	}
-	for _, f := range files {
-		fullPath := path
-		if !strings.HasSuffix(fullPath, "/") {
-			fullPath += "/"
-		}
-		
-		prefix := "📄 "
-		if f.IsDir() {
-			prefix = "📂 "
-		}
-		items = append(items, prefix+fullPath+f.Name())
-	}
-	return items
 }

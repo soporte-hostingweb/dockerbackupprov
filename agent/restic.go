@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,42 +11,26 @@ import (
 	"time"
 )
 
-
-
 var GlobalExcludes = []string{
 	"*/cache/*",
 	"*/logs/*",
-	"*/sessions/*",
 	"*/tmp/*",
-	"node_modules",
-	".git",
-	// Excluir sistemas de archivos virtuales (V3.2.1)
-	"/host_root/proc",
-	"/host_root/sys",
-	"/host_root/dev",
-	"/host_root/run",
-	"/host_root/tmp",
-	"/host_root/var/lib/docker",
+	"/proc/*",
+	"/sys/*",
+	"/dev/*",
+	"/run/*",
+	"/var/lib/docker/overlay2/*",
 }
 
 
 
 
-// EnsureResticRepo verifica si el repositorio S3 ya está inicializado. Si no, lo inicializa.
-
-func EnsureResticRepo(repoURL string, password string, s3Key string, s3Secret string) error {
-	fmt.Println("\n[RESTIC] Validating S3 Wasabi Repository...")
-
-	
-	repo := repoURL
+// EnsureResticRepo garantiza que el repositorio S3 esté inicializado (V2.6.5)
+func EnsureResticRepo(repo string, password string, s3Key string, s3Secret string) error {
 	if repo == "" {
-		repo = os.Getenv("RESTIC_REPOSITORY")
-	}
-	if repo == "" {
-		return fmt.Errorf("RESTIC_REPOSITORY environment variable is missing")
+		return fmt.Errorf("repository URL is empty")
 	}
 
-	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
@@ -57,15 +42,12 @@ func EnsureResticRepo(repoURL string, password string, s3Key string, s3Secret st
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
 	}
 
-
 	// Ejecutar snapshot list para ver si el repo existe
 	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
 	cmd.Env = env
 
-	
 	if err := cmd.Run(); err != nil {
 		fmt.Println("[RESTIC] Repository not detected or uninitialized. Initializing now...")
-		
 		initCmd := exec.Command("restic", "-r", repo, "init")
 		initCmd.Env = env
 		output, initErr := initCmd.CombinedOutput()
@@ -73,28 +55,18 @@ func EnsureResticRepo(repoURL string, password string, s3Key string, s3Secret st
 			return fmt.Errorf("restic init failed: %v - Output: %s", initErr, string(output))
 		}
 		fmt.Println("[RESTIC] Repository successfully initialized on Wasabi S3.")
-
 	} else {
 		fmt.Println("[RESTIC] Wasabi S3 Repository is ready and accessible.")
 	}
 	return nil
 }
 
-
-// RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3
-func RunResticBackup(paths []string, repoURL string, password string, s3Key string, s3Secret string) error {
-	fmt.Println("\n[RESTIC] Starting Incremental Backup Engine...")
+// RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3 (V3.6.1)
+func RunResticBackup(paths []string, repo string, password string, s3Key string, s3Secret string) (string, int64, error) {
 	if len(paths) == 0 {
-		fmt.Println("[RESTIC] No directories selected for backup. Skipping cycle.")
-		return nil
+		return "", 0, fmt.Errorf("no directories selected")
 	}
 
-	repo := repoURL
-	if repo == "" {
-		repo = os.Getenv("RESTIC_REPOSITORY")
-	}
-
-	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
@@ -106,15 +78,7 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
 	}
 
-
-	// Preparar argumentos: restic backup --json --exclude=... /path1 /path2 ...
-	args := []string{"-r", repo, "backup", "--json"}
-	for _, ex := range GlobalExcludes {
-		args = append(args, "--exclude", ex)
-	}
-	args = append(args, paths...)
-
-	// Limpiar decoraciones (emojis) de los paths antes de enviar a restic (V2.9.9)
+	// Limpiar decoraciones (emojis) de los paths antes de enviar a restic
 	cleanPaths := []string{}
 	for _, p := range paths {
 		clean := strings.TrimPrefix(p, "📂 ")
@@ -122,73 +86,67 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 		cleanPaths = append(cleanPaths, clean)
 	}
 
-	fmt.Printf("[RESTIC] Target paths (Cleaned): %v\n", cleanPaths)
+	fmt.Printf("[RESTIC] Starting Incremental Backup for %d targets...\n", len(cleanPaths))
 	
-	// Reconstruir argumentos con los paths limpios y protección de sistema de archivos (V3.2.1)
 	finalArgs := []string{"-r", repo, "backup", "--json", "--one-file-system"}
 	for _, ex := range GlobalExcludes {
 		finalArgs = append(finalArgs, "--exclude", ex)
 	}
 	finalArgs = append(finalArgs, cleanPaths...)
 
-
 	cmd := exec.Command("restic", finalArgs...)
-	cmd.Env = env // Heredar variables S3 (Repository, Keys, Password)
+	cmd.Env = env
 
-	
-	// Real-time Logging with Capture (V2.9.5)
 	var outputBuffer bytes.Buffer
-	// MultiWriter envía a la vez a la consola (Docker) y al buffer de memoria
 	writer := io.MultiWriter(os.Stdout, &outputBuffer)
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 
-	// Iniciamos el proceso y guardamos el PID para el Control Plane
-
 	if err := cmd.Start(); err != nil {
-		fmt.Printf("[RESTIC ERROR] Launch failed: %v\n", err)
-		return err
+		return "", 0, err
 	}
 	
 	ActivePID = cmd.Process.Pid
 	IsSyncing = true
-
 	err := cmd.Wait()
 	ActivePID = 0
 	IsSyncing = false
 
 	if err != nil {
 		fmt.Printf("[RESTIC ERROR] Core failure (Wait): %v\n", err)
-		return fmt.Errorf("Restic failed: %v", err)
+		return "", 0, fmt.Errorf("Restic failed: %v", err)
 	}
 
-
-
+	// PARSING SUMMARY (V3.6.1: Capturar ID y Tamaño real)
+	finalSnapshotID := "unknown"
+	var totalBytes int64 = 0
 	
-	fmt.Println("[RESTIC] Backup cycle completed successfully. Snapshot recorded.")
+	lines := strings.Split(outputBuffer.String(), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, `"message_type":"summary"`) {
+			var summary struct {
+				SnapshotID         string `json:"snapshot_id"`
+				TotalBytesProcessed int64  `json:"total_bytes_processed"`
+			}
+			if err := json.Unmarshal([]byte(line), &summary); err == nil {
+				finalSnapshotID = summary.SnapshotID
+				totalBytes = summary.TotalBytesProcessed
+			}
+		}
+	}
+	
+	fmt.Printf("[RESTIC] Backup cycle completed. Snapshot: %s | Processed: %d bytes\n", finalSnapshotID, totalBytes)
 	
 	// Tras el backup, aplicamos la política de retención automática
 	_ = ApplyRetentionPolicy(repo, password, s3Key, s3Secret)
 
-
-	return nil
+	return finalSnapshotID, totalBytes, nil
 }
 
-
-
-// ApplyRetentionPolicy purga snapshots antiguos siguiendo la regla (7d, 4w, 2m)
-func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secret string) error {
-	fmt.Println("[RESTIC] Applying Retention Policy: 7 daily, 4 weekly, 2 monthly...")
+// ApplyRetentionPolicy aplica una política de rotación (KEEP 7) (V3.3.7: Unlock-Self-Heal added)
+func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret string) error {
+	fmt.Println("[RESTIC] Applying retention policy (KEEP LAST 7)...")
 	
-	repo := repoURL
-	if repo == "" {
-		repo = os.Getenv("RESTIC_REPOSITORY")
-	}
-
-	// 1. Limpiar posibles bloqueos (V3.3.0 - Soluciona exit status 11)
-	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
-	
-	// Inyectar credenciales para unlock
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
@@ -199,51 +157,34 @@ func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secre
 	if s3Secret != "" {
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
 	}
+
+	// 1. Unlock preventivo (V3.3.7)
+	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
 	unlockCmd.Env = env
-	_ = unlockCmd.Run() // Ignoramos si falla (Intento preventivo)
+	_ = unlockCmd.Run()
+	time.Sleep(2 * time.Second) // Delay para consistencia S3
 
-	// 2. Pequeño Delay para consistencia de S3 (V3.3.7)
-	time.Sleep(2 * time.Second)
-
-	// 3. Ejecutar Políticas de Retención
-	retentionArgs := []string{
-		"-r", repo,
-		"forget", 
-		"--keep-daily", "7", 
-		"--keep-weekly", "4", 
-		"--keep-monthly", "2", 
-		"--prune",
-	}
-
-	cmd := exec.Command("restic", retentionArgs...)
+	// 2. Forget & Prune
+	cmd := exec.Command("restic", "-r", repo, "forget", "--keep-last", "7", "--prune")
 	cmd.Env = env
 
-	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("[RESTIC ERROR] Retention failed: %v\n", err)
+		fmt.Printf("[RESTIC ERROR] Retention failed: %v | Output: %s\n", err, string(output))
 		return err
 	}
 	
 	fmt.Println("[RESTIC] Retention successful. Storage optimized.")
-	fmt.Printf("[DEBUG] Restic output: %s\n", string(output))
 	return nil
 }
 
-// GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo
-
-func GetSnapshotsJSON(repoURL string, password string, s3Key string, s3Secret string) []byte {
-	repo := repoURL
-	if repo == "" {
-		repo = os.Getenv("RESTIC_REPOSITORY")
-	}
+// GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo (V3.5.0: Diagnostic Logs)
+func GetSnapshotsJSON(repo string, password string, s3Key string, s3Secret string) []byte {
 	if repo == "" {
 		return []byte("[]")
 	}
 
 	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
-	
-	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
@@ -256,14 +197,13 @@ func GetSnapshotsJSON(repoURL string, password string, s3Key string, s3Secret st
 	}
 	cmd.Env = env
 
+	fmt.Printf("[DEBUG-RESTIC] Scanning snapshots for repo: %s\n", repo)
 	output, err := cmd.CombinedOutput()
-
 	if err != nil {
-		fmt.Printf("[RESTIC ERROR] Failed to list snapshots: %v\n", err)
+		fmt.Printf("[DEBUG-RESTIC ERROR] Snapshot scan failed: %v | Output: %s\n", err, string(output))
 		return []byte("[]")
 	}
+	
+	fmt.Printf("[DEBUG-RESTIC] Raw output length: %d bytes\n", len(output))
 	return output
 }
-
-
-
