@@ -163,11 +163,15 @@ func main() {
 		}
 
 
-		// 1. Buscamos Settings del Tenant
+		// 1. Buscamos Settings del Tenant (V2.9.6: Silenciamos log spam con Find)
 		var settings UserSettings
-		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
+		DB.Limit(1).Where("token = ?", token).Find(&settings)
+		
+		if settings.ID == 0 {
 			// 2. Si no hay, buscamos las Globales del Maestro (V2.5)
-			if err := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&settings).Error; err != nil {
+			DB.Limit(1).Where("token = ?", "SYSTEM_GLOBAL").Find(&settings)
+			
+			if settings.ID == 0 {
 				c.JSON(200, gin.H{
 					"status": "manual",
 					"paths": []string{},
@@ -179,6 +183,7 @@ func main() {
 				return
 			}
 		}
+
 
 		// Descifrar contraseña de restic para el agente (V2.4)
 		resticPass, _ := Decrypt(settings.ResticPass)
