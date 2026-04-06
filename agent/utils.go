@@ -56,21 +56,27 @@ func GetRunningContainers() ([]string, error) {
 	return names, nil
 }
 
-// ScanVolumeFolders escanea las subcarpetas de un volumen de Docker (V2.9)
+// ScanVolumeFolders escanea las subcarpetas de un volumen de Docker (V3.8.3: Discovery Total)
 func ScanVolumeFolders(path string) []string {
-	var folders []string
+	var results []string
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		return folders
+		return results
 	}
 
 	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			folders = append(folders, e.Name())
+		name := e.Name()
+		if strings.HasPrefix(name, ".") { continue }
+		
+		if e.IsDir() {
+			results = append(results, "📂 "+name)
+		} else {
+			results = append(results, "📄 "+name)
 		}
 	}
-	return folders
+	return results
 }
+
 
 // GetContainerMounts obtiene las rutas reales del host para los volúmenes de un contenedor (V3.8.1)
 func GetContainerMounts(containerName string) []string {

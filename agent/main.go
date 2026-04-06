@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
+
 
 
 var IsSyncing bool = false
@@ -27,8 +29,9 @@ func main() {
 		containerNames, _ := GetRunningContainers()
 		fmt.Printf("[INFO] Discovered %d containers.\n", len(containerNames))
 
-		// Preparar explorer data para reporte (V2.9)
+		// Preparar explorer data para reporte (V3.8.4: Path Resolution)
 		explorerData := make(map[string][]string)
+		pathToRealMap := make(map[string]string) // Mapea "📂 Carpeta" -> "/host_root/..."
 		var backupPaths []string
 
 		for _, name := range containerNames {
@@ -36,26 +39,35 @@ func main() {
 			
 			// 1. Obtener los montajes REALES del host usando docker inspect (V3.8.1)
 			hostMounts := GetContainerMounts(name)
-			if len(hostMounts) == 0 {
-				fmt.Printf("[DISCOVERY] No mounts found for container %s\n", name)
-				continue
-			}
-
-			fmt.Printf("[DISCOVERY] Container %s has %d mounts. Scanning...\n", name, len(hostMounts))
-
+			
 			for _, hostPath := range hostMounts {
-				// Convertir ruta del host a ruta accesible desde el contenedor
-				// Ej: /var/lib/docker/volumes/... -> /host_root/var/lib/docker/volumes/...
 				bridgePath := "/host_root" + hostPath
 				
 				if info, err := os.Stat(bridgePath); err == nil && info.IsDir() {
-					fmt.Printf("  -> Found valid data path: %s\n", bridgePath)
 					backupPaths = append(backupPaths, bridgePath)
-					subfolders := ScanVolumeFolders(bridgePath)
-					explorerData[name] = append(explorerData[name], subfolders...)
+					
+					// V3.8.3: Discovery Total (Archivos y Carpetas)
+					subItems := ScanVolumeFolders(bridgePath)
+					for _, item := range subItems {
+						// Para evitar colisiones entre contenedores, prefijamos la entrada en el mapa si es necesario, 
+						// pero el UI espera solo el nombre para mostrar. 
+						// Guardamos la resolución absoluta para el backup.
+						explorerData[name] = append(explorerData[name], item)
+						
+						// Resolvemos: "📄 dump.rdb" -> "/host_root/var/lib/docker/volumes/redis/_data/dump.rdb"
+						itemName := strings.TrimPrefix(strings.TrimPrefix(item, "📂 "), "📄 ")
+						realPath := bridgePath + "/" + itemName
+						pathToRealMap[item] = realPath
+					}
+					
+					// Opción para respaldar el volumen entero
+					fullVolEntry := "📂 [Full Volume] " + name
+					explorerData[name] = append(explorerData[name], fullVolEntry)
+					pathToRealMap[fullVolEntry] = bridgePath
 				}
 			}
 		}
+
 
 
 
@@ -144,13 +156,24 @@ func main() {
 		if shouldRun && !IsSyncing {
 			fmt.Printf("[SCHEDULER] Triggering ASYNC backup cycle (Schedule: %s, Force: %s)...\n", config.Schedule, force)
 			
-			currentPaths := config.Paths
+			currentPaths := []string{}
+			for _, sel := range config.Paths {
+				if realPath, ok := pathToRealMap[sel]; ok {
+					currentPaths = append(currentPaths, realPath)
+				} else {
+					// Si no está en el mapa (quizás es una ruta manual antigua), dejarla como está
+					currentPaths = append(currentPaths, sel)
+				}
+			}
+
 			if len(currentPaths) == 0 && config.Status == "no_config" {
 				currentPaths = backupPaths
 			}
 			if force == "full" {
 				currentPaths = []string{"/host_root"}
 			}
+
+			fmt.Printf("[BACKUP] Targets Resolved: %v\n", currentPaths)
 
 			// ASYNC BACKUP (V3.6.1)
 			go func(paths []string, r, p, k, s string) {
