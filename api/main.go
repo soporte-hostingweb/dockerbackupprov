@@ -209,20 +209,32 @@ func main() {
 
 		pathsJSON, _ := json.Marshal(req.Paths)
 
+		// Lógica de Impersonación para Admin (V2.6.1)
+		isAdmin := c.GetBool("is_admin")
+		saveToken := token
+		if isAdmin {
+			var agent AgentStatus
+			if err := DB.Where("agent_id = ?", req.AgentID).First(&agent).Error; err == nil {
+				// Usamos el token original del agente para guardar la config
+				saveToken = agent.Token
+			}
+		}
+
 		var config BackupConfig
-		if err := DB.Where("token = ? AND agent_id = ?", token, req.AgentID).First(&config).Error; err == nil {
+		if err := DB.Where("token = ? AND agent_id = ?", saveToken, req.AgentID).First(&config).Error; err == nil {
 			config.Paths = string(pathsJSON)
 			config.Schedule = req.Schedule
 			DB.Save(&config)
 		} else {
 			config = BackupConfig{
-				Token:    token,
+				Token:    saveToken,
 				AgentID:  req.AgentID,
 				Paths:    string(pathsJSON),
 				Schedule: req.Schedule,
 			}
 			DB.Create(&config)
 		}
+
 
 		c.JSON(200, gin.H{"status": "Config saved"})
 	})
@@ -403,8 +415,15 @@ func main() {
 
 	v1User.GET("/settings", func(c *gin.Context) {
 		token := c.GetString("token")
+		
+		// Permitir ver los settings Globales (V2.6.1)
+		searchToken := token
+		if c.Query("mode") == "global" && c.GetBool("is_admin") {
+			searchToken = "SYSTEM_GLOBAL"
+		}
+
 		var settings UserSettings
-		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
+		if err := DB.Where("token = ?", searchToken).First(&settings).Error; err != nil {
 			// V2.3.2: Devolver 200 con campos vacíos en lugar de 404 para el UI
 			c.JSON(200, gin.H{
 				"wasabi_key": "",
