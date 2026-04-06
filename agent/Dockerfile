@@ -14,8 +14,9 @@ RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o dbp-agent .
 
 FROM alpine:latest
-# Añadimos dependencias útiles: certificados para la API s3, restic para el backup real, y utilidades de base de datos para dumps locales
-RUN apk --no-cache add ca-certificates restic mariadb-client postgresql-client tzdata
+# Añadimos dependencias útiles: certificados para la API s3, restic para el backup real, y utilidades de base de datos para dumps locales + docker-cli para descubrimiento
+RUN apk --no-cache add ca-certificates restic mariadb-client postgresql-client docker-cli tzdata
+
 
 # Crear usuario no-root 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
