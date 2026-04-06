@@ -143,6 +143,50 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 	return finalSnapshotID, totalBytes, nil
 }
 
+// RunResticRestore ejecuta una restauración remota (V4.5.7)
+func RunResticRestore(snapshotID string, destination string, paths []string, repo string, password string, s3Key string, s3Secret string) error {
+	if repo == "" || snapshotID == "" {
+		return fmt.Errorf("missing repository or snapshot ID")
+	}
+
+	// 1. Preparar Entorno
+	env := os.Environ()
+	if password != "" {
+		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
+	}
+	if s3Key != "" {
+		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
+	}
+	if s3Secret != "" {
+		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
+
+	// 2. Preparar Argumentos
+	args := []string{"-r", repo, "restore", snapshotID, "--target", destination}
+	
+	// Si hay paths específicos, solo restauramos esos (V4.5.6)
+	for _, p := range paths {
+		clean := strings.TrimPrefix(p, "📂 ")
+		clean = strings.TrimPrefix(clean, "📄 ")
+		args = append(args, "--include", clean)
+	}
+
+	fmt.Printf("[RESTIC] Running restoration for snapshot %s to %s...\n", snapshotID, destination)
+	cmd := exec.Command("restic", args...)
+	cmd.Env = env
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("[RESTIC ERROR] Restore failed: %v | Output: %s\n", err, string(output))
+		return fmt.Errorf("restic error: %v | %s", err, string(output))
+	}
+
+	fmt.Println("[RESTIC] Restoration successful.")
+	return nil
+}
+
+
+
 // ApplyRetentionPolicy aplica una política de rotación (KEEP 7) (V3.3.7: Unlock-Self-Heal added)
 func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret string) error {
 	fmt.Println("[RESTIC] Applying retention policy (KEEP LAST 7)...")
@@ -178,7 +222,7 @@ func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret s
 	return nil
 }
 
-// GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo (V3.5.0: Diagnostic Logs)
+// GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo (V3.5.0)
 func GetSnapshotsJSON(repo string, password string, s3Key string, s3Secret string) []byte {
 	if repo == "" {
 		return []byte("[]")
@@ -197,13 +241,40 @@ func GetSnapshotsJSON(repo string, password string, s3Key string, s3Secret strin
 	}
 	cmd.Env = env
 
-	fmt.Printf("[DEBUG-RESTIC] Scanning snapshots for repo: %s\n", repo)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("[DEBUG-RESTIC ERROR] Snapshot scan failed: %v | Output: %s\n", err, string(output))
+		return []byte("[]")
+	}
+	return output
+}
+
+// GetSnapshotContentJSON devuelve el listado de archivos de un snapshot en formato JSON (V4.2.0)
+func GetSnapshotContentJSON(snapshotID string, repo string, password string, s3Key string, s3Secret string) []byte {
+	if repo == "" || snapshotID == "" {
+		return []byte("[]")
+	}
+
+	cmd := exec.Command("restic", "-r", repo, "ls", snapshotID, "--json")
+	env := os.Environ()
+	if password != "" {
+		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
+	}
+	if s3Key != "" {
+		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
+	}
+	if s3Secret != "" {
+		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
+	cmd.Env = env
+
+	fmt.Printf("[DEBUG-RESTIC] Listing content for snapshot: %s\n", snapshotID)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("[DEBUG-RESTIC ERROR] LS failed: %v | Output: %s\n", err, string(output))
 		return []byte("[]")
 	}
 	
-	fmt.Printf("[DEBUG-RESTIC] Raw output length: %d bytes\n", len(output))
 	return output
 }
+
+

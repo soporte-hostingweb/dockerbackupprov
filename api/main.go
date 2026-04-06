@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
+
 
 	_ "embed"
 
@@ -319,6 +321,8 @@ func main() {
 			Containers   []string            `json:"containers"`
 			ExplorerData map[string][]string `json:"explorer_data"`
 			Snapshots    []interface{}       `json:"snapshots"`
+			FreeSpace    string              `json:"free_space"`
+			TotalSpace   string              `json:"total_space"`
 			OS           string              `json:"os"`
 			IsSyncing    bool                `json:"is_syncing"`
 			ActivePID    int                 `json:"active_pid"`
@@ -345,9 +349,12 @@ func main() {
 			Containers:   string(contJSON),
 			Explorer:     string(expJSON),
 			Snapshots:    string(snapJSON),
+			FreeSpace:    payload.FreeSpace,
+			TotalSpace:   payload.TotalSpace,
 			IsSyncing:    payload.IsSyncing,
 			ActivePID:    payload.ActivePID,
 		}
+
 
 		if payload.LastBackupAt > 0 {
 			agent.LastBackupAt = time.Unix(payload.LastBackupAt, 0).UTC()
@@ -380,11 +387,35 @@ func main() {
 
 		c.JSON(200, gin.H{
 			"status":        "recorded",
-			"maintenance":  agent.Maintenance,
+			"maintenance":   agent.Maintenance,
 			"pending_force": agent.PendingForce,
 			"kill_sync":     agent.KillSync,
+			"cmd_task":      agent.CmdTask,
+			"cmd_param":     agent.CmdParam,
 		})
 	})
+
+	// --- RECEPCIÓN DE RESULTADOS DE TAREAS (V4.2.3) ---
+	v1Agent.POST("/task/result", AuthMiddleware(), func(c *gin.Context) {
+		var req struct {
+			AgentID string `json:"agent_id"`
+			Task    string `json:"task"`
+			Result  string `json:"result"` // JSON string del 'ls'
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid task result"})
+			return
+		}
+
+		// Guardamos el resultado en el estado del agente y limpiamos la tarea pendiente
+		DB.Model(&AgentStatus{}).Where("id = ?", req.AgentID).Updates(map[string]interface{}{
+			"cmd_result": req.Result,
+			"cmd_task":   "none",
+		})
+
+		c.JSON(200, gin.H{"status": "Result saved"})
+	})
+
 
 	// --- TELEMETRÍA DE BACKUP (MÉTRICAS) ---
 	v1Agent.POST("/backup/complete", AuthMiddleware(), func(c *gin.Context) {
@@ -395,14 +426,15 @@ func main() {
 			DurationSecs int    `json:"duration_secs"`
 			SnapshotID   string `json:"snapshot_id"`
 			Timestamp    int64  `json:"timestamp"`
+			StartedAt    int64  `json:"started_at"`
 		}
+
 		if err := c.ShouldBindJSON(&payload); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid metrics"})
 			return
 		}
 
-		// 1. Guardamos la actividad histórica (V3.3.4)
-		// Buscamos el agente para obtener su token (ya que el agente no envía SSO token en metrics)
+		// 1. Guardamos la actividad histórica (V4.1.0)
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", payload.AgentID).Error; err == nil {
 			activity := BackupActivity{
@@ -412,6 +444,8 @@ func main() {
 				SizeMB:       payload.TotalSizeMB,
 				DurationSecs: payload.DurationSecs,
 				SnapshotID:   payload.SnapshotID,
+				StartedAt:    time.Unix(payload.StartedAt, 0).UTC(),
+				FinishedAt:   time.Unix(payload.Timestamp, 0).UTC(),
 				CreatedAt:    time.Now(),
 			}
 			DB.Create(&activity)
@@ -421,6 +455,7 @@ func main() {
 				DB.Model(&agent).Update("last_backup_at", time.Unix(payload.Timestamp, 0).UTC())
 			}
 		}
+
 
 		c.JSON(200, gin.H{"status": "Metrics recorded and activity saved"})
 	})
@@ -435,12 +470,17 @@ func main() {
 		id := c.Param("id")
 		token := c.GetString("token")
 		var req struct {
-			Action string `json:"action"` // "reset", "maintenance_on", "maintenance_off", "force_selected", "force_full", "kill_sync"
+			Action      string   `json:"action"` // "reset", "maintenance_on", "maintenance_off", "force_selected", "force_full", "kill_sync", "ls_snapshot", "restore"
+			SnapshotID  string   `json:"snapshot_id"`
+			Destination string   `json:"destination"`
+			Paths       []string `json:"paths"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid action"})
 			return
 		}
+
+
 
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", id).Error; err != nil {
@@ -467,12 +507,26 @@ func main() {
 			agent.PendingForce = "full"
 		case "kill_sync":
 			agent.KillSync = true
+		case "ls_snapshot":
+			DB.Model(&agent).Updates(map[string]interface{}{
+				"cmd_task":   "ls_snapshot",
+				"cmd_param":  req.SnapshotID,
+				"cmd_result": "loading",
+			})
+		case "restore":
+			// Formato: snapshot_id|destination|path1,path2,... (V4.5.6)
+			pathsStr := strings.Join(req.Paths, ",")
+			param := fmt.Sprintf("%s|%s|%s", req.SnapshotID, req.Destination, pathsStr)
+			DB.Model(&agent).Updates(map[string]interface{}{
+				"cmd_task":   "restore",
+				"cmd_param":  param,
+				"cmd_result": "pending",
+			})
 		}
 
-
-		DB.Save(&agent)
-		c.JSON(200, gin.H{"status": "Action recorded", "action": req.Action})
+		c.JSON(200, gin.H{"status": "Action queued", "action": req.Action})
 	})
+
 
 	// --- AJUSTES DE USUARIO (WASABI) (V2.3.2) ---
 	

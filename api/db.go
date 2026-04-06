@@ -26,18 +26,26 @@ type AgentStatus struct {
 	LastSeen     time.Time `json:"last_sync"`
 	LastSeenUnix int64     `json:"last_seen_unix"`
 	OS           string    `json:"os"`
-	Containers   string    `json:"containers"` // Guardamos como JSON string
-	Explorer     string    `json:"explorer"`   // Guardamos como JSON string
-	Snapshots    string    `json:"snapshots"`  // JSON string de restic snapshots
+	Containers   string    `gorm:"type:text" json:"containers"` // Guardamos como JSON string
+	Explorer     string    `gorm:"type:text" json:"explorer"`   // Guardamos como JSON string
+	Snapshots    string    `gorm:"type:text" json:"snapshots"`  // JSON string de restic snapshots
+	FreeSpace    string    `json:"free_space"`                  // ej: "10GB"
+	TotalSpace   string    `json:"total_space"`                 // ej: "50GB"
 	Maintenance  bool      `json:"maintenance"`
 	PendingForce string    `json:"pending_force"` // "none", "selected", "full"
 	IsSyncing    bool      `json:"is_syncing"`
 	ActivePID    int       `json:"active_pid"`
 	KillSync     bool      `json:"kill_sync"`
+	CmdTask      string    `json:"cmd_task"`   // "ls_snapshot", "none"
+	CmdParam     string    `json:"cmd_param"`  // snapshot_id
+	CmdResult    string    `gorm:"type:text" json:"cmd_result"` // JSON output del comando
 	LastBackupAt time.Time `json:"last_backup_at"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
+
+
 
 
 
@@ -75,8 +83,11 @@ type BackupActivity struct {
 	SizeMB       int       `json:"size_mb"`
 	DurationSecs int       `json:"duration_secs"`
 	Message      string    `json:"message"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
 	CreatedAt    time.Time `json:"timestamp"`
 }
+
 
 // InitDB inicializa la conexión a PostgreSQL y realiza las migraciones
 

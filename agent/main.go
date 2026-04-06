@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
+
 
 
 
@@ -106,9 +109,51 @@ func main() {
 		}
 
 		// 4. Reportar Heartbeat
-		maint, force, kill, errHeart := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
+		free, total := GetDiskCapacity()
+		maint, taskInfo, kill, errHeart := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
 		if errHeart != nil {
 			fmt.Printf("[WARNING] Heartbeat failed: %v\n", errHeart)
+		}
+
+
+		// V4.2.4: Manejo de Tareas Remotas (Comandos desde el API)
+		if strings.HasPrefix(taskInfo, "ls_snapshot:") {
+			snapID := strings.TrimPrefix(taskInfo, "ls_snapshot:")
+			fmt.Printf("[TASK] Executing remote directory listing for snapshot: %s\n", snapID)
+			
+			// Ejecutar 'ls' y reportar resultado
+			lsResult := GetSnapshotContentJSON(snapID, repo, pass, key, secret)
+			ReportTaskResult(agentID, "ls_snapshot", string(lsResult))
+			
+			fmt.Println("[TASK] Snapshot listing completed and reported to Control Plane.")
+		}
+
+		if strings.HasPrefix(taskInfo, "restore:") {
+			params := strings.TrimPrefix(taskInfo, "restore:")
+			parts := strings.Split(params, "|")
+			if len(parts) >= 2 {
+				snapID := parts[0]
+				dest := parts[1]
+				var paths []string
+				if len(parts) > 2 && parts[2] != "" {
+					paths = strings.Split(parts[2], ",")
+				}
+				
+				fmt.Printf("[TASK] Executing remote restoration of %s to %s\n", snapID, dest)
+				errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret)
+				
+				resMsg := "Success"
+				if errR != nil {
+					resMsg = "Error: " + errR.Error()
+				}
+				ReportTaskResult(agentID, "restore", resMsg)
+			}
+		}
+
+
+		force := "none"
+		if !strings.Contains(taskInfo, ":") {
+			force = taskInfo
 		}
 
 		if kill && IsSyncing && ActivePID > 0 {
@@ -175,34 +220,42 @@ func main() {
 
 			fmt.Printf("[BACKUP] Targets Resolved: %v\n", currentPaths)
 
-			// ASYNC BACKUP (V3.6.1)
+			// ASYNC BACKUP (V4.1.1: Precise Timing)
 			go func(paths []string, r, p, k, s string) {
+				startedAt := time.Now().Unix()
 				IsSyncing = true
-				// Reportar inicio inmediato
-				ReportHeartbeat(agentID, containerNames, explorerData, snapshots, true, os.Getpid(), lastBackupUnix)
-
+				
+				// Corregido: Pasar free/total a ReportHeartbeat dentro del worker (V4.5.5)
+				f, t := GetDiskCapacity()
+				ReportHeartbeat(agentID, containerNames, explorerData, nil, true, ActivePID, lastBackupUnix, f, t)
+				
 				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s)
 				IsSyncing = false
 				
+				finishedAt := time.Now().Unix()
+				duration := int(finishedAt - startedAt)
+
 				status := "SUCCESS"
 				if errB != nil {
 					status = "ERROR"
 					fmt.Printf("[ASYNC ERROR] Backup failed: %v\n", errB)
 				} else {
-					lastBackupUnix = time.Now().Unix()
-					fmt.Printf("[ASYNC] Backup finished successfully. ID: %s | Size: %d bytes\n", snapID, bytesProcessed)
+					lastBackupUnix = finishedAt
+					fmt.Printf("[ASYNC] Backup finished successfully. ID: %s | Duration: %ds\n", snapID, duration)
 				}
 
 				// Reportar métricas reales al Control Plane
 				ReportMetrics(BackupMetrics{
 					AgentID:      agentID,
 					Status:       status,
-					Timestamp:    time.Now().Unix(),
+					StartedAt:    startedAt,
+					Timestamp:    finishedAt,
 					SnapshotID:   snapID,
 					TotalSizeMB:  int(bytesProcessed / (1024 * 1024)),
-					DurationSecs: 0,
+					DurationSecs: duration,
 				})
 			}(currentPaths, repo, pass, key, secret)
+
 		} else {
 			if force == "none" || force == "" {
 				fmt.Printf("[IDLE] Waiting for schedule (%s)... Last backup: %s\n", 
@@ -213,3 +266,33 @@ func main() {
 		time.Sleep(60 * time.Second)
 	}
 }
+
+// GetDiskCapacity obtiene el espacio libre y total del host (/host_root) (V4.5.5)
+func GetDiskCapacity() (string, string) {
+	// Usamos df -k y parseamos la salida del punto de montaje /host_root
+	cmd := exec.Command("df", "-k", "/host_root") // -k para kilobytes (más preciso de parsear)
+	output, err := cmd.Output()
+	if err != nil {
+		fmt.Printf("[DISK ERROR] Failed to run df: %v\n", err)
+		return "unknown", "unknown"
+	}
+
+	lines := strings.Split(string(output), "\n")
+	if len(lines) < 2 {
+		return "unknown", "unknown"
+	}
+
+	fields := strings.Fields(lines[1])
+	if len(fields) < 4 {
+		return "unknown", "unknown"
+	}
+
+	totalK, _ := strconv.ParseFloat(fields[1], 64)
+	freeK, _ := strconv.ParseFloat(fields[3], 64)
+
+	totalGB := totalK / (1024 * 1024)
+	freeGB := freeK / (1024 * 1024)
+
+	return fmt.Sprintf("%.1fGB", freeGB), fmt.Sprintf("%.1fGB", totalGB)
+}
+

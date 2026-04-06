@@ -7,8 +7,10 @@ type BackupCompletePayload struct {
 	TotalSizeMB  int    `json:"total_size_mb"`
 	DurationSecs int    `json:"duration_secs"`
 	SnapshotID   string `json:"snapshot_id"`
-	Timestamp    int64  `json:"timestamp"`
+	Timestamp    int64  `json:"timestamp"` // finished_at
+	StartedAt    int64  `json:"started_at"`
 }
+
 
 // HeartbeatPayload mapea el JSON del chequeo periódico de estado
 type HeartbeatPayload struct {
@@ -16,6 +18,8 @@ type HeartbeatPayload struct {
 	OS           string              `json:"os"`
 	Containers   []string            `json:"containers"`
 	ExplorerData map[string][]string `json:"explorer_data"`
+	FreeSpace    string              `json:"free_space"`
+	TotalSpace   string              `json:"total_space"`
 }
 
 // UserSettingsPayload mapea el JSON de configuración de Wasabi

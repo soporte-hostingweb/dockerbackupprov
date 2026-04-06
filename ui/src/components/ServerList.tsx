@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp } from "lucide-react";
+import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+
 
 import FileExplorer from "./FileExplorer";
 
@@ -191,11 +192,19 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       </button>
                     )}
                     
-                    <div className="hidden lg:flex flex-col items-end">
-                      <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Services Discovery</span>
-                      <span className="text-xl font-bold text-white">{data.containers?.length || 0}</span>
+                    <div className="flex flex-col items-center">
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           if (onRestore) onRestore(id, data.snapshots || []);
+                         }}
+                         className="flex flex-col items-center px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl group/btn transition-all animate-in zoom-in duration-300"
+                       >
+                         <RotateCcw className="h-5 w-5 text-blue-500 mb-1 group-hover/btn:rotate-[-45deg] transition-transform" />
+                         <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Restore Wizard</span>
+                       </button>
                     </div>
-                    
+
                     <div className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest border uppercase ${
                       isOffline 
                       ? 'bg-red-950/20 text-red-500 border-red-900/50'

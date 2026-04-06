@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"runtime"
 )
+
 
 // BackupMetrics representa el payload de telemetría a enviar al Control Plane
 type BackupMetrics struct {
@@ -18,8 +20,10 @@ type BackupMetrics struct {
 	UploadSpeedKbps  int    `json:"upload_speed_kbps"`
 	DurationSecs     int    `json:"duration_secs"`
 	SnapshotID       string `json:"snapshot_id"`
-	Timestamp        int64  `json:"timestamp"`
+	Timestamp        int64  `json:"timestamp"` // finished_at
+	StartedAt        int64  `json:"started_at"`
 }
+
 
 
 // HeartbeatPayload para enviar la lista de contenedores y estado del sistema
@@ -68,25 +72,38 @@ func ReportMetrics(metrics BackupMetrics) {
 	fmt.Printf("[API] Metrics sent to %s. Status: %s\n", url, resp.Status)
 }
 
-// ReportHeartbeat envía el estado pasivo del servidor y recibe instrucciones (maintenance, force, kill)
-func ReportHeartbeat(agentID string, containers []string, explorerData map[string][]string, snapshots []interface{}, syncing bool, pid int, lastBackup int64) (bool, string, bool, error) {
+// ReportHeartbeat envía el estado del agente y recibe órdenes (V4.5.5)
+func ReportHeartbeat(agentID string, containers []string, explorer map[string][]string, snapshots []interface{}, syncing bool, activePID int, lastBackupAt int64, freeSpace string, totalSpace string) (bool, string, bool, error) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
 	}
+
 	url := fmt.Sprintf("%s/v1/agent/heartbeat", apiEndpoint)
-
-	payloadObj := HeartbeatPayload{
-		AgentID:        agentID,
-		Containers:     containers,
-		ExplorerData:   explorerData,
-		Snapshots:      snapshots,
-		OS:             "Linux (Docker)",
-		IsSyncing:      syncing,
-		ActivePID:      pid,
-		LastBackupUnix: lastBackup,
+	
+	payloadObj := struct {
+		AgentID      string                 `json:"agent_id"`
+		Containers   []string               `json:"containers"`
+		ExplorerData map[string][]string    `json:"explorer_data"`
+		Snapshots    []interface{}          `json:"snapshots"`
+		FreeSpace    string                 `json:"free_space"`
+		TotalSpace   string                 `json:"total_space"`
+		OS           string                 `json:"os"`
+		IsSyncing    bool                   `json:"is_syncing"`
+		ActivePID    int                    `json:"active_pid"`
+		LastBackupAt int64                  `json:"last_backup_unix"`
+	}{
+		AgentID:      agentID,
+		Containers:   containers,
+		ExplorerData: explorer,
+		Snapshots:    snapshots,
+		FreeSpace:    freeSpace,
+		TotalSpace:   totalSpace,
+		OS:           runtime.GOOS,
+		IsSyncing:    syncing,
+		ActivePID:    activePID,
+		LastBackupAt: lastBackupAt,
 	}
-
 
 	payload, _ := json.Marshal(payloadObj)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
@@ -110,9 +127,18 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 		Maintenance  bool   `json:"maintenance"`
 		PendingForce string `json:"pending_force"`
 		KillSync     bool   `json:"kill_sync"`
+		CmdTask      string `json:"cmd_task"`
+		CmdParam     string `json:"cmd_param"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return false, "none", false, err
+	}
+
+	// Hot-Fix: Si hay una tarea de comando, la devolvemos al ciclo principal (Simplificado para V4.2.4)
+	if result.CmdTask != "" && result.CmdTask != "none" {
+		fmt.Printf("[TASK] Received remote command: %s (%s)\n", result.CmdTask, result.CmdParam)
+		// Aquí podríamos usar un canal, pero por ahora devolvemos el nombre de la tarea en un string
+		return result.Maintenance, result.CmdTask + ":" + result.CmdParam, result.KillSync, nil
 	}
 
 	fmt.Printf("[API] Heartbeat (ID: %s, Syncing: %v) sent. Maint: %v, Force: %s, Kill: %v\n", 
@@ -120,6 +146,34 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 	
 	return result.Maintenance, result.PendingForce, result.KillSync, nil
 }
+
+// ReportTaskResult envía el resultado de un comando (ej: ls snapshot) al Control Plane (V4.2.4)
+func ReportTaskResult(agentID string, task string, result string) {
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" {
+		apiEndpoint = "https://api.hwperu.com"
+	}
+	url := fmt.Sprintf("%s/v1/agent/task/result", apiEndpoint)
+	
+	payloadObj := struct {
+		AgentID string `json:"agent_id"`
+		Task    string `json:"task"`
+		Result  string `json:"result"`
+	}{
+		AgentID: agentID,
+		Task:    task,
+		Result:  result,
+	}
+
+	payload, _ := json.Marshal(payloadObj)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+	
+	client := &http.Client{Timeout: 30 * time.Second} // El 'ls' puede ser lento
+	_, _ = client.Do(req)
+}
+
 
 
 

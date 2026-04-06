@@ -10,8 +10,11 @@ interface BackupActivity {
   snapshot_id: string;
   size_mb: number;
   duration_secs: number;
+  started_at: string;
+  finished_at: string;
   timestamp: string;
 }
+
 
 export default function HistoryPage() {
   const searchParams = useSearchParams();
@@ -37,6 +40,16 @@ export default function HistoryPage() {
     }
     fetchHistory();
   }, [sso]);
+
+  const formatDuration = (secs: number) => {
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    const s = secs % 60;
+    if (mins < 60) return `${mins}m ${s}s`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}h ${m}m`;
+  };
 
   return (
     <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
@@ -66,10 +79,10 @@ export default function HistoryPage() {
            <table className="w-full text-left border-collapse">
               <thead>
                  <tr className="bg-black/40 border-b border-gray-900">
-                    <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest">Timestamp</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest">Timing (Start ▶ Finish)</th>
                     <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest">Source Agent</th>
                     <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest">Snapshot ID</th>
-                    <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Size</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Size / Duration</th>
                     <th className="px-6 py-5 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Status</th>
                  </tr>
               </thead>
@@ -78,8 +91,17 @@ export default function HistoryPage() {
                     <tr key={act.id} className="hover:bg-emerald-500/[0.02] transition-colors group">
                        <td className="px-6 py-4">
                           <div className="flex flex-col">
-                             <span className="text-xs text-gray-300 font-bold">{new Date(act.timestamp).toLocaleDateString()}</span>
-                             <span className="text-[10px] text-gray-600 font-mono italic">{new Date(act.timestamp).toLocaleTimeString()}</span>
+                             <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 font-bold">START:</span>
+                                <span className="text-xs text-gray-300 font-bold">{new Date(act.started_at || act.timestamp).toLocaleTimeString()}</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 font-bold">END:</span>
+                                <span className="text-xs text-emerald-500 font-bold">{new Date(act.finished_at || act.timestamp).toLocaleTimeString()}</span>
+                             </div>
+                             <span className="text-[9px] text-gray-600 mt-1 font-black uppercase tracking-widest">
+                                {new Date(act.timestamp).toLocaleDateString()}
+                             </span>
                           </div>
                        </td>
                        <td className="px-6 py-4">
@@ -98,7 +120,12 @@ export default function HistoryPage() {
                        <td className="px-6 py-4 text-center">
                           <div className="flex flex-col items-center">
                             <span className="text-xs font-bold text-gray-300 italic">{act.size_mb > 0 ? `${act.size_mb} MB` : 'Incremental'}</span>
-                            <span className="text-[9px] text-gray-600 uppercase font-bold tracking-tighter">{act.duration_secs}s elapsed</span>
+                            <div className="flex items-center gap-1.5 mt-1">
+                               <Clock size={10} className="text-gray-500" />
+                               <span className="text-[9px] text-gray-500 uppercase font-black tracking-tighter">
+                                  {formatDuration(act.duration_secs)} elapsed
+                               </span>
+                            </div>
                           </div>
                        </td>
                        <td className="px-6 py-4">
@@ -122,5 +149,6 @@ export default function HistoryPage() {
       )}
     </div>
   );
+
 }
 
