@@ -524,8 +524,15 @@ func main() {
 			})
 		}
 
+		// V4.5.8: PERSISTIR CAMBIOS (Crítico para que el heartbeat los detecte)
+		if err := DB.Save(&agent).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Failed to persist action"})
+			return
+		}
+
 		c.JSON(200, gin.H{"status": "Action queued", "action": req.Action})
 	})
+
 
 
 	// --- AJUSTES DE USUARIO (WASABI) (V2.3.2) ---
