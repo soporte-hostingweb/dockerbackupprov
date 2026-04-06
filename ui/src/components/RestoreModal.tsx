@@ -135,6 +135,17 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
     fetchSnapshotContent(selectedSnapshot.id, newPath);
   };
 
+  // Helper para limpiar nombres técnicos (V4.6.7)
+  const formatDisplayName = (path: string, name: string) => {
+    let clean = name || path.split('/').pop() || "";
+    // Eliminar prefijos técnicos comunes que confunden al usuario
+    clean = clean.replace(/^\/host_root\//i, "");
+    clean = clean.replace(/^host_root\//i, "");
+    clean = clean.replace(/^\/HOST_ROOT\//i, "");
+    clean = clean.replace(/^HOST_ROOT\//i, "");
+    return clean.toUpperCase();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-500">
       <div className="bg-gray-950 border border-gray-900 w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
@@ -148,7 +159,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
              <div>
                 <h3 className="text-lg font-black text-white uppercase italic">Restore Wizard Pro</h3>
                 <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/10">V4.6.5 OPTIMIZED</span>
+                    <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/10">V4.6.7 OPTIMIZED</span>
                     <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{agentId}</span>
                 </div>
              </div>
@@ -213,86 +224,110 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
             </div>
           )}
 
-          {/* STEP 2: DYNAMIC EXPLORER (V4.6.5 Lazy Loading) */}
+          {/* STEP 2: DYNAMIC EXPLORER (V4.6.7 Estetica Screenshot) */}
           {step === 2 && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setStep(1)} className="text-[10px] text-gray-500 font-black uppercase tracking-widest hover:text-white flex items-center gap-1 transition-colors">
-                            ← Inicio
-                        </button>
-                        {currentPath && (
-                            <>
-                                <span className="text-gray-800">/</span>
-                                <button onClick={navigateBack} className="text-[10px] text-blue-500 font-black uppercase tracking-widest hover:text-white transition-colors">
-                                    .. VOLVER
-                                </button>
-                            </>
-                        )}
+                <div className="flex justify-between items-center bg-gray-900/30 p-4 rounded-3xl border border-gray-900">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500 border border-blue-500/20">
+                            <Database size={16} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setStep(1)} className="text-[10px] text-gray-500 font-black uppercase tracking-widest hover:text-white transition-colors">
+                                {agentId.toUpperCase()}
+                            </button>
+                            <span className="text-gray-700">/</span>
+                            <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest italic">{currentPath || "ROOT"}</span>
+                        </div>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={selectAll} className="text-[9px] px-3 py-1 bg-gray-900 text-gray-400 border border-gray-800 rounded-full hover:bg-blue-500/10 hover:text-blue-500 transition-all font-black uppercase">Select All</button>
-                        <button onClick={clearSelection} className="text-[9px] px-3 py-1 bg-gray-900 text-gray-400 border border-gray-800 rounded-full hover:bg-red-500/10 hover:text-red-500 transition-all font-black uppercase">Clear</button>
+                        <button onClick={selectAll} className="text-[9px] px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all font-black uppercase">SELECT ALL</button>
+                        <button onClick={clearSelection} className="text-[9px] px-3 py-1 bg-gray-800 text-gray-400 border border-gray-700 rounded-lg hover:bg-white/5 hover:text-white transition-all font-black uppercase">CLEAR</button>
                     </div>
                 </div>
 
-                <div className="space-y-2">
-                    <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2 italic">
-                        <Folder size={14} className="text-emerald-500" />
-                        {currentPath || "/"}
-                    </h4>
-                </div>
+                {currentPath && (
+                    <button onClick={navigateBack} className="flex items-center gap-2 text-[10px] text-gray-500 font-black uppercase hover:text-blue-400 transition-colors ml-2">
+                        ← .. VOLVER ATRÁS
+                    </button>
+                )}
 
-                {/* File List */}
-                <div className="bg-black/30 border border-gray-900 rounded-[2rem] overflow-hidden max-h-[35vh] flex flex-col relative">
+                {/* Lista de Archivos estilo Imagen 2 */}
+                <div className="flex flex-col gap-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 relative">
                     {isLodingContent && (
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex items-center justify-center">
-                            <Activity size={24} className="text-blue-500 animate-spin" />
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-20 flex items-center justify-center rounded-3xl">
+                            <Activity size={32} className="text-blue-500 animate-spin" />
                         </div>
                     )}
-                    <div className="overflow-y-auto custom-scrollbar flex-1">
-                        {explorerContent.map((item: any, idx: number) => {
-                            const path = item.path;
-                            const isDir = item.type === "dir";
-                            const cleanName = item.name;
-                            const isSelected = selectedPaths.includes(path);
-                            
-                            return (
-                                <div key={idx} className="flex items-center justify-between p-4 px-6 border-b border-gray-900/50 group hover:bg-emerald-500/[0.03] transition-all">
-                                    <div 
-                                        className="flex items-center gap-4 flex-1 cursor-pointer"
-                                        onClick={() => isDir ? fetchSnapshotContent(selectedSnapshot.id, path) : togglePath(path)}
-                                    >
-                                        <div className={`p-2 rounded-xl ${isDir ? 'bg-emerald-500/10 text-emerald-500/60' : 'bg-gray-800 text-gray-500'} group-hover:scale-110 transition-transform`}>
-                                            {isDir ? <Folder size={16} /> : <FileText size={16} />}
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className={`text-xs font-bold uppercase tracking-tighter ${isDir ? 'text-blue-400' : 'text-gray-200'}`}>
-                                                {cleanName} {isDir && "→"}
+                    
+                    {explorerContent.length === 0 && !isLodingContent && (
+                         <div className="p-12 text-center border-2 border-dashed border-gray-900 rounded-3xl">
+                            <p className="text-[10px] text-gray-600 font-black uppercase italic">Carpeta Vacía</p>
+                         </div>
+                    )}
+
+                    {explorerContent.map((item: any, idx: number) => {
+                        const path = item.path;
+                        const isDir = item.type === "dir";
+                        const isSelected = selectedPaths.includes(path);
+                        const displayName = formatDisplayName(path, item.name);
+                        
+                        return (
+                            <div 
+                                key={idx} 
+                                className={`flex items-center justify-between p-4 bg-gray-900/40 border rounded-[1.5rem] transition-all group ${isSelected ? 'border-emerald-500/40 bg-emerald-500/[0.02]' : 'border-gray-900 hover:border-gray-800'}`}
+                            >
+                                <div 
+                                    className="flex items-center gap-4 flex-1 cursor-pointer"
+                                    onClick={() => isDir ? fetchSnapshotContent(selectedSnapshot.id, path) : togglePath(path)}
+                                >
+                                    <div className={`p-3 rounded-2xl ${isDir ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-500'} group-hover:scale-105 transition-transform`}>
+                                        {isDir ? <Folder size={18} /> : <FileText size={18} />}
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center gap-2">
+                                            {isDir && item.path.includes("Volume") && <span className="text-[9px] text-emerald-500 font-black italic">ROOT</span>}
+                                            <span className={`text-[13px] font-black uppercase italic tracking-tighter ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                                                {displayName} {isDir && "→"}
                                             </span>
-                                            {item.size > 0 && <span className="text-[9px] text-gray-600 font-mono">{(item.size / 1024).toFixed(1)} KB</span>}
+                                        </div>
+                                        <div className="flex items-center gap-1 mt-0.5">
+                                            <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">Host:</span>
+                                            <span className="text-[9px] text-gray-700 font-mono italic truncate max-w-[200px]">{path}</span>
                                         </div>
                                     </div>
-                                    <button 
-                                        onClick={() => togglePath(path)}
-                                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 border-emerald-400' : 'bg-gray-900 border-gray-800'}`}
-                                    >
-                                        {isSelected && <ShieldCheck size={14} className="text-white" />}
-                                    </button>
                                 </div>
-                            );
-                        })}
-                    </div>
+
+                                <button 
+                                    onClick={() => togglePath(path)}
+                                    className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-lg shadow-emerald-950/20' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
+                                >
+                                    {isSelected ? <ShieldCheck size={18} className="text-white" /> : <div className="w-4 h-4" />}
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
 
-                <button 
-                   onClick={() => setStep(3)} 
-                   disabled={selectedPaths.length === 0}
-                   className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-900 disabled:text-gray-700 text-white font-black uppercase text-xs py-5 rounded-3xl transition-all shadow-xl shadow-emerald-950/40 flex items-center justify-center gap-3 active:scale-[0.98]"
-                >
-                    <FolderInput size={18} />
-                    LOCK SELECTION ({selectedPaths.length})
-                </button>
+                {/* Footer del Paso 2 idéntico a Imagen 2 */}
+                <div className="flex items-center justify-between pt-4 border-t border-gray-900 mt-2">
+                    <div className="flex items-center gap-2 ml-2">
+                        <div className="w-5 h-5 bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-500">
+                             <ShieldCheck size={12} />
+                        </div>
+                        <span className="text-[10px] text-emerald-500 font-black uppercase italic tracking-widest">
+                            {selectedPaths.length} TARGETS READY
+                        </span>
+                    </div>
+
+                    <button 
+                       onClick={() => setStep(3)} 
+                       disabled={selectedPaths.length === 0}
+                       className="bg-[#059669] hover:bg-[#10b981] disabled:bg-gray-900 disabled:text-gray-700 text-white font-black uppercase text-xs px-10 py-5 rounded-2xl transition-all shadow-xl active:scale-[0.98] flex items-center gap-3"
+                    >
+                        LOCK SELECTION
+                    </button>
+                </div>
             </div>
           )}
 
@@ -300,7 +335,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
           {step === 3 && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
                 <button onClick={() => setStep(2)} className="text-[10px] text-gray-500 font-black uppercase tracking-widest hover:text-white flex items-center gap-1 transition-colors">
-                    ← Volver al Explorador
+                    ← VOLVER AL EXPLORADOR
                 </button>
 
                 <div className="space-y-4">
@@ -318,13 +353,13 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                    <div className="space-y-2">
                         <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1 italic flex items-center gap-2">
                             <FolderInput size={12} className="text-emerald-500" />
-                            Ruta de Destino
+                            Ruta de Destino en Servidor
                         </label>
                         <input 
                           type="text" 
                           value={restorePath} 
                           onChange={(e) => setRestorePath(e.target.value)}
-                          className="w-full bg-black/40 border border-gray-800 rounded-2xl px-6 py-4 text-xs text-white focus:border-emerald-500 outline-none font-mono tracking-widest"
+                          className="w-full bg-black/40 border border-gray-800 rounded-2xl px-6 py-5 text-xs text-white focus:border-blue-500 outline-none font-mono tracking-widest"
                           placeholder="/restore_data"
                         />
                    </div>
@@ -332,7 +367,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                    <button 
                     onClick={handleRestore}
                     disabled={loading}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase text-xs py-5 rounded-3xl transition-all shadow-xl shadow-blue-950/40 flex items-center justify-center gap-3 active:scale-[0.98]"
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase text-xs py-6 rounded-3xl transition-all shadow-xl shadow-blue-950/40 flex items-center justify-center gap-3 active:scale-[0.98]"
                    >
                     {loading ? <Activity className="animate-spin" size={18} /> : <ShieldCheck size={18} />}
                     {loading ? 'Sincronizando...' : 'INICIAR RESTAURACIÓN'}
