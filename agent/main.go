@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 )
 
+
+var IsSyncing bool = false
+var ActivePID int = 0
+
 func main() {
+
 	fmt.Println("🚀 Docker Backup Pro Agent Starting...")
 	
 	// Cargar persistencia si existe (V2.4)
