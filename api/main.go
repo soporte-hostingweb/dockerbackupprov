@@ -10,7 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
+
 
 const Version = "V2.7.2"
 
@@ -489,6 +494,68 @@ func main() {
 
 		c.JSON(200, settings)
 	})
+
+	// Endpoint de Prueba de Conexión Wasabi (V2.8)
+	v1User.POST("/test-wasabi", func(c *gin.Context) {
+		var input UserSettings
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid input"})
+			return
+		}
+
+		// Validaciones básicas
+		if input.WasabiKey == "" || input.WasabiSecret == "" || input.WasabiBucket == "" {
+			c.JSON(400, gin.H{"error": "Missing key, secret or bucket"})
+			return
+		}
+
+		region := input.WasabiRegion
+		if region == "" { region = "us-east-1" }
+		
+		endpoint := "s3.wasabisys.com"
+		if region != "us-east-1" {
+			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
+		}
+
+		// Configurar Sesión S3 para Wasabi (V2.8)
+		s3Config := &aws.Config{
+			Credentials:      credentials.NewStaticCredentials(input.WasabiKey, input.WasabiSecret, ""),
+			Endpoint:         aws.String(fmt.Sprintf("https://%s", endpoint)),
+			Region:           aws.String(region),
+			S3ForcePathStyle: aws.Bool(true), // Wasabi prefiere Path Style
+		}
+
+		sess, err := session.NewSession(s3Config)
+		if err != nil {
+			c.JSON(200, gin.H{"success": false, "error": fmt.Sprintf("Session Failed: %v", err)})
+			return
+		}
+
+		svc := s3.New(sess)
+		
+		fmt.Printf("[TEST] Testing Wasabi for bucket: %s (%s)...\n", input.WasabiBucket, region)
+
+		// 1. Probar ListBucket (Verifica existencia y permisos base)
+		_, err = svc.ListObjectsV2(&s3.ListObjectsV2Input{
+			Bucket:  aws.String(input.WasabiBucket),
+			MaxKeys: aws.Int64(1),
+		})
+
+		if err != nil {
+			c.JSON(200, gin.H{
+				"success": false, 
+				"error": fmt.Sprintf("S3 Check Failed: %v", err),
+				"details": "Check if your Key/Secret are correct and have 'ListBucket' permission on this bucket.",
+			})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"success": true, 
+			"message": "Connection Successful! API can communicate with this Wasabi bucket.",
+		})
+	})
+
 
 
 	// --- DIAGNÓSTICOS ---

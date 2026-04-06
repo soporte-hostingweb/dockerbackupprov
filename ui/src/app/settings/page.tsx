@@ -17,6 +17,9 @@ export default function SettingsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{success: boolean, message?: string, error?: string, details?: string} | null>(null);
+
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -46,6 +49,27 @@ export default function SettingsPage() {
     fetchGlobalSettings();
   }, [isAdmin, sso]);
 
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const resp = await fetch("https://api.hwperu.com/v1/user/test-wasabi", {
+        method: "POST",
+        headers: { 
+          "Authorization": sso || "",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(settings)
+      });
+      const data = await resp.json();
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({ success: false, error: "Network or API failure during test." });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const saveGlobal = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -67,6 +91,7 @@ export default function SettingsPage() {
       setSaving(false);
     }
   };
+
 
   if (!isAdmin) {
     return <div className="p-20 text-center text-red-500 font-black uppercase italic">Access Denied: Admin privileges required.</div>;
@@ -149,13 +174,33 @@ export default function SettingsPage() {
                 />
              </div>
 
-             <button 
-               type="submit" disabled={saving}
-               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl shadow-xl shadow-emerald-900/40 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-             >
-                <Save size={16} />
-                {saving ? 'UPDATING GLOBAL FABRIC...' : 'SAVE MASTER CONFIGURATION'}
-             </button>
+              {testResult && (
+                <div className={`p-4 rounded-xl border text-[11px] leading-relaxed animate-in zoom-in duration-300 ${testResult.success ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                   <p className="font-black uppercase mb-1">{testResult.success ? 'Success' : 'Connection Error'}</p>
+                   <p>{testResult.message || testResult.error}</p>
+                   {testResult.details && <p className="mt-2 text-gray-500 italic opacity-80">{testResult.details}</p>}
+                </div>
+              )}
+
+              <div className="flex gap-4">
+                <button 
+                  type="button" disabled={testing}
+                  onClick={handleTest}
+                  className="flex-1 bg-gray-900 hover:bg-gray-800 text-gray-400 font-black uppercase text-xs py-4 rounded-2xl border border-gray-800 transition-all flex items-center justify-center gap-2"
+                >
+                    <Cloud size={16} className={testing ? 'animate-pulse' : ''} />
+                    {testing ? 'PINGING WASABI...' : 'TEST CONNECTION'}
+                </button>
+
+                <button 
+                  type="submit" disabled={saving}
+                  className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl shadow-xl shadow-emerald-900/40 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                    <Save size={16} />
+                    {saving ? 'UPDATING GLOBAL FABRIC...' : 'SAVE MASTER CONFIGURATION'}
+                </button>
+              </div>
+
           </form>
       </div>
     </div>
