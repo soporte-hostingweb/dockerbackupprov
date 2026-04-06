@@ -34,12 +34,14 @@ func main() {
 		for _, name := range containerNames {
 			if name == "dbp-client-agent" { continue }
 			
-			volPath := fmt.Sprintf("/var/lib/docker/volumes/%s/_data", name)
+			// V3.7.2: Prefijar con /host_root para acceder a los volúmenes del host desde el contenedor
+			volPath := fmt.Sprintf("/host_root/var/lib/docker/volumes/%s/_data", name)
 			if info, err := os.Stat(volPath); err == nil && info.IsDir() {
 				backupPaths = append(backupPaths, volPath)
 				subfolders := ScanVolumeFolders(volPath)
 				explorerData[name] = append(explorerData[name], subfolders...)
 			} else {
+				// Otros esquemas comunes (V2.9)
 				hostPath := fmt.Sprintf("/host_root/root/docker/%s", name)
 				if info, err := os.Stat(hostPath); err == nil && info.IsDir() {
 					backupPaths = append(backupPaths, hostPath)
@@ -48,6 +50,7 @@ func main() {
 				}
 			}
 		}
+
 
 		// 1. Obtener Configuración Primaria (V3.4.2)
 		fmt.Printf("[CONFIG] Fetching policy for agent %s...\n", agentID)
