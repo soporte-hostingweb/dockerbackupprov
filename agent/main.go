@@ -12,8 +12,10 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
+
 
 var (
 	IsSyncing bool
@@ -42,7 +44,12 @@ func main() {
 
 	ctx := context.Background()
 
+	// 1. Identidad Persistente (V2.4)
+	agentID := getPersistentID()
+	fmt.Printf("[BOOT] Agent Identity: %s\n", agentID)
+
 	// Ciclo Infinito de Escaneo y Reporte (Cada 1 Minuto)
+
 	fmt.Println("[INFO] Agent entering long-running heartbeat mode...")
 	for {
 		fmt.Printf("\n--- [CYCLE START: %s] ---\n", time.Now().Format(time.RFC1123))
@@ -61,17 +68,13 @@ func main() {
 		explorerData := make(map[string][]string)
 
 		for _, c := range containers {
-			if len(c.Names) == 0 {
-				continue
-			}
-			name := c.Names[0][1:]
+			name := strings.TrimPrefix(c.Names[0], "/")
+			containerNames = append(containerNames, name)
 
 			// EXCLUIMOS EL PROPIO AGENTE
 			if name == "dbp-client-agent" {
 				continue
 			}
-
-			containerNames = append(containerNames, name)
 
 			inspect, err := cli.ContainerInspect(ctx, c.ID)
 			if err != nil {
@@ -120,9 +123,12 @@ func main() {
 		baseRepo := os.Getenv("RESTIC_REPOSITORY") 
 		
 		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
-		snapRaw := GetSnapshotsJSON(baseRepo)
+		
+		// V2.4: Intentamos obtener snapshots con el pass local si existe, pero daremos prioridad al del config luego
+		snapRaw := GetSnapshotsJSON(baseRepo, os.Getenv("RESTIC_PASSWORD"))
 		var snapshots []interface{}
 		json.Unmarshal(snapRaw, &snapshots)
+
 
 		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
 
@@ -165,12 +171,13 @@ func main() {
 			isolatedBucket = os.Getenv("RESTIC_REPOSITORY")
 		}
 		
-		// 3. Asegurar que el Repositorio esté inicializado antes de seguir (V2.3)
+		// 3. Asegurar que el Repositorio esté inicializado antes de seguir (V2.4)
 		if isolatedBucket != "" {
-			if err := EnsureResticRepo(isolatedBucket); err != nil {
+			if err := EnsureResticRepo(isolatedBucket, config.ResticPassword); err != nil {
 				fmt.Printf("[WARNING] Restic Repo ensure failed: %v\n", err)
 			}
 		}
+
 
 
 
@@ -216,9 +223,10 @@ func main() {
 			}
 			
 			IsSyncing = true
-			// Pasamos el bucket aislado específicamente para este comando
-			err = RunResticBackup(currentPaths, isolatedBucket)
+			// Pasamos el bucket aislado y la contraseña dinámica (V2.4)
+			err = RunResticBackup(currentPaths, isolatedBucket, config.ResticPassword)
 			IsSyncing = false
+
 
 			
 			if err == nil {
@@ -257,6 +265,32 @@ func main() {
 func containsString(str, substr string) bool {
 	return strings.Contains(strings.ToLower(str), strings.ToLower(substr))
 }
+
+// getPersistentID busca o genera un ID único que sobreviva a reinicios de contenedor (V2.4)
+func getPersistentID() string {
+	// Ruta en el HOST (mapeada vía volumen)
+	const idPath = "/host_root/etc/dbp_agent_id"
+	
+	// 1. Intentar leer ID existente
+	data, err := os.ReadFile(idPath)
+	if err == nil && len(strings.TrimSpace(string(data))) > 10 {
+		return strings.TrimSpace(string(data))
+	}
+
+	// 2. Si no existe, intentar generar uno basado en MachineID o Random
+	newID := uuid.New().String()[:12] // Usamos 12 caracteres para mantener estética
+	
+	// Intentar persistir en el host para la próxima vez
+	err = os.WriteFile(idPath, []byte(newID), 0644)
+	if err != nil {
+		fmt.Printf("[WARNING] Could not persist Agent ID to %s: %v. Identity will be volatile.\n", idPath, err)
+	} else {
+		fmt.Printf("[INFO] New Persistent ID generated and saved: %s\n", newID)
+	}
+
+	return newID
+}
+
 
 func ScanVolumeFolders(path string) []string {
 	var items []string

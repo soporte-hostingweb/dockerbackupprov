@@ -126,10 +126,11 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 
 // AgentConfigV2 contiene la respuesta extendida de la API (V2.3)
 type AgentConfigV2 struct {
-	Status      string   `json:"status"`
-	Paths       []string `json:"paths"`
-	Schedule    string   `json:"schedule"`
-	FullRepoURL string   `json:"full_repo_url"`
+	Status          string   `json:"status"`
+	Paths           []string `json:"paths"`
+	Schedule        string   `json:"schedule"`
+	FullRepoURL     string   `json:"full_repo_url"`
+	ResticPassword  string   `json:"restic_password"`
 }
 
 

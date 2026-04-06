@@ -143,29 +143,42 @@ func main() {
 		var settings UserSettings
 		DB.Where("token = ?", token).First(&settings)
 		
-		// Inyectamos la ruta aislada. Asumimos que settings.WasabiBucket ya tiene el protocolo s3:
+		// Descifrar contraseña de restic para el agente (V2.4)
+		resticPass, _ := Decrypt(settings.ResticPass)
+
+		// Inyectamos la ruta aislada. (V2.4: Manejo de campos vacíos)
+		region := settings.WasabiRegion
+		if region == "" { region = "us-east-1" }
+		
+		bucket := settings.WasabiBucket
+		if bucket == "" { bucket = "unconfigured" }
+
 		fullRepo := fmt.Sprintf("s3:%s.wasabisys.com/%s/%s/%s", 
-			settings.WasabiRegion, settings.WasabiBucket, token, agentID)
+			region, bucket, token, agentID)
 
 		if len(configs) == 0 {
 			c.JSON(200, gin.H{
-				"status":        "no_config", 
-				"paths":         []string{}, 
-				"schedule":      "daily_2am",
-				"full_repo_url": fullRepo,
+				"status":         "no_config", 
+				"paths":          []string{}, 
+				"schedule":       "daily_2am",
+				"full_repo_url":  fullRepo,
+				"restic_password": resticPass,
 			})
 			return
 		}
 
+
 		var paths []string
 		json.Unmarshal([]byte(configs[0].Paths), &paths)
 		c.JSON(200, gin.H{
-			"status":        "manual", 
-			"paths":         paths, 
-			"schedule":      configs[0].Schedule,
-			"full_repo_url": fullRepo,
+			"status":          "manual", 
+			"paths":           paths, 
+			"schedule":        configs[0].Schedule,
+			"full_repo_url":   fullRepo,
+			"restic_password": resticPass,
 		})
 	})
+
 
 	// Dashboard guarda la configuración
 	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
