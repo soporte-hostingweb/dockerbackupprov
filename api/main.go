@@ -100,10 +100,13 @@ func main() {
 				}
 			}
 
+			isOnline := (time.Now().Unix() - a.LastSeenUnix) < 25
+
 			resp[a.ID] = gin.H{
 				"agent_id":       a.ID,
 				"token":          a.Token,
 				"status":         a.Status,
+				"is_online":      isOnline,
 				"last_sync":      a.LastSeen.Format(time.RFC3339),
 				"last_seen_unix": a.LastSeenUnix,
 				"os":             a.OS,

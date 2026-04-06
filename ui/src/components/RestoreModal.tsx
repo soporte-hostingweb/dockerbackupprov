@@ -251,9 +251,8 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                         ← .. VOLVER ATRÁS
                     </button>
                 )}
-
-                {/* Lista de Archivos estilo Imagen 2 */}
-                <div className="flex flex-col gap-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 relative">
+                       {/* Lista de Archivos estilo Imagen 2 (V4.7.1 Grid 2 Columnas) */}
+                <div className="grid grid-cols-2 gap-3 max-h-[45vh] overflow-y-auto custom-scrollbar pr-2 relative p-1">
                     {isLodingContent && (
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-20 flex items-center justify-center rounded-3xl">
                             <Activity size={32} className="text-blue-500 animate-spin" />
@@ -261,7 +260,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                     )}
                     
                     {explorerContent.length === 0 && !isLodingContent && (
-                         <div className="p-12 text-center border-2 border-dashed border-gray-900 rounded-3xl">
+                         <div className="col-span-2 p-12 text-center border-2 border-dashed border-gray-900 rounded-3xl">
                             <p className="text-[10px] text-gray-600 font-black uppercase italic">Carpeta Vacía</p>
                          </div>
                     )}
@@ -275,35 +274,30 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                         return (
                             <div 
                                 key={idx} 
-                                className={`flex items-center justify-between p-4 bg-gray-900/40 border rounded-[1.5rem] transition-all group ${isSelected ? 'border-emerald-500/40 bg-emerald-500/[0.02]' : 'border-gray-900 hover:border-gray-800'}`}
+                                className={`flex items-center justify-between p-3 bg-gray-900/40 border rounded-2xl transition-all group cursor-pointer ${isSelected ? 'border-emerald-500/40 bg-emerald-500/[0.02]' : 'border-gray-900 hover:border-gray-800'}`}
+                                onClick={() => isDir ? fetchSnapshotContent(selectedSnapshot.id, path) : togglePath(path)}
                             >
-                                <div 
-                                    className="flex items-center gap-4 flex-1 cursor-pointer"
-                                    onClick={() => isDir ? fetchSnapshotContent(selectedSnapshot.id, path) : togglePath(path)}
-                                >
-                                    <div className={`p-3 rounded-2xl ${isDir ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-500'} group-hover:scale-105 transition-transform`}>
-                                        {isDir ? <Folder size={18} /> : <FileText size={18} />}
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className={`p-2 rounded-xl shrink-0 ${isDir ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-500'} group-hover:scale-105 transition-transform`}>
+                                        {isDir ? <Folder size={16} /> : <FileText size={16} />}
                                     </div>
-                                    <div className="flex flex-col">
-                                        <div className="flex items-center gap-2">
-                                            {isDir && item.path.includes("Volume") && <span className="text-[9px] text-emerald-500 font-black italic">ROOT</span>}
-                                            <span className={`text-[13px] font-black uppercase italic tracking-tighter ${isSelected ? 'text-white' : 'text-gray-300'}`}>
-                                                {displayName} {isDir && "→"}
+                                    <div className="flex flex-col min-w-0">
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            {isDir && item.path.includes("Volume") && <span className="text-[8px] text-emerald-500 font-black italic shrink-0">VOL</span>}
+                                            <span className={`text-[12px] font-black uppercase italic tracking-tighter truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                                                {displayName}
                                             </span>
                                         </div>
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                            <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">Host:</span>
-                                            <span className="text-[9px] text-gray-700 font-mono italic truncate max-w-[200px]">{path}</span>
-                                        </div>
+                                        <span className="text-[8px] text-gray-600 font-mono italic truncate opacity-40 group-hover:opacity-100 transition-opacity whitespace-nowrap overflow-hidden text-ellipsis">
+                                            {path}
+                                        </span>
                                     </div>
                                 </div>
-
-                                <button 
-                                    onClick={() => togglePath(path)}
-                                    className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-lg shadow-emerald-950/20' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
-                                >
-                                    {isSelected ? <ShieldCheck size={18} className="text-white" /> : <div className="w-4 h-4" />}
-                                </button>
+                                
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {isSelected && <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
+                                    {isDir && <ChevronRight size={14} className="text-gray-700 group-hover:text-blue-500" />}
+                                </div>
                             </div>
                         );
                     })}

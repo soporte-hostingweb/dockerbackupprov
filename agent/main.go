@@ -23,12 +23,14 @@ func main() {
 	agentID := GetPersistentID()
 	var lastBackupUnix int64 = 0
 
-	// Loop principal (V4.6.8: High-Frequency Heartbeat)
+	// Loop principal (V4.7.0: Zero-Latency Interactive)
+	var lastRepoCheck time.Time
+	var lastWizardActivity time.Time
+
 	for {
 		LogInfo("--- [CYCLE START] ---")
 
 		// 1. Obtener Configuración Primaria (V3.4.2)
-		// Lo hacemos al inicio para ver si hay tareas pendientes del Control Plane
 		config, errConfig := GetAgentConfig(agentID)
 		if errConfig != nil {
 			LogInfo("[ERROR] Could not fetch config: %v", errConfig)
@@ -49,42 +51,50 @@ func main() {
 			secret = os.Getenv("AWS_SECRET_ACCESS_KEY")
 		}
 
+		// 2.5 Validar/Inicializar repositorio (Optimizado V4.7.0: Cada 5 min)
+		if repo != "" && time.Since(lastRepoCheck) > 5*time.Minute {
+			LogInfo("[RESTIC] Validating S3 Wasabi Repository...")
+			if err := EnsureResticRepo(repo, pass, key, secret); err == nil {
+				lastRepoCheck = time.Now()
+			}
+		}
+
 		// 3. Reportar Heartbeat de INMEDIATO para recibir tareas (V4.6.8)
-		// En este primer heartbeat no enviamos snapshots pesados todavía, solo el estado básico
 		maint, taskInfo, kill, errHeart := ReportHeartbeat(agentID, nil, nil, nil, IsSyncing, ActivePID, lastBackupUnix, "", "")
 		if errHeart != nil {
 			LogInfo("[WARNING] Heartbeat failed: %v", errHeart)
 		}
 
 		// 4. PRIORIDAD: Procesar Tareas Remotas (Wizard / Restore)
-		if strings.HasPrefix(taskInfo, "ls_snapshot:") {
-			params := strings.TrimPrefix(taskInfo, "ls_snapshot:")
-			parts := strings.Split(params, "|")
-			snapID := parts[0]
-			path := ""
-			if len(parts) > 1 { path = parts[1] }
-
-			LogInfo("[TASK] Executing remote directory listing for snapshot %s (Path: %s)", snapID, path)
-			lsResult := GetSnapshotContentJSON(snapID, path, repo, pass, key, secret)
-			ReportTaskResult(agentID, "ls_snapshot", string(lsResult))
-			LogInfo("[TASK] Snapshot listing completed and reported.")
-		}
-
-		if strings.HasPrefix(taskInfo, "restore:") {
-			params := strings.TrimPrefix(taskInfo, "restore:")
-			parts := strings.Split(params, "|")
-			if len(parts) >= 2 {
-				snapID := parts[0]
-				dest := parts[1]
-				var paths []string
-				if len(parts) > 2 && parts[2] != "" { paths = strings.Split(parts[2], ",") }
-				
-				LogInfo("[TASK] Executing remote restoration of %s to %s", snapID, dest)
-				errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret)
-				resMsg := "Success"
-				if errR != nil { resMsg = "Error: " + errR.Error() }
-				ReportTaskResult(agentID, "restore", resMsg)
+		if strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") {
+			lastWizardActivity = time.Now() // V4.7.1: Marcar actividad para entrar en Modo Turbo
+			
+			if strings.HasPrefix(taskInfo, "ls_snapshot:") {
+				params := strings.TrimPrefix(taskInfo, "ls_snapshot:")
+				parts := strings.Split(params, "|")
+				snapID, path := parts[0], ""
+				if len(parts) > 1 { path = parts[1] }
+				LogInfo("[TASK] Executing remote directory listing for snapshot %s (Path: %s)", snapID, path)
+				lsResult := GetSnapshotContentJSON(snapID, path, repo, pass, key, secret)
+				ReportTaskResult(agentID, "ls_snapshot", string(lsResult))
+				LogInfo("[TASK] Snapshot listing completed and reported.")
 			}
+			if strings.HasPrefix(taskInfo, "restore:") {
+				params := strings.TrimPrefix(taskInfo, "restore:")
+				parts := strings.Split(params, "|")
+				if len(parts) >= 2 {
+					snapID, dest := parts[0], parts[1]
+					var paths []string
+					if len(parts) > 2 && parts[2] != "" { paths = strings.Split(parts[2], ",") }
+					LogInfo("[TASK] Executing remote restoration of %s to %s", snapID, dest)
+					errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret)
+					resMsg := "Success"
+					if errR != nil { resMsg = "Error: " + errR.Error() }
+					ReportTaskResult(agentID, "restore", resMsg)
+					lastWizardActivity = time.Time{} // Resetear turbo tras restore
+				}
+			}
+			continue
 		}
 
 		// 5. Descubrimiento y Mantenimiento si no hay tareas críticas
@@ -94,7 +104,17 @@ func main() {
 			continue
 		}
 
-		// Descubrimiento de contenedores
+		// V4.7.1: MODO TURBO - Si hay actividad reciente del Wizard, omitimos el pesado proceso de discovery
+		if time.Since(lastWizardActivity) < 30*time.Second {
+			LogInfo("[TURBO] Skipping heavy discovery (Wizard Active). Response time optimized.")
+			free, total := GetDiskCapacity()
+			_, taskInfo, _, _ = ReportHeartbeat(agentID, nil, nil, nil, IsSyncing, ActivePID, lastBackupUnix, free, total)
+			if taskInfo != "" && taskInfo != "none" { continue }
+			time.Sleep(5 * time.Second) // En modo turbo, el Heartbeat es más frecuente
+			continue
+		}
+
+		// Descubrimiento de contenedores (Normal)
 		containerNames, _ := GetRunningContainers()
 		LogInfo("[INFO] Discovered %d containers.", len(containerNames))
 
@@ -210,6 +230,12 @@ func main() {
 			if force == "none" || force == "" {
 				LogInfo("[IDLE] Waiting schedule (%s). Last: %s", config.Schedule, time.Unix(lastBackupUnix, 0).Format("15:04:05"))
 			}
+		}
+
+		// Si llegamos aquí y hay una tarea nueva capturada en el segundo heartbeat de discovery, 
+		// saltamos el sleep y volvemos a procesar.
+		if taskInfo != "" && taskInfo != "none" {
+			continue
 		}
 
 		// REDUCCIÓN CRÍTICA DE LATENCIA (V4.6.8: de 60s a 10s)

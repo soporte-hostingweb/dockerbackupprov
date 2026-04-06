@@ -112,15 +112,19 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 60 * time.Second}
+	
+	start := time.Now()
 	resp, err := client.Do(req)
+	latency := time.Since(start)
+
 	if err != nil {
-		fmt.Printf("[API ERROR] Network failure sending heartbeat: %v\n", err)
+		LogInfo("[API ERROR] Network failure after %v: %v", latency, err)
 		return false, "none", false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("[API ERROR] Heartbeat REJECTED by server. Status: %s. Check your DBP_API_TOKEN!\n", resp.Status)
+		LogInfo("[API ERROR] Heartbeat REJECTED (Status: %s) after %v", resp.Status, latency)
 		return false, "none", false, fmt.Errorf("heartbeat rejected: %s", resp.Status)
 	}
 
@@ -137,13 +141,11 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 
 	// Hot-Fix: Si hay una tarea de comando, la devolvemos al ciclo principal (Simplificado para V4.2.4)
 	if result.CmdTask != "" && result.CmdTask != "none" {
-		fmt.Printf("[TASK] Received remote command: %s (%s)\n", result.CmdTask, result.CmdParam)
-		// Aquí podríamos usar un canal, pero por ahora devolvemos el nombre de la tarea en un string
+		LogInfo("[TASK] Received remote command after %v: %s (%s)", latency, result.CmdTask, result.CmdParam)
 		return result.Maintenance, result.CmdTask + ":" + result.CmdParam, result.KillSync, nil
 	}
 
-	fmt.Printf("[API] Heartbeat (ID: %s, Syncing: %v) sent. Maint: %v, Force: %s, Kill: %v\n", 
-		agentID, syncing, result.Maintenance, result.PendingForce, result.KillSync)
+	LogInfo("[API] Heartbeat sent (RTT: %v). Maint: %v, Force: %s", latency, result.Maintenance, result.PendingForce)
 	
 	return result.Maintenance, result.PendingForce, result.KillSync, nil
 }
