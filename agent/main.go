@@ -115,9 +115,15 @@ func main() {
 		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
 		
 		// V2.4: Intentamos obtener snapshots con el pass local si existe, pero daremos prioridad al del config luego
-		snapshotsRaw := GetSnapshotsJSON(baseRepo, os.Getenv("RESTIC_PASSWORD"), os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
+		// V2.6.5: No intentamos si no hay variables de entorno (evita logs de error innecesarios al inicio)
 		var snapshots []interface{}
-		json.Unmarshal(snapshotsRaw, &snapshots)
+		if os.Getenv("RESTIC_PASSWORD") != "" || os.Getenv("AWS_ACCESS_KEY_ID") != "" {
+			snapshotsRaw := GetSnapshotsJSON(baseRepo, os.Getenv("RESTIC_PASSWORD"), os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
+			json.Unmarshal(snapshotsRaw, &snapshots)
+		} else {
+			snapshots = []interface{}{}
+		}
+
 
 
 		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
@@ -264,10 +270,13 @@ func containsString(str, substr string) bool {
 // getPersistentID busca o genera un ID único que sobreviva a reinicios de contenedor (V2.4)
 func getPersistentID() string {
 	// Ruta segura en el volumen de datos (V2.4.3)
-	const idPath = "/app/data/agent_id"
+	// Asegurar que el directorio de datos existe (V2.6.5)
+	os.MkdirAll("/app/data", 0700)
+
+	idFile := "/app/data/agent_id"
 	
 	// 1. Intentar leer ID existente
-	data, err := os.ReadFile(idPath)
+	data, err := os.ReadFile(idFile)
 	if err == nil && len(strings.TrimSpace(string(data))) > 10 {
 		return strings.TrimSpace(string(data))
 	}
@@ -276,9 +285,9 @@ func getPersistentID() string {
 	newID := uuid.New().String()[:12] // Usamos 12 caracteres para mantener estética
 	
 	// Intentar persistir en el host para la próxima vez
-	err = os.WriteFile(idPath, []byte(newID), 0644)
+	err = os.WriteFile(idFile, []byte(newID), 0644)
 	if err != nil {
-		fmt.Printf("[WARNING] Could not persist Agent ID to %s: %v. Identity will be volatile.\n", idPath, err)
+		fmt.Printf("[WARNING] Could not persist Agent ID to %s: %v. Identity will be volatile.\n", idFile, err)
 	} else {
 		fmt.Printf("[INFO] New Persistent ID generated and saved: %s\n", newID)
 	}

@@ -413,7 +413,15 @@ func main() {
 		settings.WasabiBucket = input.WasabiBucket
 		settings.WasabiRegion = input.WasabiRegion
 		
-		// Cifrar antes de guardar (V2.4)
+		// Cifrar antes de guardar (V2.6.5 - Coherencia de Auth)
+		if input.WasabiKey != "" {
+			encKey, _ := Encrypt(input.WasabiKey)
+			settings.WasabiKey = encKey
+		}
+		if input.WasabiSecret != "" {
+			encSec, _ := Encrypt(input.WasabiSecret)
+			settings.WasabiSecret = encSec
+		}
 		if input.ResticPass != "" {
 			encPass, _ := Encrypt(input.ResticPass)
 			settings.ResticPass = encPass
@@ -421,6 +429,7 @@ func main() {
 
 		DB.Save(&settings)
 		c.JSON(200, gin.H{"message": "Settings saved successfully", "mode": saveToken})
+
 	})
 
 

@@ -137,8 +137,10 @@ func Decrypt(cryptoText string) (string, error) {
 	key := getEncryptionKey()
 	ciphertext, err := hex.DecodeString(cryptoText)
 	if err != nil {
-		return "", err
+		// V2.6.5 Fallback: Si no es HEX válido, devolvemos el original (asumimos que ya está descifrado)
+		return cryptoText, nil
 	}
+
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
