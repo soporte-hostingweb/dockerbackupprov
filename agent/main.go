@@ -15,6 +15,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var (
+	IsSyncing bool
+	ActivePID int
+)
+
+
 func main() {
 	// CONFIGURACIÓN HORARIA: Operamos en UTC por defecto para evitar discrepancias SaaS
 	time.Local = time.UTC
@@ -111,7 +117,25 @@ func main() {
 
 		// 1. Reportar Heartbeat (Lista de contenedores + Explorer Data + Snapshots)
 		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
-		ReportHeartbeat(agentID, containerNames, explorerData, snapshots)
+		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID)
+		
+		if kill && IsSyncing && ActivePID > 0 {
+			fmt.Printf("[KILL] Remote terminate requested for PID %d...\n", ActivePID)
+			proc, err := os.FindProcess(ActivePID)
+			if err == nil {
+				proc.Signal(os.Interrupt) // Intento de cierre limpio
+				time.Sleep(2 * time.Second)
+				proc.Kill() // Si no cerró, matamos
+			}
+			IsSyncing = false
+			ActivePID = 0
+		}
+
+		if maint {
+			fmt.Println("[INFO] Maintenance Mode Active. Pausing backup cycles.")
+			time.Sleep(60 * time.Second)
+			continue
+		}
 
 
 		// 2. Obtener la SELECCIÓN del cliente desde la API
@@ -121,15 +145,33 @@ func main() {
 			selectedPaths = backupPaths 
 		}
 
+		// LOGICA DE FORCE SNAPSHOT
+		if force == "selected" || force == "full" {
+			currentPaths := selectedPaths
+			if force == "full" {
+				fmt.Println("[FORCE] Triggering FULL SERVER SNAPSHOT (/host_root)...")
+				currentPaths = []string{"/host_root"}
+			} else {
+				fmt.Println("[FORCE] Triggering SELECTED PATHS SNAPSHOT...")
+			}
+			
+			RunResticBackup(currentPaths)
+			// TODO: Inform API that force is completed if necessary, 
+			// though the API might clear it on next heartbeat or manually.
+		}
+
 		// Si el cliente no ha seleccionado nada, no respaldamos (SaaS behavior)
-		if len(selectedPaths) == 0 && len(backupPaths) > 0 {
+		if len(selectedPaths) == 0 && len(backupPaths) > 0 && force == "none" {
 			fmt.Println("[INFO] No paths selected by user yet. Skipping backup cycle.")
 			time.Sleep(60 * time.Second)
 			continue
 		}
 
-		// 3. Ejecutar Respaldo Restic
-		err = RunResticBackup(selectedPaths)
+		// 3. Ejecutar Respaldo Restic (Solo si no hubo force previo en este ciclo o queremos ambos)
+		if force == "none" {
+			err = RunResticBackup(selectedPaths)
+		}
+
 
 		finalStatus := "SUCCESS"
 		if err != nil {

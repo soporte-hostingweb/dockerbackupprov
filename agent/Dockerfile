@@ -17,8 +17,17 @@ FROM alpine:latest
 # Añadimos dependencias útiles: certificados para la API s3, restic para el backup real, y utilidades de base de datos para dumps locales
 RUN apk --no-cache add ca-certificates restic mariadb-client postgresql-client tzdata
 
-WORKDIR /root/
+# Crear usuario no-root 
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /home/appuser/
 COPY --from=builder /app/dbp-agent .
+
+# Ajustar permisos
+RUN chown -R appuser:appgroup /home/appuser/
+
+USER appuser
 
 # Ejecutamos el agente
 CMD ["./dbp-agent"]
+

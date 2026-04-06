@@ -162,12 +162,15 @@ func main() {
 	// --- HEARTBEAT ---
 
 	v1Agent.POST("/heartbeat", AuthMiddleware(), func(c *gin.Context) {
+		// Heartbeat Payload (con soporte para reporte de estado de proceso activo)
 		var payload struct {
 			AgentID      string              `json:"agent_id"`
 			Containers   []string            `json:"containers"`
 			ExplorerData map[string][]string `json:"explorer_data"`
 			Snapshots    []interface{}       `json:"snapshots"`
 			OS           string              `json:"os"`
+			IsSyncing    bool                `json:"is_syncing"`
+			ActivePID    int                 `json:"active_pid"`
 		}
 		if err := c.ShouldBindJSON(&payload); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid payload"})
@@ -189,15 +192,74 @@ func main() {
 			Containers:   string(contJSON),
 			Explorer:     string(expJSON),
 			Snapshots:    string(snapJSON),
+			IsSyncing:    payload.IsSyncing,
+			ActivePID:    payload.ActivePID,
 		}
 
+		// Importante: No machacar Maintenance y PendingForce si ya existen
+		var existing AgentStatus
+		if err := DB.First(&existing, "id = ?", payload.AgentID).Error; err == nil {
+			agent.Maintenance = existing.Maintenance
+			agent.PendingForce = existing.PendingForce
+		}
 
 		if err := DB.Save(&agent).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Database error"})
 			return
 		}
 
-		c.JSON(200, gin.H{"status": "recorded"})
+		c.JSON(200, gin.H{
+			"status":        "recorded",
+			"maintenance":  agent.Maintenance,
+			"pending_force": agent.PendingForce,
+			"kill_sync":     agent.KillSync,
+		})
+	})
+
+
+	// --- ACCIONES ADMINISTRATIVAS ---
+
+	v1Agent.POST("/action/:id", AuthMiddleware(), func(c *gin.Context) {
+		id := c.Param("id")
+		token := c.GetString("token")
+		var req struct {
+			Action string `json:"action"` // "reset", "maintenance_on", "maintenance_off", "force_selected", "force_full", "kill_sync"
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid action"})
+			return
+		}
+
+		var agent AgentStatus
+		if err := DB.First(&agent, "id = ?", id).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Agent not found"})
+			return
+		}
+
+		if agent.Token != token && !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		switch req.Action {
+		case "reset":
+			DB.Where("agent_id = ? AND token = ?", id, token).Delete(&BackupConfig{})
+			agent.PendingForce = "none"
+		case "maintenance_on":
+			agent.Maintenance = true
+		case "maintenance_off":
+			agent.Maintenance = false
+		case "force_selected":
+			agent.PendingForce = "selected"
+		case "force_full":
+			agent.PendingForce = "full"
+		case "kill_sync":
+			agent.KillSync = true
+		}
+
+
+		DB.Save(&agent)
+		c.JSON(200, gin.H{"status": "Action recorded", "action": req.Action})
 	})
 
 	// --- AJUSTES DE USUARIO (WASABI) ---
@@ -209,6 +271,9 @@ func main() {
 			return
 		}
 
+		// Cifrar datos sensibles antes de guardar
+		settings.WasabiSecret, _ = Encrypt(settings.WasabiSecret)
+		settings.ResticPass, _ = Encrypt(settings.ResticPass)
 		settings.Token = c.GetString("token")
 
 		var existing UserSettings
@@ -219,7 +284,7 @@ func main() {
 			DB.Create(&settings)
 		}
 
-		c.JSON(200, gin.H{"status": "Settings saved"})
+		c.JSON(200, gin.H{"status": "Settings saved (Encrypted)"})
 	})
 
 	r.GET("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
@@ -229,6 +294,11 @@ func main() {
 			c.JSON(404, gin.H{"error": "No settings found"})
 			return
 		}
+
+		// Descifrar antes de enviar al Dashboard (seguro bajo HTTPS)
+		settings.WasabiSecret, _ = Decrypt(settings.WasabiSecret)
+		settings.ResticPass, _ = Decrypt(settings.ResticPass)
+
 		c.JSON(200, settings)
 	})
 

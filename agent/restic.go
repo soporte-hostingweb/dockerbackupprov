@@ -65,11 +65,24 @@ func RunResticBackup(paths []string) error {
 	cmd := exec.Command("restic", args...)
 	cmd.Env = os.Environ() // Heredar variables S3 (Repository, Keys, Password)
 	
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("[RESTIC ERROR] Core failure: %v\n", err)
-		return fmt.Errorf("Restic failed: %v - Output: %s", err, string(output))
+	// Iniciamos el proceso y guardamos el PID para el Control Plane
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("[RESTIC ERROR] Launch failed: %v\n", err)
+		return err
 	}
+	
+	ActivePID = cmd.Process.Pid
+	IsSyncing = true
+
+	err := cmd.Wait()
+	ActivePID = 0
+	IsSyncing = false
+
+	if err != nil {
+		fmt.Printf("[RESTIC ERROR] Core failure (Wait): %v\n", err)
+		return fmt.Errorf("Restic failed: %v", err)
+	}
+
 	
 	fmt.Println("[RESTIC] Backup cycle completed successfully. Snapshot recorded.")
 	

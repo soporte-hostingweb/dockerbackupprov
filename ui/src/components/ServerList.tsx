@@ -15,7 +15,12 @@ interface AgentStatus {
   token?: string;
   os: string;
   type: string;
+  maintenance?: boolean;
+  pending_force?: string;
+  is_syncing?: boolean;
+  active_pid?: number;
 }
+
 
 
 
@@ -69,6 +74,41 @@ export default function ServerList() {
       console.error("Error removing agent:", err);
     }
   };
+
+  const handleAction = async (agentId: string, action: string) => {
+    const token = localStorage.getItem("dbp_sso_token");
+    if (!token) return;
+
+    // Confirmaciones especiales
+    if (action === 'reset' && !confirm("¿Estás seguro de REINICIAR TODA LA CONFIGURACIÓN de este servidor? Se borrarán las rutas seleccionadas.")) return;
+    if (action === 'kill_sync' && !confirm("¿Deseas TERMINAR el proceso de backup actual para reducir la carga?")) return;
+
+    try {
+      const response = await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
+        method: "POST",
+        headers: { 
+          "Authorization": token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ action })
+      });
+
+      if (response.ok) {
+        // Refrescar localmente el estado si es necesario
+        setAgents(prev => ({
+          ...prev,
+          [agentId]: {
+            ...prev[agentId],
+            status: action === 'reset' ? 'Resetting...' : prev[agentId].status,
+            maintenance: action === 'maintenance_on' ? true : (action === 'maintenance_off' ? false : prev[agentId].maintenance)
+          }
+        }));
+      }
+    } catch (err) {
+      console.error("Error sending action:", err);
+    }
+  };
+
 
 
 
@@ -182,14 +222,18 @@ export default function ServerList() {
                     <p className="text-[10px] text-gray-500 uppercase">Select folders below to include in current Wasabi S3 Plan</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                   <button className="bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 px-3 py-1.5 rounded font-bold transition-all border border-gray-700 uppercase">
+                 <div className="flex gap-2">
+                   <button 
+                    onClick={() => handleAction(id, 'reset')}
+                    className="bg-gray-800 hover:bg-gray-700 text-[10px] text-red-400 px-3 py-1.5 rounded font-bold transition-all border border-gray-700 uppercase"
+                   >
                      Full Reset
                    </button>
                    <button className="bg-emerald-600 hover:bg-emerald-500 text-[10px] text-white px-3 py-1.5 rounded font-bold transition-all border border-emerald-500 uppercase">
                      Sync Selection
                    </button>
                 </div>
+
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -232,15 +276,41 @@ export default function ServerList() {
                       <p className="text-xs text-emerald-500 font-bold">12.4 GB</p>
                    </div>
                 </div>
-                
-                <div className="flex gap-4">
-                  <button className="bg-gray-900 hover:bg-gray-800 text-gray-400 text-[10px] px-6 py-2.5 rounded-lg font-bold border border-gray-800 transition-all uppercase tracking-widest">
-                     Maintenance Mode
+                                <div className="flex gap-4">
+                  <button 
+                    onClick={() => {
+                      if (data.is_syncing) {
+                        handleAction(id, 'kill_sync').then(() => handleAction(id, 'maintenance_on'));
+                      } else {
+                        handleAction(id, data.maintenance ? 'maintenance_off' : 'maintenance_on');
+                      }
+                    }}
+                    className={`${data.maintenance ? 'bg-orange-600 text-white border-orange-500' : 'bg-gray-900 text-gray-400 border-gray-800'} hover:bg-gray-800 text-[10px] px-6 py-2.5 rounded-lg font-bold border transition-all uppercase tracking-widest`}
+                  >
+                     {data.is_syncing ? 'Terminate & Pause' : (data.maintenance ? 'Resume Agent' : 'Maintenance Mode')}
                   </button>
-                  <button className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-8 py-2.5 rounded-lg font-bold shadow-xl shadow-emerald-900/30 transition-all uppercase tracking-widest border border-emerald-400/20">
-                     Force Global Snapshot
-                  </button>
+                  
+                  <div className="flex gap-0.5">
+                    <button 
+                      onClick={() => handleAction(id, 'force_selected')}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-6 py-2.5 rounded-l-lg font-bold shadow-xl shadow-emerald-900/30 transition-all uppercase tracking-widest border border-emerald-400/20"
+                    >
+                      Force Selected
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (confirm("¿INICIAR BACKUP COMPLETO DEL SERVIDOR? Esto ignorará los filtros y respaldará la raíz del host.")) {
+                          handleAction(id, 'force_full');
+                        }
+                      }}
+                      className="bg-emerald-800 hover:bg-emerald-700 text-white text-[10px] px-4 py-2.5 rounded-r-lg font-bold shadow-xl transition-all uppercase tracking-widest border border-emerald-400/10"
+                      title="Full Root Snapshot"
+                    >
+                      Full
+                    </button>
+                  </div>
                 </div>
+
               </div>
             </div>
           )}

@@ -1,7 +1,12 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -24,10 +29,15 @@ type AgentStatus struct {
 	Containers   string    `json:"containers"` // Guardamos como JSON string
 	Explorer     string    `json:"explorer"`   // Guardamos como JSON string
 	Snapshots    string    `json:"snapshots"`  // JSON string de restic snapshots
+	Maintenance  bool      `json:"maintenance"`
+	PendingForce string    `json:"pending_force"` // "none", "selected", "full"
+	IsSyncing    bool      `json:"is_syncing"`
+	ActivePID    int       `json:"active_pid"`
+	KillSync     bool      `json:"kill_sync"`
 	CreatedAt    time.Time
-
 	UpdatedAt    time.Time
 }
+
 
 // BackupConfig almacena qué rutas se han seleccionado para respaldar
 type BackupConfig struct {
@@ -80,4 +90,72 @@ func InitDB() {
 
 	DB = db
 	fmt.Println("[DB] PostgreSQL is ready and migrated.")
+}
+
+// --- MOTOR DE CIFRADO AES-256-GCM ---
+
+func getEncryptionKey() []byte {
+	key := os.Getenv("DBP_ENCRYPTION_KEY")
+	if len(key) != 32 {
+		// Fallback por seguridad o para desarrollo, pero avisamos.
+		// En prod DEBE ser de 32 bytes.
+		return []byte("hwperu-backup-security-key-32chr") 
+	}
+	return []byte(key)
+}
+
+// Encrypt cifra un texto plano usando AES-GCM
+func Encrypt(text string) (string, error) {
+	if text == "" { return "", nil }
+	key := getEncryptionKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(text), nil)
+	return hex.EncodeToString(ciphertext), nil
+}
+
+// Decrypt descifra un texto cifrado en hex usando AES-GCM
+func Decrypt(cryptoText string) (string, error) {
+	if cryptoText == "" { return "", nil }
+	key := getEncryptionKey()
+	ciphertext, err := hex.DecodeString(cryptoText)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }

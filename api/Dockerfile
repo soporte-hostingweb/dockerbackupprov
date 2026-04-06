@@ -17,10 +17,19 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o dbp-api .
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
 
-WORKDIR /root/
+# Crear usuario no-root para seguridad (CIS Benchmark)
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /home/appuser/
 COPY --from=builder /app/dbp-api .
+
+# Ajustar permisos
+RUN chown -R appuser:appgroup /home/appuser/
+
+USER appuser
 
 # Exponemos el puerto de Gin
 EXPOSE 8080
 
 CMD ["./dbp-api"]
+
