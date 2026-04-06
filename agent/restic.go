@@ -17,7 +17,17 @@ var GlobalExcludes = []string{
 	"*/tmp/*",
 	"node_modules",
 	".git",
+	// Excluir sistemas de archivos virtuales (V3.2.1)
+	"/host_root/proc",
+	"/host_root/sys",
+	"/host_root/dev",
+	"/host_root/run",
+	"/host_root/tmp",
+	"/host_root/var/lib/docker",
 }
+
+
+
 
 // EnsureResticRepo verifica si el repositorio S3 ya está inicializado. Si no, lo inicializa.
 
@@ -112,12 +122,13 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 
 	fmt.Printf("[RESTIC] Target paths (Cleaned): %v\n", cleanPaths)
 	
-	// Reconstruir argumentos con los paths limpios
-	finalArgs := []string{"-r", repo, "backup", "--json"}
+	// Reconstruir argumentos con los paths limpios y protección de sistema de archivos (V3.2.1)
+	finalArgs := []string{"-r", repo, "backup", "--json", "--one-file-system"}
 	for _, ex := range GlobalExcludes {
 		finalArgs = append(finalArgs, "--exclude", ex)
 	}
 	finalArgs = append(finalArgs, cleanPaths...)
+
 
 	cmd := exec.Command("restic", finalArgs...)
 	cmd.Env = env // Heredar variables S3 (Repository, Keys, Password)

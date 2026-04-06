@@ -230,11 +230,16 @@ func main() {
 					currentPaths = []string{"/host_root"}
 				}
 
-				// Ejecutar en segundo plano para no bloquear latidos (V3.1.2)
+				// Ejecutar en segundo plano para no bloquear latidos (V3.2.3)
 				go func(paths []string, repo, pass, key, secret string) {
 					IsSyncing = true
+					
+					// 1. Avisar inmediatamente que empezamos (Esto limpia el pending_force en el API) (V3.2.3)
+					ReportHeartbeat(agentID, containerNames, explorerData, snapshots, true, os.Getpid(), lastBackupUnix)
+
 					err := RunResticBackup(paths, repo, pass, key, secret)
 					IsSyncing = false
+
 					
 					if err == nil {
 						lastBackupUnix = time.Now().Unix()
