@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
+
 
 var GlobalExcludes = []string{
 	"*/cache/*",
@@ -100,11 +102,26 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 	}
 	args = append(args, paths...)
 
+	// Limpiar decoraciones (emojis) de los paths antes de enviar a restic (V2.9.9)
+	cleanPaths := []string{}
+	for _, p := range paths {
+		clean := strings.TrimPrefix(p, "📂 ")
+		clean = strings.TrimPrefix(clean, "📄 ")
+		cleanPaths = append(cleanPaths, clean)
+	}
+
+	fmt.Printf("[RESTIC] Target paths (Cleaned): %v\n", cleanPaths)
 	
-	fmt.Printf("[RESTIC] Target paths: %v\n", paths)
-	
-	cmd := exec.Command("restic", args...)
+	// Reconstruir argumentos con los paths limpios
+	finalArgs := []string{"-r", repo, "backup", "--json"}
+	for _, ex := range GlobalExcludes {
+		finalArgs = append(finalArgs, "--exclude", ex)
+	}
+	finalArgs = append(finalArgs, cleanPaths...)
+
+	cmd := exec.Command("restic", finalArgs...)
 	cmd.Env = env // Heredar variables S3 (Repository, Keys, Password)
+
 	
 	// Real-time Logging with Capture (V2.9.5)
 	var outputBuffer bytes.Buffer
