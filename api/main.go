@@ -151,12 +151,23 @@ func main() {
 		if region == "" { region = "us-east-1" }
 		
 		bucket := settings.WasabiBucket
-		if bucket == "" { bucket = "unconfigured" }
+		if bucket == "" { 
+			c.JSON(200, gin.H{
+				"status": "manual",
+				"paths": []string{},
+				"error_code": "WASABI_UNCONFIGURED",
+				"message": "Please configure Wasabi Settings in Dashboard",
+				"full_repo_url": "",
+				"restic_password": "",
+			})
+			return
+		}
 
 		fullRepo := fmt.Sprintf("s3:%s.wasabisys.com/%s/%s/%s", 
 			region, bucket, token, agentID)
 
 		if len(configs) == 0 {
+
 			c.JSON(200, gin.H{
 				"status":         "no_config", 
 				"paths":          []string{}, 

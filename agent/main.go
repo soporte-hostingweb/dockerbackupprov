@@ -105,17 +105,7 @@ func main() {
 			}
 		}
 
-		// Determinar ID del Agente de forma robústa
-		agentID := os.Getenv("DBP_AGENT_ID")
-		if agentID == "" {
-			hostname, err := os.Hostname()
-			if err != nil || hostname == "" {
-				// Fallback definitivo si el sistema no tiene hostname (raro en Linux/Docker)
-				agentID = "vps-agent-" + time.Now().Format("20060102150405")
-			} else {
-				agentID = hostname
-			}
-		}
+		// ID persistente (V2.4)
 
 
 		// 1. Reportar Heartbeat (Lista de contenedores + Explorer Data + Snapshots)
@@ -268,8 +258,8 @@ func containsString(str, substr string) bool {
 
 // getPersistentID busca o genera un ID único que sobreviva a reinicios de contenedor (V2.4)
 func getPersistentID() string {
-	// Ruta en el HOST (mapeada vía volumen)
-	const idPath = "/host_root/etc/dbp_agent_id"
+	// Ruta segura en el volumen de datos (V2.4.3)
+	const idPath = "/app/data/agent_id"
 	
 	// 1. Intentar leer ID existente
 	data, err := os.ReadFile(idPath)

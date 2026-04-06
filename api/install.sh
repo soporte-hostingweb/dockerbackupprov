@@ -46,6 +46,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /:/host_root:ro # Importante para poder escanear todo el servidor
+      # Persistencia de identidad (V2.4.3)
+      - dbp-agent-data:/app/data
+
+volumes:
+  dbp-agent-data:
 EOF
 
 echo "[+] Levantando contenedor en $HOSTNAME..."
