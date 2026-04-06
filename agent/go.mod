@@ -2,7 +2,11 @@ module github.com/hwperu/dbp-agent
 
 go 1.25.0
 
-require github.com/docker/docker v25.0.3+incompatible
+require (
+	github.com/docker/docker v25.0.3+incompatible
+	github.com/google/uuid v1.6.0
+	github.com/joho/godotenv v1.5.1
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -15,7 +19,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
