@@ -438,15 +438,14 @@ func main() {
 		}
 
 		var settings UserSettings
+		// Buscar existente por token para obtener el ID real y evitar conflictos únicos
 		DB.Where("token = ?", saveToken).First(&settings)
 
 		settings.Token = saveToken
-		settings.WasabiKey = input.WasabiKey
-		settings.WasabiSecret = input.WasabiSecret
 		settings.WasabiBucket = input.WasabiBucket
 		settings.WasabiRegion = input.WasabiRegion
 		
-		// Cifrar antes de guardar (V2.6.5 - Coherencia de Auth)
+		// Solo ciframos y actualizamos las llaves si no vienen vacías (V2.9.1)
 		if input.WasabiKey != "" {
 			encKey, _ := Encrypt(input.WasabiKey)
 			settings.WasabiKey = encKey
@@ -460,8 +459,13 @@ func main() {
 			settings.ResticPass = encPass
 		}
 
-		DB.Save(&settings)
+		if err := DB.Save(&settings).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Failed to save settings: " + err.Error()})
+			return
+		}
+		
 		c.JSON(200, gin.H{"message": "Settings saved successfully", "mode": saveToken})
+
 
 	})
 
@@ -489,11 +493,13 @@ func main() {
 		}
 
 		// Descifrar antes de enviar al Dashboard (seguro bajo HTTPS)
+		settings.WasabiKey, _ = Decrypt(settings.WasabiKey)
 		settings.WasabiSecret, _ = Decrypt(settings.WasabiSecret)
 		settings.ResticPass, _ = Decrypt(settings.ResticPass)
 
 		c.JSON(200, settings)
 	})
+
 
 	// Endpoint de Prueba de Conexión Wasabi (V2.8)
 	v1User.POST("/test-wasabi", func(c *gin.Context) {
