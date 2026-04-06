@@ -72,3 +72,32 @@ func ScanVolumeFolders(path string) []string {
 	return folders
 }
 
+// GetContainerMounts obtiene las rutas reales del host para los volúmenes de un contenedor (V3.8.1)
+func GetContainerMounts(containerName string) []string {
+	// Query: .Mounts contains all volume and bind info
+	cmd := exec.Command("docker", "inspect", "--format", "{{range .Mounts}}{{.Source}} {{end}}", containerName)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	rawPaths := strings.Split(strings.TrimSpace(string(output)), " ")
+	var hostPaths []string
+	for _, p := range rawPaths {
+		path := strings.TrimSpace(p)
+		if path == "" { continue }
+		
+		// Filtrar rutas de sistema obvias
+		if strings.Contains(path, "/docker.sock") || 
+		   strings.Contains(path, "/etc/resolv.conf") ||
+		   strings.Contains(path, "/etc/hostname") ||
+		   strings.Contains(path, "/etc/hosts") {
+			continue
+		}
+		
+		hostPaths = append(hostPaths, path)
+	}
+	return hostPaths
+}
+
+
