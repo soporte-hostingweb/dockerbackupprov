@@ -115,6 +115,9 @@ func main() {
 				"active_pid":     a.ActivePID,
 				"last_backup_at": a.LastBackupAt,
 				"schedule":       config.Schedule,
+				"cmd_task":       a.CmdTask,
+				"cmd_param":      a.CmdParam,
+				"cmd_result":     a.CmdResult,
 			}
 		}
 
