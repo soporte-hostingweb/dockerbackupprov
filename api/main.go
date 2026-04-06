@@ -170,6 +170,10 @@ func main() {
 			region, bucket, token, agentID)
 
 
+		// Descifrar llaves S3 para el Agente (V2.6.4 - Hotfix)
+		wasabiKey, _ := Decrypt(settings.WasabiKey)
+		wasabiSecret, _ := Decrypt(settings.WasabiSecret)
+
 		if len(configs) == 0 {
 			c.JSON(200, gin.H{
 				"status":          "no_config", 
@@ -177,25 +181,25 @@ func main() {
 				"schedule":        "manual", // Por defecto para nuevos agentes (V2.5.2)
 				"full_repo_url":   fullRepo,
 				"restic_password": resticPass,
-				"wasabi_key":      settings.WasabiKey,
-				"wasabi_secret":   settings.WasabiSecret,
+				"wasabi_key":      wasabiKey,
+				"wasabi_secret":   wasabiSecret,
 			})
 			return
 		}
 
-
-
 		var paths []string
-		json.Unmarshal([]byte(configs[0].Paths), &paths)
+		_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
+
 		c.JSON(200, gin.H{
-			"status":          "manual", 
-			"paths":           paths, 
+			"status":          "ready",
+			"paths":           paths,
 			"schedule":        configs[0].Schedule,
 			"full_repo_url":   fullRepo,
 			"restic_password": resticPass,
-			"wasabi_key":      settings.WasabiKey,
-			"wasabi_secret":   settings.WasabiSecret,
+			"wasabi_key":      wasabiKey,
+			"wasabi_secret":   wasabiSecret,
 		})
+
 	})
 
 
