@@ -139,10 +139,23 @@ func main() {
 			return
 		}
 
-		// Buscamos el Bucket en Settings para construir la URL completa
+		// 1. Buscamos Settings del Tenant
 		var settings UserSettings
-		DB.Where("token = ?", token).First(&settings)
-		
+		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
+			// 2. Si no hay, buscamos las Globales del Maestro (V2.5)
+			if err := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&settings).Error; err != nil {
+				c.JSON(200, gin.H{
+					"status": "manual",
+					"paths": []string{},
+					"error_code": "WASABI_UNCONFIGURED",
+					"message": "Please contact administrator for storage configuration",
+					"full_repo_url": "",
+					"restic_password": "",
+				})
+				return
+			}
+		}
+
 		// Descifrar contraseña de restic para el agente (V2.4)
 		resticPass, _ := Decrypt(settings.ResticPass)
 
@@ -151,20 +164,11 @@ func main() {
 		if region == "" { region = "us-east-1" }
 		
 		bucket := settings.WasabiBucket
-		if bucket == "" { 
-			c.JSON(200, gin.H{
-				"status": "manual",
-				"paths": []string{},
-				"error_code": "WASABI_UNCONFIGURED",
-				"message": "Please configure Wasabi Settings in Dashboard",
-				"full_repo_url": "",
-				"restic_password": "",
-			})
-			return
-		}
-
+		
+		// Construir URL: s3:region.wasabisys.com/bucket/tenant/agent_id (V2.5)
 		fullRepo := fmt.Sprintf("s3:%s.wasabisys.com/%s/%s/%s", 
 			region, bucket, token, agentID)
+
 
 		if len(configs) == 0 {
 
@@ -362,28 +366,41 @@ func main() {
 	v1User := r.Group("/v1/user")
 	v1User.Use(AuthMiddleware())
 
-	v1User.POST("/settings", func(c *gin.Context) {
-		var settings UserSettings
-		if err := c.ShouldBindJSON(&settings); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid settings"})
+	// Guardar/Actualizar Settings (V2.5)
+	v1User.POST("/settings", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var input UserSettings
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid input"})
 			return
 		}
 
-		// Cifrar datos sensibles antes de guardar
-		settings.WasabiSecret, _ = Encrypt(settings.WasabiSecret)
-		settings.ResticPass, _ = Encrypt(settings.ResticPass)
-		settings.Token = c.GetString("token")
-
-		var existing UserSettings
-		if err := DB.Where("token = ?", settings.Token).First(&existing).Error; err == nil {
-			settings.ID = existing.ID
-			DB.Save(&settings)
-		} else {
-			DB.Create(&settings)
+		// Permitir guardar como 'Global' si se solicita (V2.5)
+		// En una versión final, aquí validaríamos que el token sea de un admin
+		saveToken := token
+		if c.Query("is_global") == "true" {
+			saveToken = "SYSTEM_GLOBAL"
 		}
 
-		c.JSON(200, gin.H{"status": "Settings saved (Encrypted)"})
+		var settings UserSettings
+		DB.Where("token = ?", saveToken).First(&settings)
+
+		settings.Token = saveToken
+		settings.WasabiKey = input.WasabiKey
+		settings.WasabiSecret = input.WasabiSecret
+		settings.WasabiBucket = input.WasabiBucket
+		settings.WasabiRegion = input.WasabiRegion
+		
+		// Cifrar antes de guardar (V2.4)
+		if input.ResticPass != "" {
+			encPass, _ := Encrypt(input.ResticPass)
+			settings.ResticPass = encPass
+		}
+
+		DB.Save(&settings)
+		c.JSON(200, gin.H{"message": "Settings saved successfully", "mode": saveToken})
 	})
+
 
 	v1User.GET("/settings", func(c *gin.Context) {
 		token := c.GetString("token")
