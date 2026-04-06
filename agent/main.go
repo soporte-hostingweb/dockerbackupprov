@@ -146,10 +146,18 @@ func main() {
 		var snapshots []interface{}
 		if repo != "" && pass != "" {
 			snapshotsRaw := GetSnapshotsJSON(repo, pass, key, secret)
-			json.Unmarshal(snapshotsRaw, &snapshots)
+			errU := json.Unmarshal(snapshotsRaw, &snapshots)
+			if errU != nil {
+				fmt.Printf("[CRITICAL-JSON] Failed to unmarshal snapshots: %v | Raw: %s\n", errU, string(snapshotsRaw))
+				snapshots = []interface{}{}
+			} else {
+				fmt.Printf("[SNAPSHOTS] Successfully detected %d snapshots in repository.\n", len(snapshots))
+			}
 		} else {
 			snapshots = []interface{}{}
+			fmt.Println("[WARNING] Skipping snapshot scan: Repo or Pass missing.")
 		}
+
 
 		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
 		if err != nil {
