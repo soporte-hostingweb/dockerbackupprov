@@ -416,6 +416,9 @@ func main() {
 		}
 
 		// Guardamos el resultado en el estado del agente y limpiamos la tarea pendiente
+		fmt.Printf("[%s] [TASK-RESULT] Agent %s reported result for task: %s (Weight: %d bytes)\n", 
+			time.Now().Format("15:04:05"), req.AgentID, req.Task, len(req.Result))
+
 		DB.Model(&AgentStatus{}).Where("id = ?", req.AgentID).Updates(map[string]interface{}{
 			"cmd_result": req.Result,
 			"cmd_task":   "none",
