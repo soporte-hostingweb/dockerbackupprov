@@ -12,6 +12,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const Version = "V2.7.2"
+
 //go:embed install.sh
 var installScript []byte
 
@@ -48,6 +50,10 @@ func main() {
 
 	r.GET("/install.sh", func(c *gin.Context) {
 		c.Data(200, "text/x-shellscript", installScript)
+	})
+
+	r.GET("/v1/version", func(c *gin.Context) {
+		c.JSON(200, gin.H{"version": Version, "status": "active", "network": "HWPeru SaaS"})
 	})
 
 	v1Agent := r.Group("/v1/agent")
@@ -134,10 +140,23 @@ func main() {
 		}
 
 		var configs []BackupConfig
-		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", token, agentID).Find(&configs).Error; err != nil {
+		
+		// Lógica de Impersonación para Admin (V2.7)
+		isAdmin := c.GetBool("is_admin")
+		viewToken := token
+		if isAdmin {
+			var agent AgentStatus
+			if err := DB.Where("id = ?", agentID).First(&agent).Error; err == nil {
+				// El admin ve la configuración asociada al token real del agente (el del cliente)
+				viewToken = agent.Token
+			}
+		}
+
+		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", viewToken, agentID).Find(&configs).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Database error"})
 			return
 		}
+
 
 		// 1. Buscamos Settings del Tenant
 		var settings UserSettings
@@ -165,15 +184,17 @@ func main() {
 		
 		bucket := settings.WasabiBucket
 		
-		// Construir URL Correcta (V2.6.7): s3:s3.[region].wasabisys.com/bucket/tenant/agent_id
+		// Construir URL Correcta (V2.6.8): s3:https://s3.[region].wasabisys.com/bucket/tenant/agent_id
 		// Wasabi usa s3.wasabisys.com para us-east-1, y s3.REGION.wasabisys.com para el resto.
 		endpoint := "s3.wasabisys.com"
 		if region != "us-east-1" {
 			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
 		}
 		
-		fullRepo := fmt.Sprintf("s3:%s/%s/%s/%s", 
+		// V2.6.8: Añadimos https:// explícito para evitar errores de negociación S3
+		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s/%s", 
 			endpoint, bucket, token, agentID)
+
 
 
 
@@ -487,6 +508,8 @@ func main() {
 		port = "8089"
 	}
 
-	fmt.Printf("[BOOT] Server listening on port %s...\n", port)
+	fmt.Printf("==========================================\n")
+	fmt.Printf("🚀 DBP API %s - ONLINE\n", Version)
+	fmt.Printf("==========================================\n")
 	r.Run(":" + port)
 }

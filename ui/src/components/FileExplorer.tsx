@@ -55,19 +55,36 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
 
     setSaving(true);
     try {
+      // 1. Obtener configuración global actual para no pisar otros contenedores (V2.7.1)
+      const getResponse = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {
+        headers: { "Authorization": token }
+      });
+      
+      let allPaths: string[] = [];
+      if (getResponse.ok) {
+        const currentData = await getResponse.json();
+        const existingPaths = currentData.paths || [];
+        
+        // 2. Filtrar lo que NO sea de este contenedor
+        // (Asumimos que las carpetas de este contenedor están en la lista 'folders' que recibimos por props)
+        allPaths = existingPaths.filter((p: string) => !folders.includes(p));
+      }
+
+      // 3. Mezclar con la selección actual de este componente
+      const finalPaths = [...allPaths, ...selectedFolders];
+
       const response = await fetch("https://api.hwperu.com/v1/agent/config", {
         method: "POST",
         headers: { "Authorization": token, "Content-Type": "application/json" },
         body: JSON.stringify({ 
           agent_id: agentId,
-          paths: selectedFolders,
+          paths: finalPaths,
           schedule: schedule 
         })
-
       });
 
       if (response.ok) {
-        alert("✅ [CONFIG] Selección de respaldo sincronizada con el Agente.");
+        alert(`✅ [CONFIG] Se han guardado ${selectedFolders.length} carpetas para ${containerName}. Total servidor: ${finalPaths.length}`);
       }
     } catch (err) {
       console.error("Failed to save selection:", err);
@@ -75,6 +92,7 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       setSaving(false);
     }
   };
+
 
   const getBasename = (path: string) => path.split('/').pop() || path;
 
