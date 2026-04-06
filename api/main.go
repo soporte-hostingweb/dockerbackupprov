@@ -359,9 +359,21 @@ func main() {
 		if err := DB.First(&existing, "id = ?", payload.AgentID).Error; err == nil {
 			agent.Maintenance = existing.Maintenance
 			agent.PendingForce = existing.PendingForce
+			agent.KillSync = existing.KillSync
+			
+			// Si el agente reporta que está sincronizando, consumimos la instrucción (V3.4.1)
+			if payload.IsSyncing && agent.PendingForce != "none" {
+				agent.PendingForce = "none"
+			}
+			
+			// Si se procesó una orden de kill, la reiniciamos (V3.4.1)
+			if !payload.IsSyncing && agent.KillSync {
+				agent.KillSync = false
+			}
 		}
 
 		if err := DB.Save(&agent).Error; err != nil {
+
 			c.JSON(500, gin.H{"error": "Database error"})
 			return
 		}
