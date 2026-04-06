@@ -193,11 +193,13 @@ export default function DashboardPage() {
                                <td className="p-5 text-xs text-white uppercase font-black italic">{act.agent_id}</td>
                                <td className="p-5 text-xs text-emerald-400 font-mono">{act.snapshot_id || '---'}</td>
                                <td className="p-5 text-xs text-gray-300 font-bold whitespace-nowrap">
-                                  {act.size_bytes > 1024 * 1024 
-                                    ? `${(act.size_bytes / (1024 * 1024)).toFixed(2)} MB` 
-                                    : act.size_bytes > 1024 
-                                      ? `${(act.size_bytes / 1024).toFixed(1)} KB`
-                                      : `${act.size_bytes || 0} B`}
+                                  {act.size_bytes > 1024 * 1024 * 1024
+                                    ? `${(act.size_bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+                                    : act.size_bytes > 1024 * 1024 
+                                      ? `${(act.size_bytes / (1024 * 1024)).toFixed(2)} MB` 
+                                      : act.size_bytes > 1024 
+                                        ? `${(act.size_bytes / 1024).toFixed(1)} KB`
+                                        : `${act.size_bytes || 0} B`}
                                </td>
                                <td className="p-5">
                                   <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${act.status === 'SUCCESS' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/25' : 'bg-red-500/10 text-red-500 border border-red-500/25'}`}>
