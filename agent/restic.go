@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 var GlobalExcludes = []string{
@@ -103,6 +105,11 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 	cmd := exec.Command("restic", args...)
 	cmd.Env = env // Heredar variables S3 (Repository, Keys, Password)
 	
+	// Capturamos salida para depuración (V2.9.2)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
 	// Iniciamos el proceso y guardamos el PID para el Control Plane
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("[RESTIC ERROR] Launch failed: %v\n", err)
@@ -118,8 +125,17 @@ func RunResticBackup(paths []string, repoURL string, password string, s3Key stri
 
 	if err != nil {
 		fmt.Printf("[RESTIC ERROR] Core failure (Wait): %v\n", err)
+		// Mostrar las últimas líneas de error para diagnóstico (V2.9.2)
+		outStr := output.String()
+		lines := strings.Split(outStr, "\n")
+		lastLines := lines
+		if len(lines) > 5 {
+			lastLines = lines[len(lines)-6:]
+		}
+		fmt.Printf("[RESTIC OUTPUT] \n---\n%s\n---\n", strings.Join(lastLines, "\n"))
 		return fmt.Errorf("Restic failed: %v", err)
 	}
+
 
 	
 	fmt.Println("[RESTIC] Backup cycle completed successfully. Snapshot recorded.")
