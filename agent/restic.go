@@ -17,7 +17,7 @@ var GlobalExcludes = []string{
 
 
 // EnsureResticRepo verifica si el repositorio S3 ya está inicializado. Si no, lo inicializa.
-func EnsureResticRepo(repoURL string, password string) error {
+func EnsureResticRepo(repoURL string, password string, s3Key string, s3Secret string) error {
 	fmt.Println("\n[RESTIC] Validating S3 Wasabi Repository...")
 	
 	repo := repoURL
@@ -28,11 +28,18 @@ func EnsureResticRepo(repoURL string, password string) error {
 		return fmt.Errorf("RESTIC_REPOSITORY environment variable is missing")
 	}
 
-	// Inyectar password si viene de la API (V2.4)
+	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
 	}
+	if s3Key != "" {
+		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
+	}
+	if s3Secret != "" {
+		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
+
 
 	// Ejecutar snapshot list para ver si el repo existe
 	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
@@ -58,7 +65,7 @@ func EnsureResticRepo(repoURL string, password string) error {
 
 
 // RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3
-func RunResticBackup(paths []string, repoURL string, password string) error {
+func RunResticBackup(paths []string, repoURL string, password string, s3Key string, s3Secret string) error {
 	fmt.Println("\n[RESTIC] Starting Incremental Backup Engine...")
 	if len(paths) == 0 {
 		fmt.Println("[RESTIC] No directories selected for backup. Skipping cycle.")
@@ -70,11 +77,18 @@ func RunResticBackup(paths []string, repoURL string, password string) error {
 		repo = os.Getenv("RESTIC_REPOSITORY")
 	}
 
-	// Inyectar password si viene de la API (V2.4)
+	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
 	}
+	if s3Key != "" {
+		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
+	}
+	if s3Secret != "" {
+		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
+
 
 	// Preparar argumentos: restic backup --json --exclude=... /path1 /path2 ...
 	args := []string{"-r", repo, "backup", "--json"}
@@ -111,7 +125,8 @@ func RunResticBackup(paths []string, repoURL string, password string) error {
 	fmt.Println("[RESTIC] Backup cycle completed successfully. Snapshot recorded.")
 	
 	// Tras el backup, aplicamos la política de retención automática
-	_ = ApplyRetentionPolicy(repo, password)
+	_ = ApplyRetentionPolicy(repo, password, s3Key, s3Secret)
+
 
 	return nil
 }
@@ -119,7 +134,7 @@ func RunResticBackup(paths []string, repoURL string, password string) error {
 
 
 // ApplyRetentionPolicy purga snapshots antiguos siguiendo la regla (7d, 4w, 2m)
-func ApplyRetentionPolicy(repoURL string, password string) error {
+func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secret string) error {
 	fmt.Println("[RESTIC] Applying Retention Policy: 7 daily, 4 weekly, 2 monthly...")
 	
 	repo := repoURL
@@ -137,11 +152,20 @@ func ApplyRetentionPolicy(repoURL string, password string) error {
 	}
 
 	cmd := exec.Command("restic", args...)
+	
+	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
 	}
+	if s3Key != "" {
+		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
+	}
+	if s3Secret != "" {
+		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
 	cmd.Env = env
+
 
 	
 	output, err := cmd.CombinedOutput()
@@ -157,7 +181,7 @@ func ApplyRetentionPolicy(repoURL string, password string) error {
 
 
 // GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo
-func GetSnapshotsJSON(repoURL string, password string) []byte {
+func GetSnapshotsJSON(repoURL string, password string, s3Key string, s3Secret string) []byte {
 	repo := repoURL
 	if repo == "" {
 		repo = os.Getenv("RESTIC_REPOSITORY")
@@ -167,11 +191,20 @@ func GetSnapshotsJSON(repoURL string, password string) []byte {
 	}
 
 	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
+	
+	// Inyectar credenciales (V2.6.2)
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
 	}
+	if s3Key != "" {
+		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
+	}
+	if s3Secret != "" {
+		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
 	cmd.Env = env
+
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {

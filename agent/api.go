@@ -131,7 +131,10 @@ type AgentConfigV2 struct {
 	Schedule        string   `json:"schedule"`
 	FullRepoURL     string   `json:"full_repo_url"`
 	ResticPassword  string   `json:"restic_password"`
+	WasabiKey       string   `json:"wasabi_key"`
+	WasabiSecret    string   `json:"wasabi_secret"`
 }
+
 
 
 // GetAgentConfig consulta a la API la selección de carpetas específica para este VPS

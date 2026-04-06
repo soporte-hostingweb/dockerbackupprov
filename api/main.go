@@ -177,9 +177,12 @@ func main() {
 				"schedule":        "manual", // Por defecto para nuevos agentes (V2.5.2)
 				"full_repo_url":   fullRepo,
 				"restic_password": resticPass,
+				"wasabi_key":      settings.WasabiKey,
+				"wasabi_secret":   settings.WasabiSecret,
 			})
 			return
 		}
+
 
 
 		var paths []string
@@ -190,8 +193,11 @@ func main() {
 			"schedule":        configs[0].Schedule,
 			"full_repo_url":   fullRepo,
 			"restic_password": resticPass,
+			"wasabi_key":      settings.WasabiKey,
+			"wasabi_secret":   settings.WasabiSecret,
 		})
 	})
+
 
 
 	// Dashboard guarda la configuración

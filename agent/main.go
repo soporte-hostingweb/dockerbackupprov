@@ -115,9 +115,9 @@ func main() {
 		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
 		
 		// V2.4: Intentamos obtener snapshots con el pass local si existe, pero daremos prioridad al del config luego
-		snapRaw := GetSnapshotsJSON(baseRepo, os.Getenv("RESTIC_PASSWORD"))
+		snapshotsRaw := GetSnapshotsJSON(baseRepo, os.Getenv("RESTIC_PASSWORD"), os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
 		var snapshots []interface{}
-		json.Unmarshal(snapRaw, &snapshots)
+		json.Unmarshal(snapshotsRaw, &snapshots)
 
 
 		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
@@ -163,7 +163,9 @@ func main() {
 		
 		// 3. Asegurar que el Repositorio esté inicializado antes de seguir (V2.4)
 		if isolatedBucket != "" {
-			if err := EnsureResticRepo(isolatedBucket, config.ResticPassword); err != nil {
+			fmt.Printf("[RESTIC] Validating S3 Wasabi Repository...\n")
+			err = EnsureResticRepo(isolatedBucket, config.ResticPassword, config.WasabiKey, config.WasabiSecret)
+			if err != nil {
 				fmt.Printf("[WARNING] Restic Repo ensure failed: %v\n", err)
 			}
 		}
@@ -214,9 +216,10 @@ func main() {
 			}
 			
 			IsSyncing = true
-			// Pasamos el bucket aislado y la contraseña dinámica (V2.4)
-			err = RunResticBackup(currentPaths, isolatedBucket, config.ResticPassword)
+			// Pasamos el bucket aislado y la contraseña dinámica + credenciales S3 (V2.6.2)
+			err = RunResticBackup(currentPaths, isolatedBucket, config.ResticPassword, config.WasabiKey, config.WasabiSecret)
 			IsSyncing = false
+
 
 
 			
