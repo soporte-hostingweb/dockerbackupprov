@@ -196,13 +196,20 @@ export default function ServerList() {
                     
                     <div className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest border uppercase ${
                       isOffline 
-                      ? 'bg-gray-800 text-gray-500 border-gray-700'
+                      ? 'bg-red-950/20 text-red-500 border-red-900/50'
                       : (data.status === 'Healthy' || data.status === 'SUCCESS')
                         ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' 
                         : 'bg-red-400/10 text-red-400 border-red-400/20'
                     }`}>
                       {isOffline ? 'OFFLINE' : (data.status || 'Active')}
                     </div>
+
+                    {data.pending_force === 'full' && (
+                       <div className="absolute -top-2 -right-2 bg-blue-600 text-[8px] font-black text-white px-2 py-0.5 rounded-full border border-blue-400 shadow-lg animate-bounce uppercase">
+                          Force Full
+                       </div>
+                    )}
+
                   </>
                 );
               })()}

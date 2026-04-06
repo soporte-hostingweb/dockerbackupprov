@@ -65,7 +65,21 @@ type UserSettings struct {
 	UpdatedAt    time.Time
 }
 
+// BackupActivity registra cada respaldo completado para el historial
+type BackupActivity struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	Token        string    `gorm:"index" json:"token"`
+	AgentID      string    `gorm:"index" json:"agent_id"`
+	Status       string    `json:"status"` // SUCCESS, ERROR
+	SnapshotID   string    `json:"snapshot_id"`
+	SizeMB       int       `json:"size_mb"`
+	DurationSecs int       `json:"duration_secs"`
+	Message      string    `json:"message"`
+	CreatedAt    time.Time `json:"timestamp"`
+}
+
 // InitDB inicializa la conexión a PostgreSQL y realiza las migraciones
+
 func InitDB() {
 	host := os.Getenv("DB_HOST")
 	user := os.Getenv("DB_USER")
@@ -90,7 +104,8 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{})
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{})
+
 
 	DB = db
 	fmt.Println("[DB] PostgreSQL is ready and migrated.")

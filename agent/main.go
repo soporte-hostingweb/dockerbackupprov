@@ -74,12 +74,13 @@ func main() {
 
 		for _, c := range containers {
 			name := strings.TrimPrefix(c.Names[0], "/")
-			containerNames = append(containerNames, name)
-
-			// EXCLUIMOS EL PROPIO AGENTE
+			
+			// EXCLUIMOS EL PROPIO AGENTE de las listas y el descubrimiento
 			if name == "dbp-client-agent" {
 				continue
 			}
+			containerNames = append(containerNames, name)
+
 
 			inspect, err := cli.ContainerInspect(ctx, c.ID)
 			if err != nil {
@@ -220,53 +221,54 @@ func main() {
 		}
 
 		if shouldRun {
-			fmt.Printf("[SCHEDULER] Triggering backup cycle (Schedule: %s, Force: %s)...\n", config.Schedule, force)
-			currentPaths := selectedPaths
-			if force == "full" {
-				currentPaths = []string{"/host_root"}
-			}
-			
-			IsSyncing = true
-			// Pasamos el bucket aislado y la contraseña dinámica + credenciales S3 (V2.6.2)
-			err = RunResticBackup(currentPaths, isolatedBucket, config.ResticPassword, config.WasabiKey, config.WasabiSecret)
-			IsSyncing = false
+			if IsSyncing {
+				fmt.Println("[SCHEDULER] Backup already in progress. Skipping trigger.")
+			} else {
+				fmt.Printf("[SCHEDULER] Triggering ASYNC backup cycle (Schedule: %s, Force: %s)...\n", config.Schedule, force)
+				currentPaths := selectedPaths
+				if force == "full" {
+					currentPaths = []string{"/host_root"}
+				}
 
+				// Ejecutar en segundo plano para no bloquear latidos (V3.1.2)
+				go func(paths []string, repo, pass, key, secret string) {
+					IsSyncing = true
+					err := RunResticBackup(paths, repo, pass, key, secret)
+					IsSyncing = false
+					
+					if err == nil {
+						lastBackupUnix = time.Now().Unix()
+						fmt.Println("[ASYNC] Backup finished successfully.")
+					} else {
+						fmt.Printf("[ASYNC ERROR] Backup failed: %v\n", err)
+					}
 
+					// Reportar métricas al finalizar (V3.1.3)
+					metrics := BackupMetrics{
+						AgentID:    agentID,
+						Status:     "SUCCESS",
+						Timestamp:  time.Now().Unix(),
+						SnapshotID: "async-auto",
+					}
+					if err != nil {
+						metrics.Status = "ERROR"
+					}
+					ReportMetrics(metrics)
+				}(currentPaths, isolatedBucket, config.ResticPassword, config.WasabiKey, config.WasabiSecret)
 
-			
-			if err == nil {
-				lastBackupUnix = time.Now().Unix()
 			}
 		} else {
-			if force == "none" {
+			if force == "none" || force == "" {
 				fmt.Printf("[IDLE] Waiting for schedule (%s)... Last backup: %s\n", 
 					config.Schedule, time.Unix(lastBackupUnix, 0).Format("15:04:05"))
 			}
 		}
 
-
-
-		finalStatus := "SUCCESS"
-		if err != nil {
-			finalStatus = "FAILED"
-		}
-
-		// 4. Enviar Telemetría de Respaldo
-		metrics := BackupMetrics{
-
-			AgentID:      agentID,
-			Status:       finalStatus,
-			TotalSizeMB:  0, // TODO: Calcular desde restic output
-			DurationSecs: 0,
-			SnapshotID:   "auto",
-			Timestamp:    time.Now().Unix(),
-		}
-		ReportMetrics(metrics)
-
-		fmt.Println("[INFO] Cycle completed. Sleeping for 60 seconds...")
+		// EL LATIDO CONTINÚA INDEPENDIENTE
 		time.Sleep(60 * time.Second)
 	}
 }
+
 
 func containsString(str, substr string) bool {
 	return strings.Contains(strings.ToLower(str), strings.ToLower(substr))

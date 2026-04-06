@@ -90,6 +90,14 @@ func main() {
 			var config BackupConfig
 			DB.Where("token = ? AND agent_id = ?", a.Token, a.ID).First(&config)
 
+			// Filtramos el dbp-client-agent de los contenedores reportados
+			cleanContainers := []string{}
+			for _, co := range containers {
+				if co != "dbp-client-agent" {
+					cleanContainers = append(cleanContainers, co)
+				}
+			}
+
 			resp[a.ID] = gin.H{
 				"agent_id":       a.ID,
 				"token":          a.Token,
@@ -97,7 +105,7 @@ func main() {
 				"last_sync":      a.LastSeen.Format(time.RFC3339),
 				"last_seen_unix": a.LastSeenUnix,
 				"os":             a.OS,
-				"containers":     containers,
+				"containers":     cleanContainers,
 				"explorer":       explorer,
 				"snapshots":      snapshots,
 				"maintenance":    a.Maintenance,
@@ -106,11 +114,25 @@ func main() {
 				"last_backup_at": a.LastBackupAt,
 				"schedule":       config.Schedule,
 			}
-
-
 		}
+
 		c.JSON(200, resp)
 	})
+
+	// Nuevo endpoint para el Historial (Phase 2)
+	r.GET("/v1/history", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		isAdmin := c.GetBool("is_admin")
+
+		var activities []BackupActivity
+		if isAdmin {
+			DB.Order("created_at desc").Limit(50).Find(&activities)
+		} else {
+			DB.Where("token = ?", token).Order("created_at desc").Limit(50).Find(&activities)
+		}
+		c.JSON(200, activities)
+	})
+
 
 	v1Agent.DELETE("/status/:id", AuthMiddleware(), func(c *gin.Context) {
 		id := c.Param("id")

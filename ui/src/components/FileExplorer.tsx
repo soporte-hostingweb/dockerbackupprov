@@ -105,8 +105,23 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
           <ChevronRight size={12} className="text-gray-500" />
           <span className="text-[10px] text-gray-500 uppercase">Snapshot Targets</span>
         </div>
+        <div className="flex gap-2">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setSelectedFolders([...folders]); }}
+              className="text-[9px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-500/20 hover:bg-emerald-500/20 transition-all font-bold uppercase"
+            >
+              Select All
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setSelectedFolders([]); }}
+              className="text-[9px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded border border-gray-700 hover:bg-gray-700 transition-all font-bold uppercase"
+            >
+              Clear
+            </button>
+        </div>
         {loadingConfig && <span className="text-[10px] text-emerald-500 animate-pulse font-bold">LOADING PERSISTENCE...</span>}
       </div>
+
 
       <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">
         {folders && folders.length > 0 ? (
