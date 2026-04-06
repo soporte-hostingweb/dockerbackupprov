@@ -183,18 +183,10 @@ func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secre
 		repo = os.Getenv("RESTIC_REPOSITORY")
 	}
 
-	args := []string{
-		"-r", repo,
-		"forget", 
-		"--keep-daily", "7", 
-		"--keep-weekly", "4", 
-		"--keep-monthly", "2", 
-		"--prune",
-	}
-
-	cmd := exec.Command("restic", args...)
+	// 1. Limpiar posibles bloqueos (V3.3.0 - Soluciona exit status 11)
+	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
 	
-	// Inyectar credenciales (V2.6.2)
+	// Inyectar credenciales para unlock
 	env := os.Environ()
 	if password != "" {
 		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
@@ -205,9 +197,21 @@ func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secre
 	if s3Secret != "" {
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
 	}
+	unlockCmd.Env = env
+	_ = unlockCmd.Run() // Ignoramos si falla (V3.3.3)
+
+	// 2. Ejecutar Políticas de Retención
+	args := []string{
+		"-r", repo,
+		"forget", 
+		"--keep-daily", "7", 
+		"--keep-weekly", "4", 
+		"--keep-monthly", "2", 
+		"--prune",
+	}
+
+	cmd := exec.Command("restic", args...)
 	cmd.Env = env
-
-
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -220,8 +224,8 @@ func ApplyRetentionPolicy(repoURL string, password string, s3Key string, s3Secre
 	return nil
 }
 
-
 // GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo
+
 func GetSnapshotsJSON(repoURL string, password string, s3Key string, s3Secret string) []byte {
 	repo := repoURL
 	if repo == "" {
