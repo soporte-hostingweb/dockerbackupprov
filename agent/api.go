@@ -24,14 +24,17 @@ type BackupMetrics struct {
 
 // HeartbeatPayload para enviar la lista de contenedores y estado del sistema
 type HeartbeatPayload struct {
-	AgentID      string              `json:"agent_id"`
-	Containers   []string            `json:"containers"`
-	ExplorerData map[string][]string `json:"explorer_data"`
-	Snapshots    []interface{}       `json:"snapshots"`
-	OS           string              `json:"os"`
-	IsSyncing    bool                `json:"is_syncing"`
-	ActivePID    int                 `json:"active_pid"`
+	AgentID        string              `json:"agent_id"`
+	Containers     []string            `json:"containers"`
+	ExplorerData   map[string][]string `json:"explorer_data"`
+	Snapshots      []interface{}       `json:"snapshots"`
+	OS             string              `json:"os"`
+	IsSyncing      bool                `json:"is_syncing"`
+	ActivePID      int                 `json:"active_pid"`
+	LastBackupUnix int64               `json:"last_backup_unix"`
 }
+
+
 
 
 
@@ -44,6 +47,7 @@ func ReportMetrics(metrics BackupMetrics) {
 	url := fmt.Sprintf("%s/v1/agent/backup/complete", apiEndpoint)
 	
 	payload, err := json.Marshal(metrics)
+
 	if err != nil {
 		fmt.Printf("[API ERROR] Could not marshal metrics: %v\n", err)
 		return
@@ -65,7 +69,7 @@ func ReportMetrics(metrics BackupMetrics) {
 }
 
 // ReportHeartbeat envía el estado pasivo del servidor y recibe instrucciones (maintenance, force, kill)
-func ReportHeartbeat(agentID string, containers []string, explorerData map[string][]string, snapshots []interface{}, syncing bool, pid int) (bool, string, bool, error) {
+func ReportHeartbeat(agentID string, containers []string, explorerData map[string][]string, snapshots []interface{}, syncing bool, pid int, lastBackup int64) (bool, string, bool, error) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
@@ -73,14 +77,16 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 	url := fmt.Sprintf("%s/v1/agent/heartbeat", apiEndpoint)
 
 	payloadObj := HeartbeatPayload{
-		AgentID:      agentID,
-		Containers:   containers,
-		ExplorerData: explorerData,
-		Snapshots:    snapshots,
-		OS:           "Linux (Docker)",
-		IsSyncing:    syncing,
-		ActivePID:    pid,
+		AgentID:        agentID,
+		Containers:     containers,
+		ExplorerData:   explorerData,
+		Snapshots:      snapshots,
+		OS:             "Linux (Docker)",
+		IsSyncing:      syncing,
+		ActivePID:      pid,
+		LastBackupUnix: lastBackup,
 	}
+
 
 	payload, _ := json.Marshal(payloadObj)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
@@ -118,13 +124,21 @@ func ReportHeartbeat(agentID string, containers []string, explorerData map[strin
 
 
 
+// AgentConfigV2 contiene la respuesta extendida de la API (V2.3)
+type AgentConfigV2 struct {
+	Status      string   `json:"status"`
+	Paths       []string `json:"paths"`
+	Schedule    string   `json:"schedule"`
+	FullRepoURL string   `json:"full_repo_url"`
+}
+
+
 // GetAgentConfig consulta a la API la selección de carpetas específica para este VPS
-func GetAgentConfig(agentID string) ([]string, error) {
+func GetAgentConfig(agentID string) (*AgentConfigV2, error) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
 	}
-	// Importante: Pasamos el agent_id como query param para que la API sepa qué config devolver
 	url := fmt.Sprintf("%s/v1/agent/config?agent_id=%s", apiEndpoint, agentID)
 
 	req, _ := http.NewRequest("GET", url, nil)
@@ -137,15 +151,14 @@ func GetAgentConfig(agentID string) ([]string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 404 {
-		return nil, nil // Sin configuración aún
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("config fetch failed: %s", resp.Status)
 	}
 
-	var config struct {
-		Paths []string `json:"paths"`
-	}
+	var config AgentConfigV2
 	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
 		return nil, err
 	}
-	return config.Paths, nil
+	return &config, nil
 }
+

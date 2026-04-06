@@ -34,9 +34,11 @@ type AgentStatus struct {
 	IsSyncing    bool      `json:"is_syncing"`
 	ActivePID    int       `json:"active_pid"`
 	KillSync     bool      `json:"kill_sync"`
+	LastBackupAt time.Time `json:"last_backup_at"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
 
 
 // BackupConfig almacena qué rutas se han seleccionado para respaldar
@@ -44,9 +46,11 @@ type BackupConfig struct {
 	ID        uint   `gorm:"primaryKey"`
 	Token     string `gorm:"index" json:"token"`
 	AgentID   string `gorm:"index" json:"agent_id"`
-	Paths     string `json:"paths"` // JSON array de paths
+	Paths     string `json:"paths"`    // JSON array de paths
+	Schedule  string `json:"schedule"` // manual, daily_2am, every_1h, etc.
 	CreatedAt time.Time
 }
+
 
 // UserSettings almacena las credenciales de Wasabi por cliente
 type UserSettings struct {

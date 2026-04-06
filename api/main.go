@@ -75,8 +75,13 @@ func main() {
 			json.Unmarshal([]byte(a.Explorer), &explorer)
 			json.Unmarshal([]byte(a.Snapshots), &snapshots)
 
+			// V2.3: Buscamos la configuración de respaldo para obtener el Schedule
+			var config BackupConfig
+			DB.Where("token = ? AND agent_id = ?", a.Token, a.ID).First(&config)
+
 			resp[a.ID] = gin.H{
 				"agent_id":       a.ID,
+				"token":          a.Token,
 				"status":         a.Status,
 				"last_sync":      a.LastSeen.Format(time.RFC3339),
 				"last_seen_unix": a.LastSeenUnix,
@@ -84,7 +89,13 @@ func main() {
 				"containers":     containers,
 				"explorer":       explorer,
 				"snapshots":      snapshots,
+				"maintenance":    a.Maintenance,
+				"is_syncing":     a.IsSyncing,
+				"active_pid":     a.ActivePID,
+				"last_backup_at": a.LastBackupAt,
+				"schedule":       config.Schedule,
 			}
+
 
 		}
 		c.JSON(200, resp)
@@ -110,39 +121,8 @@ func main() {
 		c.JSON(200, gin.H{"status": "Deleted", "id": id})
 	})
 
-	// --- ENDPOINTS DE CONFIGURACIÓN ---
+	// --- ENDPOINTS DE CONFIGURACIÓN MOVIDOS A ABAJO (V2.3) ---
 
-	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
-		var payload struct {
-			AgentID string   `json:"agent_id"`
-			Paths   []string `json:"paths"`
-		}
-		if err := c.ShouldBindJSON(&payload); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid format"})
-			return
-		}
-
-		token := c.GetString("token")
-		pathsJSON, _ := json.Marshal(payload.Paths)
-
-		config := BackupConfig{
-			Token:   token,
-			AgentID: payload.AgentID,
-			Paths:   string(pathsJSON),
-		}
-
-		// Upsert (usando Token + AgentID como clave lógica si la tuviéramos única)
-		// Por sencillez en el MVP, buscamos primero
-		var existing BackupConfig
-		if err := DB.Where("token = ? AND agent_id = ?", token, payload.AgentID).First(&existing).Error; err == nil {
-			existing.Paths = string(pathsJSON)
-			DB.Save(&existing)
-		} else {
-			DB.Create(&config)
-		}
-
-		c.JSON(200, gin.H{"status": "Configuration saved"})
-	})
 
 	v1Agent.GET("/config", AuthMiddleware(), func(c *gin.Context) {
 		token := c.GetString("token")
@@ -154,21 +134,70 @@ func main() {
 		}
 
 		var configs []BackupConfig
-		// Usamos Find() en lugar de First() para evitar el log "record not found" de GORM
 		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", token, agentID).Find(&configs).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Database error"})
 			return
 		}
 
+		// Buscamos el Bucket en Settings para construir la URL completa
+		var settings UserSettings
+		DB.Where("token = ?", token).First(&settings)
+		
+		// Inyectamos la ruta aislada. Asumimos que settings.WasabiBucket ya tiene el protocolo s3:
+		fullRepo := fmt.Sprintf("s3:%s.wasabisys.com/%s/%s/%s", 
+			settings.WasabiRegion, settings.WasabiBucket, token, agentID)
+
 		if len(configs) == 0 {
-			// No hay configuración manual: El agente usará su modo Auto-Discovery
-			c.JSON(200, gin.H{"status": "no_config", "paths": []string{}})
+			c.JSON(200, gin.H{
+				"status":        "no_config", 
+				"paths":         []string{}, 
+				"schedule":      "daily_2am",
+				"full_repo_url": fullRepo,
+			})
 			return
 		}
 
 		var paths []string
 		json.Unmarshal([]byte(configs[0].Paths), &paths)
-		c.JSON(200, gin.H{"status": "manual", "paths": paths})
+		c.JSON(200, gin.H{
+			"status":        "manual", 
+			"paths":         paths, 
+			"schedule":      configs[0].Schedule,
+			"full_repo_url": fullRepo,
+		})
+	})
+
+	// Dashboard guarda la configuración
+	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var req struct {
+			AgentID  string   `json:"agent_id"`
+			Paths    []string `json:"paths"`
+			Schedule string   `json:"schedule"` // manual, daily_2am, etc.
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid payload"})
+			return
+		}
+
+		pathsJSON, _ := json.Marshal(req.Paths)
+
+		var config BackupConfig
+		if err := DB.Where("token = ? AND agent_id = ?", token, req.AgentID).First(&config).Error; err == nil {
+			config.Paths = string(pathsJSON)
+			config.Schedule = req.Schedule
+			DB.Save(&config)
+		} else {
+			config = BackupConfig{
+				Token:    token,
+				AgentID:  req.AgentID,
+				Paths:    string(pathsJSON),
+				Schedule: req.Schedule,
+			}
+			DB.Create(&config)
+		}
+
+		c.JSON(200, gin.H{"status": "Config saved"})
 	})
 
 	// --- HEARTBEAT ---
@@ -183,7 +212,9 @@ func main() {
 			OS           string              `json:"os"`
 			IsSyncing    bool                `json:"is_syncing"`
 			ActivePID    int                 `json:"active_pid"`
+			LastBackupAt int64               `json:"last_backup_unix"` // Reportado por el agente
 		}
+
 		if err := c.ShouldBindJSON(&payload); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid payload"})
 			return
@@ -208,6 +239,11 @@ func main() {
 			ActivePID:    payload.ActivePID,
 		}
 
+		if payload.LastBackupAt > 0 {
+			agent.LastBackupAt = time.Unix(payload.LastBackupAt, 0).UTC()
+		}
+
+
 		// Importante: No machacar Maintenance y PendingForce si ya existen
 		var existing AgentStatus
 		if err := DB.First(&existing, "id = ?", payload.AgentID).Error; err == nil {
@@ -227,6 +263,29 @@ func main() {
 			"kill_sync":     agent.KillSync,
 		})
 	})
+
+	// --- TELEMETRÍA DE BACKUP (MÉTRICAS) ---
+	v1Agent.POST("/backup/complete", AuthMiddleware(), func(c *gin.Context) {
+		var payload struct {
+			AgentID    string `json:"agent_id"`
+			Status     string `json:"status"`
+			SnapshotID string `json:"snapshot_id"`
+			Timestamp  int64  `json:"timestamp"`
+		}
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid metrics"})
+			return
+		}
+
+		// Actualizamos el último backup exitoso si el estado es SUCCESS
+		if payload.Status == "SUCCESS" {
+			DB.Model(&AgentStatus{}).Where("id = ?", payload.AgentID).Update("last_backup_at", time.Unix(payload.Timestamp, 0).UTC())
+		}
+
+		c.JSON(200, gin.H{"status": "Metrics recorded"})
+	})
+
+
 
 
 	// --- ACCIONES ADMINISTRATIVAS ---
@@ -274,9 +333,12 @@ func main() {
 		c.JSON(200, gin.H{"status": "Action recorded", "action": req.Action})
 	})
 
-	// --- AJUSTES DE USUARIO (WASABI) ---
+	// --- AJUSTES DE USUARIO (WASABI) (V2.3.2) ---
+	
+	v1User := r.Group("/v1/user")
+	v1User.Use(AuthMiddleware())
 
-	r.POST("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
+	v1User.POST("/settings", func(c *gin.Context) {
 		var settings UserSettings
 		if err := c.ShouldBindJSON(&settings); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid settings"})
@@ -299,11 +361,18 @@ func main() {
 		c.JSON(200, gin.H{"status": "Settings saved (Encrypted)"})
 	})
 
-	r.GET("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
+	v1User.GET("/settings", func(c *gin.Context) {
 		token := c.GetString("token")
 		var settings UserSettings
 		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
-			c.JSON(404, gin.H{"error": "No settings found"})
+			// V2.3.2: Devolver 200 con campos vacíos en lugar de 404 para el UI
+			c.JSON(200, gin.H{
+				"wasabi_key": "",
+				"wasabi_secret": "",
+				"wasabi_bucket": "",
+				"wasabi_region": "us-east-1",
+				"restic_password": "",
+			})
 			return
 		}
 
@@ -313,6 +382,7 @@ func main() {
 
 		c.JSON(200, settings)
 	})
+
 
 	// --- DIAGNÓSTICOS ---
 

@@ -23,11 +23,13 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /home/appuser/
 COPY --from=builder /app/dbp-agent .
 
-# Ajustar permisos
+# Ajustar permisos (mantenemos al usuario creado por si se usa en el futuro, pero corremos como root)
 RUN chown -R appuser:appgroup /home/appuser/
 
-USER appuser
+# Ejecutamos el agente como root para tener acceso al socket y volúmenes
+USER root
 
 # Ejecutamos el agente
 CMD ["./dbp-agent"]
+
 

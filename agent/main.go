@@ -25,17 +25,16 @@ func main() {
 	// CONFIGURACIÓN HORARIA: Operamos en UTC por defecto para evitar discrepancias SaaS
 	time.Local = time.UTC
 	fmt.Println("[INFO] Local time synchronized to UTC.")
+	ActivePID := 0
+	IsSyncing := false
+	var lastBackupUnix int64 = 0
 
 	godotenv.Load()
 	fmt.Println("[INFO] DBP Agent Booting...")
 
-	// 0. Asegurar Repositorio S3 (Wasabi)
-	if err := EnsureResticRepo(); err != nil {
-		log.Printf("[WARNING] Restic Repo check failed: %v. Backups might fail until S3 is ready.", err)
-	}
-
 	// Inicializa el cliente Docker
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+
 	if err != nil {
 		log.Fatalf("[ERROR] Failed to initialize Docker Client: %v", err)
 	}
@@ -116,14 +115,19 @@ func main() {
 		}
 
 
-		// Obtenemos historial de snapshots para el Dashboard
-		snapRaw := GetSnapshotsJSON()
+		// 1. Reportar Heartbeat (Lista de contenedores + Explorer Data + Snapshots)
+		// Usamos el repo base para el primer reporte de snapshots
+		baseRepo := os.Getenv("RESTIC_REPOSITORY") 
+		
+		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
+		snapRaw := GetSnapshotsJSON(baseRepo)
 		var snapshots []interface{}
 		json.Unmarshal(snapRaw, &snapshots)
 
-		// 1. Reportar Heartbeat (Lista de contenedores + Explorer Data + Snapshots)
-		fmt.Printf("[HEARTBEAT] Reporting status for agent %s (%s) to Control Plane...\n", agentID, runtime.GOOS)
-		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID)
+		maint, force, kill, err := ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix)
+
+
+
 		
 		if kill && IsSyncing && ActivePID > 0 {
 			fmt.Printf("[KILL] Remote terminate requested for PID %d...\n", ActivePID)
@@ -145,49 +149,88 @@ func main() {
 
 
 		// 2. Obtener la SELECCIÓN del cliente desde la API
-		selectedPaths, err := GetAgentConfig(agentID)
-		
-		// LÓGICA DE AUTO-INTEGRACIÓN (V2.2)
-		if len(selectedPaths) == 0 {
-			if len(backupPaths) > 0 {
-				fmt.Printf("[PROACTIVE] No manual config found. Using AUTO-DISCOVERY mode (SQL Dumps: %d target paths)\n", len(backupPaths))
-				selectedPaths = backupPaths
-			} else {
-				fmt.Println("[INFO] No manual config AND no auto-discovered paths. Skipping backup cycle.")
-				time.Sleep(60 * time.Second)
-				continue
-			}
-		} else {
-			fmt.Printf("[INFO] Using MANUAL configuration (%d paths selected from Dashboard)\n", len(selectedPaths))
-		}
-
-
-		// LOGICA DE FORCE SNAPSHOT
-		if force == "selected" || force == "full" {
-			currentPaths := selectedPaths
-			if force == "full" {
-				fmt.Println("[FORCE] Triggering FULL SERVER SNAPSHOT (/host_root)...")
-				currentPaths = []string{"/host_root"}
-			} else {
-				fmt.Println("[FORCE] Triggering SELECTED PATHS SNAPSHOT...")
-			}
-			
-			RunResticBackup(currentPaths)
-			// TODO: Inform API that force is completed if necessary, 
-			// though the API might clear it on next heartbeat or manually.
-		}
-
-		// Si el cliente no ha seleccionado nada, no respaldamos (SaaS behavior)
-		if len(selectedPaths) == 0 && len(backupPaths) > 0 && force == "none" {
-			fmt.Println("[INFO] No paths selected by user yet. Skipping backup cycle.")
+		config, err := GetAgentConfig(agentID)
+		if err != nil {
+			fmt.Printf("[API ERROR] Could not fetch backup config: %v\n", err)
 			time.Sleep(60 * time.Second)
 			continue
 		}
 
-		// 3. Ejecutar Respaldo Restic (Solo si no hubo force previo en este ciclo o queremos ambos)
-		if force == "none" {
-			err = RunResticBackup(selectedPaths)
+		// isolation logic (V2.3)
+		var isolatedBucket string
+		if config.FullRepoURL != "" {
+			isolatedBucket = config.FullRepoURL
+			fmt.Printf("[ISOLATION] Targeting unique repository: %s\n", isolatedBucket)
+		} else {
+			isolatedBucket = os.Getenv("RESTIC_REPOSITORY")
 		}
+		
+		// 3. Asegurar que el Repositorio esté inicializado antes de seguir (V2.3)
+		if isolatedBucket != "" {
+			if err := EnsureResticRepo(isolatedBucket); err != nil {
+				fmt.Printf("[WARNING] Restic Repo ensure failed: %v\n", err)
+			}
+		}
+
+
+
+		selectedPaths := config.Paths
+
+		
+		// LÓGICA DE AUTO-INTEGRACIÓN (V2.2 FALLBACK)
+		if len(selectedPaths) == 0 && config.Status == "no_config" {
+			if len(backupPaths) > 0 {
+				fmt.Printf("[PROACTIVE] No manual config found. Using AUTO-DISCOVERY mode (SQL Dumps: %d target paths)\n", len(backupPaths))
+				selectedPaths = backupPaths
+			}
+		} 
+
+
+
+		// LÓGICA DE PROGRAMACIÓN (SCHEDULER V2.3)
+		shouldRun := false
+		now := time.Now()
+
+		if force != "none" {
+			shouldRun = true
+		} else if config.Schedule == "every_1h" {
+			if time.Now().Unix() - lastBackupUnix > 3600 {
+				shouldRun = true
+			}
+		} else if config.Schedule == "daily_2am" {
+			// Ventana de mantenimiento entre las 2 y las 4 AM UTC
+			if now.Hour() >= 2 && now.Hour() <= 4 {
+				lastDate := time.Unix(lastBackupUnix, 0).Format("2006-01-02")
+				currentDate := now.Format("2006-01-02")
+				if lastDate != currentDate {
+					shouldRun = true
+				}
+			}
+		}
+
+		if shouldRun {
+			fmt.Printf("[SCHEDULER] Triggering backup cycle (Schedule: %s, Force: %s)...\n", config.Schedule, force)
+			currentPaths := selectedPaths
+			if force == "full" {
+				currentPaths = []string{"/host_root"}
+			}
+			
+			IsSyncing = true
+			// Pasamos el bucket aislado específicamente para este comando
+			err = RunResticBackup(currentPaths, isolatedBucket)
+			IsSyncing = false
+
+			
+			if err == nil {
+				lastBackupUnix = time.Now().Unix()
+			}
+		} else {
+			if force == "none" {
+				fmt.Printf("[IDLE] Waiting for schedule (%s)... Last backup: %s\n", 
+					config.Schedule, time.Unix(lastBackupUnix, 0).Format("15:04:05"))
+			}
+		}
+
 
 
 		finalStatus := "SUCCESS"

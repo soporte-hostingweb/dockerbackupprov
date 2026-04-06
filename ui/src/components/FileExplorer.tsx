@@ -7,9 +7,11 @@ interface FileExplorerProps {
   agentId: string;
   containerName: string;
   folders: string[];
+  schedule: string; // V2.3
 }
 
-export default function FileExplorer({ agentId, containerName, folders }: FileExplorerProps) {
+export default function FileExplorer({ agentId, containerName, folders, schedule }: FileExplorerProps) {
+
   const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
@@ -58,8 +60,10 @@ export default function FileExplorer({ agentId, containerName, folders }: FileEx
         headers: { "Authorization": token, "Content-Type": "application/json" },
         body: JSON.stringify({ 
           agent_id: agentId,
-          paths: selectedFolders 
+          paths: selectedFolders,
+          schedule: schedule 
         })
+
       });
 
       if (response.ok) {

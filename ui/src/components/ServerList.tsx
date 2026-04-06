@@ -28,6 +28,7 @@ export default function ServerList() {
   const [agents, setAgents] = useState<Record<string, AgentStatus>>({});
   const [loading, setLoading] = useState(true);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<Record<string, string>>({}); // V2.3: { agentId: "daily_2am" }
 
   useEffect(() => {
     async function fetchAgents() {
@@ -222,17 +223,29 @@ export default function ServerList() {
                     <p className="text-[10px] text-gray-500 uppercase">Select folders below to include in current Wasabi S3 Plan</p>
                   </div>
                 </div>
-                 <div className="flex gap-2">
-                   <button 
-                    onClick={() => handleAction(id, 'reset')}
-                    className="bg-gray-800 hover:bg-gray-700 text-[10px] text-red-400 px-3 py-1.5 rounded font-bold transition-all border border-gray-700 uppercase"
-                   >
-                     Full Reset
-                   </button>
-                   <button className="bg-emerald-600 hover:bg-emerald-500 text-[10px] text-white px-3 py-1.5 rounded font-bold transition-all border border-emerald-500 uppercase">
-                     Sync Selection
-                   </button>
-                </div>
+                  <div className="flex gap-2">
+                    <select 
+                      id={`schedule-${id}`}
+                      className="bg-gray-800 text-[10px] text-emerald-400 px-3 py-1.5 rounded font-bold border border-gray-700 uppercase focus:outline-none focus:border-emerald-500"
+                      value={schedules[id] || "manual"}
+                      onChange={(e) => {
+                         setSchedules(prev => ({ ...prev, [id]: e.target.value }));
+                      }}
+                    >
+
+                      <option value="manual">Manual Only</option>
+                      <option value="daily_2am">Daily (2 AM UTC)</option>
+                      <option value="every_12h">Every 12 Hours</option>
+                      <option value="every_1h">Every 1 Hour</option>
+                    </select>
+                    
+                    <button 
+                      onClick={() => handleAction(id, 'reset')}
+                      className="bg-gray-800 hover:bg-gray-700 text-[10px] text-red-400 px-3 py-1.5 rounded font-bold transition-all border border-gray-700 uppercase"
+                    >
+                      Full Reset
+                    </button>
+                  </div>
 
               </div>
 
@@ -257,7 +270,9 @@ export default function ServerList() {
                       agentId={id}
                       containerName={container} 
                       folders={data.explorer ? data.explorer[container] || [] : []} 
+                      schedule={schedules[id] || "manual"}
                     />
+
 
 
                   </div>

@@ -17,28 +17,33 @@ var GlobalExcludes = []string{
 
 
 // EnsureResticRepo verifica si el repositorio S3 ya está inicializado. Si no, lo inicializa.
-func EnsureResticRepo() error {
+func EnsureResticRepo(repoURL string) error {
 	fmt.Println("\n[RESTIC] Validating S3 Wasabi Repository...")
 	
-	repo := os.Getenv("RESTIC_REPOSITORY")
+	repo := repoURL
+	if repo == "" {
+		repo = os.Getenv("RESTIC_REPOSITORY")
+	}
 	if repo == "" {
 		return fmt.Errorf("RESTIC_REPOSITORY environment variable is missing")
 	}
 
 	// Ejecutar snapshot list para ver si el repo existe
-	cmd := exec.Command("restic", "snapshots", "--json")
+	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
 	cmd.Env = os.Environ()
+
 	
 	if err := cmd.Run(); err != nil {
 		fmt.Println("[RESTIC] Repository not detected or uninitialized. Initializing now...")
 		
-		initCmd := exec.Command("restic", "init")
+		initCmd := exec.Command("restic", "-r", repo, "init")
 		initCmd.Env = os.Environ()
 		output, initErr := initCmd.CombinedOutput()
 		if initErr != nil {
 			return fmt.Errorf("restic init failed: %v - Output: %s", initErr, string(output))
 		}
 		fmt.Println("[RESTIC] Repository successfully initialized on Wasabi S3.")
+
 	} else {
 		fmt.Println("[RESTIC] Wasabi S3 Repository is ready and accessible.")
 	}
@@ -46,19 +51,25 @@ func EnsureResticRepo() error {
 }
 
 // RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3
-func RunResticBackup(paths []string) error {
+func RunResticBackup(paths []string, repoURL string) error {
 	fmt.Println("\n[RESTIC] Starting Incremental Backup Engine...")
 	if len(paths) == 0 {
 		fmt.Println("[RESTIC] No directories selected for backup. Skipping cycle.")
 		return nil
 	}
 
+	repo := repoURL
+	if repo == "" {
+		repo = os.Getenv("RESTIC_REPOSITORY")
+	}
+
 	// Preparar argumentos: restic backup --json --exclude=... /path1 /path2 ...
-	args := []string{"backup", "--json"}
+	args := []string{"-r", repo, "backup", "--json"}
 	for _, ex := range GlobalExcludes {
 		args = append(args, "--exclude", ex)
 	}
 	args = append(args, paths...)
+
 	
 	fmt.Printf("[RESTIC] Target paths: %v\n", paths)
 	
@@ -87,16 +98,23 @@ func RunResticBackup(paths []string) error {
 	fmt.Println("[RESTIC] Backup cycle completed successfully. Snapshot recorded.")
 	
 	// Tras el backup, aplicamos la política de retención automática
-	_ = ApplyRetentionPolicy()
+	_ = ApplyRetentionPolicy(repo)
 
 	return nil
 }
 
+
 // ApplyRetentionPolicy purga snapshots antiguos siguiendo la regla (7d, 4w, 2m)
-func ApplyRetentionPolicy() error {
+func ApplyRetentionPolicy(repoURL string) error {
 	fmt.Println("[RESTIC] Applying Retention Policy: 7 daily, 4 weekly, 2 monthly...")
 	
+	repo := repoURL
+	if repo == "" {
+		repo = os.Getenv("RESTIC_REPOSITORY")
+	}
+
 	args := []string{
+		"-r", repo,
 		"forget", 
 		"--keep-daily", "7", 
 		"--keep-weekly", "4", 
@@ -106,6 +124,7 @@ func ApplyRetentionPolicy() error {
 
 	cmd := exec.Command("restic", args...)
 	cmd.Env = os.Environ()
+
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -119,15 +138,19 @@ func ApplyRetentionPolicy() error {
 }
 
 // GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo
-func GetSnapshotsJSON() []byte {
-	repo := os.Getenv("RESTIC_REPOSITORY")
+func GetSnapshotsJSON(repoURL string) []byte {
+	repo := repoURL
+	if repo == "" {
+		repo = os.Getenv("RESTIC_REPOSITORY")
+	}
 	if repo == "" {
 		return []byte("[]")
 	}
 
-	cmd := exec.Command("restic", "snapshots", "--json")
+	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
 	cmd.Env = os.Environ()
 	output, err := cmd.CombinedOutput()
+
 	if err != nil {
 		fmt.Printf("[RESTIC ERROR] Failed to list snapshots: %v\n", err)
 		return []byte("[]")
