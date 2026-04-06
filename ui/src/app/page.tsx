@@ -249,9 +249,10 @@ export default function DashboardPage() {
                         <Cloud className="text-blue-500" size={24} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-black text-white uppercase italic tracking-widest">S3 Cloud Connectivity</h3>
-                        <p className="text-xs text-gray-500 font-bold uppercase tracking-tighter italic">Wasabi / Amazon S3 Endpoint Integration</p>
+                        <h3 className="text-lg font-black text-white uppercase italic tracking-widest">Custom S3 Storage</h3>
+                        <p className="text-xs text-gray-500 font-bold uppercase tracking-tighter italic">Override Global Defaults with your own Bucket</p>
                     </div>
+
                   </div>
                   {settings.wasabi_key === "" && (
                     <span className="bg-emerald-500/10 text-emerald-500 text-[9px] font-black px-3 py-1 rounded-full border border-emerald-500/20 uppercase tracking-widest animate-pulse">
@@ -322,27 +323,17 @@ export default function DashboardPage() {
                    <p className="text-[9px] text-gray-600 font-bold uppercase italic mt-1">Este password nunca se envía al servidor como texto plano, se usa solo para cifrar los backups.</p>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-4 mt-6">
+                <div className="flex flex-col gap-4 mt-6">
                   <button 
                     type="button"
                     onClick={(e) => saveSettings(e, false)}
                     disabled={savingSettings}
-                    className="flex-1 bg-gray-900 hover:bg-gray-800 text-white font-black uppercase text-[10px] py-4 rounded-xl border border-gray-800 transition-all active:scale-[0.98]"
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl shadow-xl shadow-emerald-900/40 transition-all border border-emerald-400/20 active:scale-[0.98]"
                   >
-                    {savingSettings ? 'SYNCING...' : 'SAVE LOCAL TENANT SETTINGS'}
+                    {savingSettings ? 'SYNCING...' : 'SAVE CUSTOM OVERRIDE'}
                   </button>
-
-                  {isAdminParam && (
-                    <button 
-                      type="button"
-                      onClick={(e) => saveSettings(e, true)}
-                      disabled={savingSettings}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[10px] py-4 rounded-xl shadow-xl shadow-emerald-900/40 transition-all border border-emerald-400/20 active:scale-[0.98]"
-                    >
-                      {savingSettings ? 'DEPLOYING GLOBAL...' : 'SAVE AS MASTER GLOBAL'}
-                    </button>
-                  )}
                 </div>
+
 
              </form>
           </div>
@@ -422,7 +413,7 @@ export default function DashboardPage() {
              onClick={() => setActiveTab('settings')}
              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest ml-1 transition-all ${activeTab === 'settings' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-950' : 'text-gray-500 hover:text-gray-300'}`}
            >
-              <Settings size={14} /> Settings
+              <Settings size={14} /> Cloud Storage
            </button>
            {isAdminParam && !isEmbed && (
              <button 
