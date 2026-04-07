@@ -255,9 +255,15 @@ func main() {
 			return
 		}
 
+		// V5.1.1 Fix: Convertir el string de la DB a slice de strings para el Agente/UI
+		var paths []string
+		if configs[0].Paths != "" {
+			_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
+		}
+
 		c.JSON(200, gin.H{
 			"status":          "success",
-			"paths":           configs[0].Paths,
+			"paths":           paths,
 			"schedule":        configs[0].Schedule,
 			"retention":       configs[0].Retention,
 			"full_repo_url":   fullRepo,
