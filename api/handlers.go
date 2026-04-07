@@ -19,17 +19,20 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		
-		// MVP: Permitimos tokens que empiecen con dbp_tenant_ o el de dev
+		// Limpiamos el prefijo 'Bearer ' si existe para la validación (V6.5)
+		cleanToken := strings.TrimPrefix(token, "Bearer ")
+		cleanToken = strings.TrimSpace(cleanToken)
+
 		masterToken := os.Getenv("MASTER_ADMIN_TOKEN")
-		isAdmin := (token != "" && masterToken != "" && token == masterToken)
+		isAdmin := (cleanToken != "" && masterToken != "" && cleanToken == masterToken)
 		
-		if !isAdmin && token != "Bearer vps_token_dev" && token != "vps_token_dev" && !strings.HasPrefix(token, "dbp_tenant_") {
+		if !isAdmin && cleanToken != "vps_token_dev" && !strings.HasPrefix(cleanToken, "dbp_tenant_") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return
 		}
 
-		c.Set("token", token)
+		c.Set("token", cleanToken) // Guardamos el token limpio para el DB query
 		c.Set("is_admin", isAdmin)
 		c.Next()
 	}
