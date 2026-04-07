@@ -255,13 +255,11 @@ func main() {
 			return
 		}
 
-		var paths []string
-		_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
-
 		c.JSON(200, gin.H{
 			"status":          "success",
-			"paths":           paths,
+			"paths":           configs[0].Paths,
 			"schedule":        configs[0].Schedule,
+			"retention":       configs[0].Retention,
 			"full_repo_url":   fullRepo,
 			"restic_password": resticPass,
 			"wasabi_key":      wasabiKey,
@@ -271,12 +269,13 @@ func main() {
 	})
 
 
-	// V5.0: Endpoint para GUARDAR la configuración de forma persistente (Resuelve bug de manual mode)
+	// V5.0/V5.1.1: Endpoint para GUARDAR la configuración de forma persistente
 	v1Agent.POST("/config/save", AuthMiddleware(), func(c *gin.Context) {
 		var req struct {
-			AgentID  string   `json:"agent_id"`
-			Schedule string   `json:"schedule"`
-			Paths    []string `json:"paths"`
+			AgentID   string   `json:"agent_id"`
+			Schedule  string   `json:"schedule"`
+			Paths     []string `json:"paths"`
+			Retention int      `json:"retention"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
@@ -285,29 +284,32 @@ func main() {
 
 		token := c.GetString("token")
 		
-		// 1. Buscamos si ya existe una configuración
 		var config BackupConfig
 		res := DB.Where("token = ? AND agent_id = ?", token, req.AgentID).First(&config)
 		
 		pathsJSON, _ := json.Marshal(req.Paths)
 		
 		if res.Error != nil {
-			// Si no existe, creamos una nueva
 			config = BackupConfig{
-				Token:    token,
-				AgentID:  req.AgentID,
-				Schedule: req.Schedule,
-				Paths:    string(pathsJSON),
+				Token:     token,
+				AgentID:   req.AgentID,
+				Schedule:  req.Schedule,
+				Paths:     string(pathsJSON),
+				Retention: req.Retention,
 			}
 			DB.Create(&config)
 		} else {
-			// Si existe, actualizamos los campos
 			config.Schedule = req.Schedule
 			config.Paths = string(pathsJSON)
-			DB.Save(&config)
+			config.Retention = req.Retention
+			DB.Model(&config).Updates(BackupConfig{
+				Schedule:  req.Schedule,
+				Paths:     string(pathsJSON),
+				Retention: req.Retention,
+			})
 		}
 
-		c.JSON(200, gin.H{"status": "Configuration Saved Permanently", "schedule": req.Schedule})
+		c.JSON(200, gin.H{"status": "Configuration Saved", "schedule": req.Schedule, "retention": req.Retention})
 	})
 
 
@@ -337,7 +339,6 @@ func main() {
 			}
 		}
 
-
 		var config BackupConfig
 		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", saveToken, req.AgentID).Find(&config).Error; err == nil && config.ID != 0 {
 			config.Paths = string(pathsJSON)
@@ -345,16 +346,16 @@ func main() {
 			DB.Save(&config)
 		} else {
 			config = BackupConfig{
-				Token:    saveToken,
-				AgentID:  req.AgentID,
-				Paths:    string(pathsJSON),
-				Schedule: req.Schedule,
+				Token:     saveToken,
+				AgentID:   req.AgentID,
+				Paths:     string(pathsJSON),
+				Schedule:  req.Schedule,
+				Retention: 1, // Default (Gratis)
 			}
 			DB.Create(&config)
 		}
 
-
-		c.JSON(200, gin.H{"status": "Config saved"})
+		c.JSON(200, gin.H{"status": "Config updated in Control Plane"})
 	})
 
 	// --- HEARTBEAT ---

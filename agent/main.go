@@ -173,13 +173,17 @@ func main() {
 		shouldRun := false
 		if force != "none" && force != "" {
 			shouldRun = true
-		} else if config.Schedule == "every_1h" && time.Now().Unix()-lastBackupUnix > 3600 {
-			shouldRun = true
-		} else if config.Schedule == "every_12h" && time.Now().Unix()-lastBackupUnix > 43200 {
-			shouldRun = true
-		} else if config.Schedule == "daily_2am" {
+		} else if config.Schedule == "daily_2am" || config.Schedule == "daily_2am_basic" {
 			now := time.Now()
 			if now.Hour() >= 2 && now.Hour() <= 4 {
+				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
+					shouldRun = true
+				}
+			}
+		} else if config.Schedule == "weekly_2am" {
+			now := time.Now()
+			// Solo Domingos (Weekday 0) a las 2 AM
+			if now.Weekday() == time.Sunday && now.Hour() >= 2 && now.Hour() <= 4 {
 				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
 					shouldRun = true
 				}
@@ -206,7 +210,7 @@ func main() {
 				f, t := GetDiskCapacity()
 				ReportHeartbeat(agentID, containerNames, explorerData, nil, true, ActivePID, lastBackupUnix, f, t)
 				
-				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s)
+				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s, config.Retention)
 				
 				finishedAt := time.Now().Unix()
 				duration := int(finishedAt - startedAt)

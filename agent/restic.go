@@ -61,8 +61,8 @@ func EnsureResticRepo(repo string, password string, s3Key string, s3Secret strin
 	return nil
 }
 
-// RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3 (V3.6.1)
-func RunResticBackup(paths []string, repo string, password string, s3Key string, s3Secret string) (string, int64, error) {
+// RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3 (V5.1.1: Agregada Retención)
+func RunResticBackup(paths []string, repo string, password string, s3Key string, s3Secret string, keepLast int) (string, int64, error) {
 	if len(paths) == 0 {
 		return "", 0, fmt.Errorf("no directories selected")
 	}
@@ -137,8 +137,8 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 	
 	fmt.Printf("[RESTIC] Backup cycle completed. Snapshot: %s | Processed: %d bytes\n", finalSnapshotID, totalBytes)
 	
-	// Tras el backup, aplicamos la política de retención automática
-	_ = ApplyRetentionPolicy(repo, password, s3Key, s3Secret)
+	// Tras el backup, aplicamos la política de retención dinámica (V5.1.1)
+	_ = ApplyRetentionPolicy(repo, password, s3Key, s3Secret, keepLast)
 
 	return finalSnapshotID, totalBytes, nil
 }
@@ -187,9 +187,11 @@ func RunResticRestore(snapshotID string, destination string, paths []string, rep
 
 
 
-// ApplyRetentionPolicy aplica una política de rotación (KEEP 7) (V3.3.7: Unlock-Self-Heal added)
-func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret string) error {
-	fmt.Println("[RESTIC] Applying retention policy (KEEP LAST 7)...")
+// ApplyRetentionPolicy aplica una política de rotación dinámica (KEEP X) (V5.1.1)
+func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret string, keepLast int) error {
+	if keepLast <= 0 { keepLast = 1 } // Seguridad mínima (V5.1.1)
+	
+	fmt.Printf("[RESTIC] Applying retention policy (KEEP LAST %d)...\n", keepLast)
 	
 	env := os.Environ()
 	if password != "" {
@@ -209,7 +211,7 @@ func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret s
 	time.Sleep(2 * time.Second) // Delay para consistencia S3
 
 	// 2. Forget & Prune
-	cmd := exec.Command("restic", "-r", repo, "forget", "--keep-last", "7", "--prune")
+	cmd := exec.Command("restic", "-r", repo, "forget", "--keep-last", fmt.Sprintf("%d", keepLast), "--prune")
 	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
@@ -218,7 +220,7 @@ func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret s
 		return err
 	}
 	
-	fmt.Println("[RESTIC] Retention successful. Storage optimized.")
+	fmt.Printf("[RESTIC] Retention successful (Last %d copies). Storage optimized.\n", keepLast)
 	return nil
 }
 

@@ -71,6 +71,12 @@ export default function ServerList({ onRestore }: ServerListProps) {
 
     try {
        const schedule = schedules[agentId] || "manual";
+       
+       // V5.1.1: Calcular retención según el plan seleccionado
+       let retention = 1;
+       if (schedule === "daily_2am_basic" || schedule === "weekly_2am") retention = 2;
+       if (schedule === "custom") retention = 7;
+
        // Obtenemos los paths actuales para no borrarlos al guardar solo el schedule
        const configResp = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {
          headers: { "Authorization": token }
@@ -90,12 +96,13 @@ export default function ServerList({ onRestore }: ServerListProps) {
          body: JSON.stringify({ 
             agent_id: agentId,
             schedule: schedule,
+            retention: retention,
             paths: currentPaths
          })
        });
 
        if (response.ok) {
-         alert(`✅ [PLAN ACTUALIZADO] El servidor ahora operará en modo: ${schedule.toUpperCase()}`);
+         alert(`✅ [PLAN ACTUALIZADO] Modo: ${schedule.toUpperCase()} | Retención: ${retention} copias`);
        }
     } catch (err) {
        console.error("Error saving config:", err);
@@ -296,10 +303,10 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       }}
                     >
 
-                      <option value="manual">Manual Only (Free)</option>
-                      <option value="daily_2am">Daily @ 2 AM (Pro)</option>
-                      <option value="every_12h">Every 12 Hours (Business)</option>
-                      <option value="every_1h">Every 1 Hour (Enterprise)</option>
+                       <option value="manual">Manual Only (Free - 1 Copy)</option>
+                       <option value="daily_2am_basic">Daily Basic (Pro - 2 Copies)</option>
+                       <option value="weekly_2am">Weekly (Standard - 2 Copies)</option>
+                       <option value="custom">Custom (Enterprise - 7 Copies)</option>
                     </select>
                     
                     <button 

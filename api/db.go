@@ -55,7 +55,8 @@ type BackupConfig struct {
 	Token     string `gorm:"index" json:"token"`
 	AgentID   string `gorm:"index" json:"agent_id"`
 	Paths     string `json:"paths"`    // JSON array de paths
-	Schedule  string `json:"schedule"` // manual, daily_2am, every_1h, etc.
+	Schedule  string `json:"schedule"` // manual, daily_2am, weekly_2am, custom
+	Retention int    `json:"retention"` // 1, 2, 7 (V5.1.1)
 	CreatedAt time.Time
 }
 

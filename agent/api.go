@@ -181,11 +181,12 @@ func ReportTaskResult(agentID string, task string, result string) {
 
 
 
-// AgentConfigV2 contiene la respuesta extendida de la API (V2.3)
+// AgentConfigV2 contiene la respuesta extendida de la API (V5.1.1)
 type AgentConfigV2 struct {
 	Status          string   `json:"status"`
 	Paths           []string `json:"paths"`
 	Schedule        string   `json:"schedule"`
+	Retention       int      `json:"retention"`
 	FullRepoURL     string   `json:"full_repo_url"`
 	ResticPassword  string   `json:"restic_password"`
 	WasabiKey       string   `json:"wasabi_key"`
