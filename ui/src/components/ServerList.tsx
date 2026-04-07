@@ -45,6 +45,13 @@ export default function ServerList({ onRestore }: ServerListProps) {
         if (response.ok) {
           const data = await response.json();
           setAgents(data);
+          
+          // V5.0: Sincronizar el estado de schedules local con lo que viene del servidor
+          const loadedSchedules: Record<string, string> = {};
+          Object.entries(data).forEach(([id, agent]: [string, any]) => {
+             loadedSchedules[id] = agent.schedule || "manual";
+          });
+          setSchedules(loadedSchedules);
         }
       } catch (error) {
         console.error("Error fetching agents:", error);
@@ -57,6 +64,44 @@ export default function ServerList({ onRestore }: ServerListProps) {
     const interval = setInterval(fetchAgents, 15000); // 15s refresh
     return () => clearInterval(interval);
   }, []);
+
+  const handleSaveConfig = async (agentId: string) => {
+    const token = localStorage.getItem("dbp_sso_token");
+    if (!token) return;
+
+    try {
+       const schedule = schedules[agentId] || "manual";
+       // Obtenemos los paths actuales para no borrarlos al guardar solo el schedule
+       const configResp = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {
+         headers: { "Authorization": token }
+       });
+       let currentPaths = [];
+       if (configResp.ok) {
+          const configData = await configResp.json();
+          currentPaths = configData.paths || [];
+       }
+
+       const response = await fetch(`https://api.hwperu.com/v1/agent/config/save`, {
+         method: "POST",
+         headers: { 
+           "Authorization": token,
+           "Content-Type": "application/json"
+         },
+         body: JSON.stringify({ 
+            agent_id: agentId,
+            schedule: schedule,
+            paths: currentPaths
+         })
+       });
+
+       if (response.ok) {
+         alert(`✅ [PLAN ACTUALIZADO] El servidor ahora operará en modo: ${schedule.toUpperCase()}`);
+       }
+    } catch (err) {
+       console.error("Error saving config:", err);
+       alert("Error al conectar con el Control Plane");
+    }
+  };
 
   const removeAgent = async (id: string) => {
     if (!confirm(`¿Eliminar servidor "${id}" del panel?`)) return;
@@ -251,17 +296,24 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       }}
                     >
 
-                      <option value="manual">Manual Only</option>
-                      <option value="daily_2am">Daily (2 AM UTC)</option>
-                      <option value="every_12h">Every 12 Hours</option>
-                      <option value="every_1h">Every 1 Hour</option>
+                      <option value="manual">Manual Only (Free)</option>
+                      <option value="daily_2am">Daily @ 2 AM (Pro)</option>
+                      <option value="every_12h">Every 12 Hours (Business)</option>
+                      <option value="every_1h">Every 1 Hour (Enterprise)</option>
                     </select>
                     
+                    <button 
+                      onClick={() => handleSaveConfig(id)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-[10px] text-white px-4 py-1.5 rounded font-black transition-all border border-emerald-400/20 shadow-lg shadow-emerald-950/20 uppercase"
+                    >
+                      Save Configuration
+                    </button>
+
                     <button 
                       onClick={() => handleAction(id, 'reset')}
                       className="bg-gray-800 hover:bg-gray-700 text-[10px] text-red-400 px-3 py-1.5 rounded font-bold transition-all border border-gray-700 uppercase"
                     >
-                      Full Reset
+                      Reset
                     </button>
                   </div>
 

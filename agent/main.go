@@ -175,6 +175,8 @@ func main() {
 			shouldRun = true
 		} else if config.Schedule == "every_1h" && time.Now().Unix()-lastBackupUnix > 3600 {
 			shouldRun = true
+		} else if config.Schedule == "every_12h" && time.Now().Unix()-lastBackupUnix > 43200 {
+			shouldRun = true
 		} else if config.Schedule == "daily_2am" {
 			now := time.Now()
 			if now.Hour() >= 2 && now.Hour() <= 4 {

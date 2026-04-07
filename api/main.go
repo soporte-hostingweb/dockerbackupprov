@@ -259,7 +259,7 @@ func main() {
 		_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
 
 		c.JSON(200, gin.H{
-			"status":          "ready",
+			"status":          "success",
 			"paths":           paths,
 			"schedule":        configs[0].Schedule,
 			"full_repo_url":   fullRepo,
@@ -270,6 +270,45 @@ func main() {
 
 	})
 
+
+	// V5.0: Endpoint para GUARDAR la configuración de forma persistente (Resuelve bug de manual mode)
+	v1Agent.POST("/config/save", AuthMiddleware(), func(c *gin.Context) {
+		var req struct {
+			AgentID  string   `json:"agent_id"`
+			Schedule string   `json:"schedule"`
+			Paths    []string `json:"paths"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		token := c.GetString("token")
+		
+		// 1. Buscamos si ya existe una configuración
+		var config BackupConfig
+		res := DB.Where("token = ? AND agent_id = ?", token, req.AgentID).First(&config)
+		
+		pathsJSON, _ := json.Marshal(req.Paths)
+		
+		if res.Error != nil {
+			// Si no existe, creamos una nueva
+			config = BackupConfig{
+				Token:    token,
+				AgentID:  req.AgentID,
+				Schedule: req.Schedule,
+				Paths:    string(pathsJSON),
+			}
+			DB.Create(&config)
+		} else {
+			// Si existe, actualizamos los campos
+			config.Schedule = req.Schedule
+			config.Paths = string(pathsJSON)
+			DB.Save(&config)
+		}
+
+		c.JSON(200, gin.H{"status": "Configuration Saved Permanently", "schedule": req.Schedule})
+	})
 
 
 	// Dashboard guarda la configuración
