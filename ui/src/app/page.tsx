@@ -8,6 +8,7 @@ import {
 
 import ServerList from "@/components/ServerList";
 import RestoreModal from "@/components/RestoreModal";
+import GlobalActivity from "@/components/GlobalActivity"; // V6.3: Telemetría Global
 
 type TabType = 'servers' | 'history' | 'settings' | 'admin';
 
@@ -160,7 +161,14 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
-              <ServerList onRestore={openRestore} />
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                  <div className="lg:col-span-3 space-y-8">
+                      <ServerList onRestore={openRestore} />
+                  </div>
+                  <div className="lg:col-span-1">
+                      <GlobalActivity token={token} />
+                  </div>
+              </div>
           </div>
         );
 

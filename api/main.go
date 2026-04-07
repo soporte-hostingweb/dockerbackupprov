@@ -127,18 +127,61 @@ func main() {
 		c.JSON(200, resp)
 	})
 
-	// Nuevo endpoint para el Historial (Phase 2)
-	r.GET("/v1/history", AuthMiddleware(), func(c *gin.Context) {
+	// V6.3: Monitor de Actividad Global (Reemplaza a /history por uno más detallado)
+	r.GET("/v1/activities", AuthMiddleware(), func(c *gin.Context) {
 		token := c.GetString("token")
 		isAdmin := c.GetBool("is_admin")
 
-		var activities []BackupActivity
+		var activities []ActivityLog
 		if isAdmin {
-			DB.Order("created_at desc").Limit(50).Find(&activities)
+			DB.Order("started_at desc").Limit(50).Find(&activities)
 		} else {
-			DB.Where("token = ?", token).Order("created_at desc").Limit(50).Find(&activities)
+			DB.Where("token = ?", token).Order("started_at desc").Limit(50).Find(&activities)
 		}
 		c.JSON(200, activities)
+	})
+
+	// Endpoint para que el AGENTE reporte su estado en tiempo real (V6.3)
+	v1Agent.POST("/activity/report", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var req struct {
+			ActivityID uint   `json:"activity_id"`
+			AgentID    string `json:"agent_id"`
+			Type       string `json:"type"`    // backup, restore, prune
+			Status     string `json:"status"`  // running, success, error
+			Message    string `json:"message"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		var activity ActivityLog
+		if req.ActivityID > 0 {
+			// Actualizamos una actividad existente
+			if err := DB.First(&activity, req.ActivityID).Error; err == nil {
+				activity.Status = req.Status
+				activity.Message = req.Message
+				if req.Status == "success" || req.Status == "error" {
+					activity.FinishedAt = time.Now()
+				}
+				DB.Save(&activity)
+				c.JSON(200, gin.H{"status": "updated", "activity_id": activity.ID})
+				return
+			}
+		}
+
+		// Creamos una NUEVA actividad
+		activity = ActivityLog{
+			Token:     token,
+			AgentID:   req.AgentID,
+			Type:      req.Type,
+			Status:    req.Status,
+			Message:   req.Message,
+			StartedAt: time.Now(),
+		}
+		DB.Create(&activity)
+		c.JSON(200, gin.H{"status": "created", "activity_id": activity.ID})
 	})
 
 

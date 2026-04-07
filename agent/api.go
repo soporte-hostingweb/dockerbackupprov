@@ -224,3 +224,37 @@ func GetAgentConfig(agentID string) (*AgentConfigV2, error) {
 	return &config, nil
 }
 
+// ReportActivity: Notifica el estado de una tarea al Control Plane (V6.3)
+func ReportActivity(activityID uint, agentID string, taskType string, status string, message string) uint {
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" { apiEndpoint = "https://api.hwperu.com" }
+	url := fmt.Sprintf("%s/v1/agent/activity/report", apiEndpoint)
+	token := os.Getenv("DBP_API_TOKEN")
+
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"activity_id": activityID,
+		"agent_id":    agentID,
+		"type":        taskType,
+		"status":      status,
+		"message":     message,
+	})
+
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Token", token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[ERROR] Could not report activity: %v\n", err)
+		return 0
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ActivityID uint `json:"activity_id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result.ActivityID
+}
+

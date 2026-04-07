@@ -60,6 +60,18 @@ type BackupConfig struct {
 	CreatedAt time.Time
 }
 
+// ActivityLog: Registro de operaciones globales en tiempo real (V6.3)
+type ActivityLog struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	Token      string    `gorm:"index" json:"token"`
+	AgentID    string    `gorm:"index" json:"agent_id"`
+	Type       string    `json:"type"` // backup, restore, prune
+	Status     string    `json:"status"` // pending, running, success, error
+	Message    string    `json:"message"`
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
+}
+
 
 // UserSettings almacena las credenciales de Wasabi por cliente
 type UserSettings struct {
@@ -117,7 +129,8 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{})
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{})
+	fmt.Println("✅ Database Migrated Successfully with ActivityLog (V6.3)")
 
 
 	DB = db

@@ -207,6 +207,9 @@ func main() {
 				startedAt := time.Now().Unix()
 				IsSyncing = true
 				
+				// V6.3: Reportar Inicio al Monitor Global
+				activityID := ReportActivity(0, agentID, "backup", "running", "Scheduled backup started")
+				
 				f, t := GetDiskCapacity()
 				ReportHeartbeat(agentID, containerNames, explorerData, nil, true, ActivePID, lastBackupUnix, f, t)
 				
@@ -214,24 +217,33 @@ func main() {
 				
 				finishedAt := time.Now().Unix()
 				duration := int(finishedAt - startedAt)
-				status := "SUCCESS"
+				status := "success"
+				msg := fmt.Sprintf("Backup completed. Size: %d bytes", bytesProcessed)
+				
 				if errB != nil {
-					status = "ERROR"
+					status = "error"
+					msg = fmt.Sprintf("Backup failed: %v", errB)
 					LogInfo("[ASYNC ERROR] %v", errB)
 				} else {
 					lastBackupUnix = finishedAt
 					LogInfo("[ASYNC] Finished. ID: %s | Dur: %ds", snapID, duration)
-					rawSnaps := GetSnapshotsJSON(r, p, k, s)
-					var updatedSnapshots []interface{}
-					json.Unmarshal(rawSnaps, &updatedSnapshots)
-					ReportHeartbeat(agentID, containerNames, explorerData, updatedSnapshots, false, ActivePID, lastBackupUnix, f, t)
 				}
 
+				// V6.3: Reportar Fin al Monitor Global
+				ReportActivity(activityID, agentID, "backup", status, msg)
+
 				ReportMetrics(BackupMetrics{
-					AgentID: agentID, Status: status, StartedAt: startedAt, Timestamp: finishedAt,
+					AgentID: agentID, Status: strings.ToUpper(status), StartedAt: startedAt, Timestamp: finishedAt,
 					SnapshotID: snapID, TotalSizeMB: int(bytesProcessed / (1024 * 1024)),
 					TotalSizeBytes: bytesProcessed, DurationSecs: duration,
 				})
+
+				// Actualizar snapshots tras el backup
+				rawSnaps := GetSnapshotsJSON(r, p, k, s)
+				var updatedSnapshots []interface{}
+				json.Unmarshal(rawSnaps, &updatedSnapshots)
+				ReportHeartbeat(agentID, containerNames, explorerData, updatedSnapshots, false, ActivePID, lastBackupUnix, f, t)
+
 				IsSyncing = false
 			}(currentPaths, repo, pass, key, secret)
 		} else {
@@ -240,9 +252,39 @@ func main() {
 			}
 		}
 
-		// Si llegamos aquí y hay una tarea nueva capturada en el segundo heartbeat de discovery, 
-		// saltamos el sleep y volvemos a procesar.
+		// PROCESAMIENTO DE TAREAS REMOTAS (Restore, etc.)
 		if taskInfo != "" && taskInfo != "none" {
+			parts := strings.Split(taskInfo, "|")
+			taskType := parts[0]
+
+			if taskType == "restore" && len(parts) >= 3 {
+				snapID := parts[1]
+				target := parts[2]
+				
+				// V6.3: Reportar Inicio de Restauración
+				activityID := ReportActivity(0, agentID, "restore", "running", fmt.Sprintf("Restoring snapshot %s to %s", snapID, target))
+				
+				var restorePaths []string
+				if len(parts) > 3 {
+					restorePaths = strings.Split(parts[3], ",")
+				}
+
+				go func() {
+					errR := RunResticRestore(snapID, target, restorePaths, repo, pass, key, secret)
+					
+					status := "success"
+					msg := "Restoration completed successfully"
+					if errR != nil {
+						status = "error"
+						msg = fmt.Sprintf("Restoration failed: %v", errR)
+					}
+					
+					// V6.3: Reportar Fin de Restauración
+					ReportActivity(activityID, agentID, "restore", status, msg)
+					
+					ReportTaskResult(agentID, taskType, msg)
+				}()
+			}
 			continue
 		}
 
