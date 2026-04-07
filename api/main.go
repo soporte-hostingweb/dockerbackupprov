@@ -184,14 +184,34 @@ func main() {
 		var configs []BackupConfig
 		DB.Where("token = ? AND agent_id = ?", effectiveToken, agentID).Find(&configs)
 
-		// Configuración base de Wasabi (Globales)
-		wasabiKey := os.Getenv("AWS_ACCESS_KEY_ID")
-		wasabiSecret := os.Getenv("AWS_SECRET_ACCESS_KEY")
-		wasabiBucket := os.Getenv("WASABI_BUCKET")
-		wasabiRegion := os.Getenv("WASABI_REGION")
-		resticPass := os.Getenv("RESTIC_PASSWORD")
+		// V5.1.3: Recuperar configuración de Wasabi (Tenant o Global)
+		var settings UserSettings
+		// 1. Buscamos settings del inquilino (effectiveToken)
+		DB.Limit(1).Where("token = ?", effectiveToken).Find(&settings)
+		if settings.ID == 0 {
+			// 2. Si no hay, buscamos las globales
+			DB.Limit(1).Where("token = ?", "SYSTEM_GLOBAL").Find(&settings)
+		}
 
-		fullRepo := fmt.Sprintf("s3:s3.%s.wasabisys.com/%s/%s", wasabiRegion, wasabiBucket, agentID)
+		if settings.ID == 0 {
+			c.JSON(200, gin.H{"status": "manual", "error": "WASABI_UNCONFIGURED"})
+			return
+		}
+
+		// Descifrar credenciales para el agente
+		wasabiKey, _ := Decrypt(settings.WasabiKey)
+		wasabiSecret, _ := Decrypt(settings.WasabiSecret)
+		resticPass, _ := Decrypt(settings.ResticPass)
+		wasabiBucket := settings.WasabiBucket
+		wasabiRegion := settings.WasabiRegion
+		if wasabiRegion == "" { wasabiRegion = "us-east-1" }
+
+		// Construir URL Correcta
+		endpoint := "s3.wasabisys.com"
+		if wasabiRegion != "us-east-1" {
+			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", wasabiRegion)
+		}
+		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s", endpoint, wasabiBucket, agentID)
 
 		if len(configs) == 0 {
 			c.JSON(200, gin.H{
