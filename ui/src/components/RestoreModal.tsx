@@ -62,7 +62,6 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const fetchSnapshotContent = async (snapId: string, path: string) => {
     setIsLoadingContent(true);
     setCurrentPath(path);
-    // No limpiamos explorerContent inmediatamente para evitar parpadeo si es rápido
     try {
         await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
             method: "POST",
@@ -70,35 +69,36 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
             body: JSON.stringify({ action: "ls_snapshot", snapshot_id: snapId, path: path })
         });
 
+        // Poll for result (V4.7.2 Super Turbo: Polling cada 1s cuando hay tarea pendiente)
         let attempts = 0;
         const poll = setInterval(async () => {
-            attempts++;
-            const resp = await fetch(`https://api.hwperu.com/v1/agent/status`, {
-                headers: { "Authorization": token }
-            });
-            const data = await resp.json();
-            const currentAgent = data[agentId];
+             attempts++;
+             const statusResp = await fetch(`https://api.hwperu.com/v1/agent/status?agent_id=${agentId}`, {
+                 headers: { "Authorization": token }
+             });
+             const statusData = await statusResp.json();
+             const agent = statusData[agentId];
+             
+             if (agent && agent.cmd_task === "none") {
+                 clearInterval(poll);
+                 if (agent.cmd_result) {
+                     try {
+                        const parsed = JSON.parse(agent.cmd_result);
+                        setExplorerContent(Array.isArray(parsed) ? parsed : [parsed]);
+                     } catch (e) {
+                        console.error("Parse error:", e);
+                     }
+                 }
+                 setIsLoadingContent(false);
+                 if (step === 1) setStep(2);
+             }
 
-            if (currentAgent.cmd_result && currentAgent.cmd_result !== "loading" && currentAgent.cmd_result !== "none") {
-                clearInterval(poll);
-                try {
-                    let parsed = JSON.parse(currentAgent.cmd_result);
-                    if (!Array.isArray(parsed)) parsed = [parsed];
-                    setExplorerContent(parsed);
-                    setIsLoadingContent(false);
-                    if (step === 1) setStep(2); 
-                } catch (e) {
-                    console.error("Error parsing content:", e);
-                    setIsLoadingContent(false);
-                }
-            }
-
-            if (attempts > 30) { 
-                clearInterval(poll);
-                alert("Timeout al esperar respuesta del agente.");
-                setIsLoadingContent(false);
-            }
-        }, 2000);
+             if (attempts > 30) {
+                 clearInterval(poll);
+                 alert("Timeout al esperar respuesta del agente.");
+                 setIsLoadingContent(false);
+             }
+        }, 1000);
 
     } catch (err) {
         console.error(err);
@@ -159,7 +159,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
              <div>
                 <h3 className="text-lg font-black text-white uppercase italic">Restore Wizard Pro</h3>
                 <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[9px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">V4.7.1 TURBO EDITION</span>
+                    <span className="text-[9px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">V4.7.2 SUPER TURBO</span>
                     <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{agentId}</span>
                 </div>
              </div>

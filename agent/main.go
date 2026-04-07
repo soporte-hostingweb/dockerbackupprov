@@ -110,7 +110,9 @@ func main() {
 			free, total := GetDiskCapacity()
 			_, taskInfo, _, _ = ReportHeartbeat(agentID, nil, nil, nil, IsSyncing, ActivePID, lastBackupUnix, free, total)
 			if taskInfo != "" && taskInfo != "none" { continue }
-			time.Sleep(5 * time.Second) // En modo turbo, el Heartbeat es más frecuente
+			
+			// V4.7.2: Super Turbo (Reducción de 5s a 2s de espera interactiva)
+			time.Sleep(2 * time.Second) 
 			continue
 		}
 
