@@ -160,93 +160,45 @@ func main() {
 
 		DB.Delete(&agent)
 		c.JSON(200, gin.H{"status": "Deleted", "id": id})
-	})
-
-	// --- ENDPOINTS DE CONFIGURACIÓN MOVIDOS A ABAJO (V2.3) ---
-
+	})	// --- ENDPOINTS DE CONFIGURACIÓN (V5.1.2) ---
 
 	v1Agent.GET("/config", AuthMiddleware(), func(c *gin.Context) {
+		agentID := c.Query("agent_id")
 		token := c.GetString("token")
-		agentID := c.Query("agent_id") // El agente envía su ID
+		isAdmin := c.GetBool("is_admin")
 
 		if agentID == "" {
-			c.JSON(400, gin.H{"error": "AgentID is required"})
+			c.JSON(400, gin.H{"error": "agent_id is required"})
 			return
 		}
 
-		var configs []BackupConfig
-		
-		// Lógica de Impersonación para Admin (V2.7)
-		isAdmin := c.GetBool("is_admin")
-		viewToken := token
+		// Impersonación para Admin: Si eres admin, buscamos el token real del agente
+		effectiveToken := token
 		if isAdmin {
 			var agent AgentStatus
 			if err := DB.Limit(1).Where("id = ?", agentID).Find(&agent).Error; err == nil && agent.ID != "" {
-				// El admin ve la configuración asociada al token real del agente (el del cliente)
-				viewToken = agent.Token
+				effectiveToken = agent.Token
 			}
 		}
 
-		if err := DB.Limit(1).Where("token = ? AND agent_id = ?", viewToken, agentID).Find(&configs).Error; err != nil {
-			c.JSON(500, gin.H{"error": "Database error"})
-			return
-		}
+		var configs []BackupConfig
+		DB.Where("token = ? AND agent_id = ?", effectiveToken, agentID).Find(&configs)
 
+		// Configuración base de Wasabi (Globales)
+		wasabiKey := os.Getenv("AWS_ACCESS_KEY_ID")
+		wasabiSecret := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		wasabiBucket := os.Getenv("WASABI_BUCKET")
+		wasabiRegion := os.Getenv("WASABI_REGION")
+		resticPass := os.Getenv("RESTIC_PASSWORD")
 
-		// 1. Buscamos Settings del Tenant (V2.9.6: Silenciamos log spam con Find)
-		var settings UserSettings
-		DB.Limit(1).Where("token = ?", token).Find(&settings)
-		
-		if settings.ID == 0 {
-			// 2. Si no hay, buscamos las Globales del Maestro (V2.5)
-			DB.Limit(1).Where("token = ?", "SYSTEM_GLOBAL").Find(&settings)
-			
-			if settings.ID == 0 {
-				c.JSON(200, gin.H{
-					"status": "manual",
-					"paths": []string{},
-					"error_code": "WASABI_UNCONFIGURED",
-					"message": "Please contact administrator for storage configuration",
-					"full_repo_url": "",
-					"restic_password": "",
-				})
-				return
-			}
-		}
-
-
-		// Descifrar contraseña de restic para el agente (V2.4)
-		resticPass, _ := Decrypt(settings.ResticPass)
-
-		// Inyectamos la ruta aislada. (V2.4: Manejo de campos vacíos)
-		region := settings.WasabiRegion
-		if region == "" { region = "us-east-1" }
-		
-		bucket := settings.WasabiBucket
-		
-		// Construir URL Correcta (V2.6.8): s3:https://s3.[region].wasabisys.com/bucket/tenant/agent_id
-		// Wasabi usa s3.wasabisys.com para us-east-1, y s3.REGION.wasabisys.com para el resto.
-		endpoint := "s3.wasabisys.com"
-		if region != "us-east-1" {
-			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
-		}
-		
-		// V2.6.8: Añadimos https:// explícito para evitar errores de negociación S3
-		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s/%s", 
-			endpoint, bucket, token, agentID)
-
-
-
-
-		// Descifrar llaves S3 para el Agente (V2.6.4 - Hotfix)
-		wasabiKey, _ := Decrypt(settings.WasabiKey)
-		wasabiSecret, _ := Decrypt(settings.WasabiSecret)
+		fullRepo := fmt.Sprintf("s3:s3.%s.wasabisys.com/%s/%s", wasabiRegion, wasabiBucket, agentID)
 
 		if len(configs) == 0 {
 			c.JSON(200, gin.H{
-				"status":          "no_config", 
-				"paths":           []string{}, 
-				"schedule":        "manual", // Por defecto para nuevos agentes (V2.5.2)
+				"status":          "no_config",
+				"paths":           []string{},
+				"schedule":        "manual",
+				"retention":       1,
 				"full_repo_url":   fullRepo,
 				"restic_password": resticPass,
 				"wasabi_key":      wasabiKey,
@@ -255,11 +207,8 @@ func main() {
 			return
 		}
 
-		// V5.1.1 Fix: Convertir el string de la DB a slice de strings para el Agente/UI
 		var paths []string
-		if configs[0].Paths != "" {
-			_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
-		}
+		_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
 
 		c.JSON(200, gin.H{
 			"status":          "success",
@@ -271,11 +220,10 @@ func main() {
 			"wasabi_key":      wasabiKey,
 			"wasabi_secret":   wasabiSecret,
 		})
-
 	})
 
 
-	// V5.0/V5.1.1: Endpoint para GUARDAR la configuración de forma persistente
+	// V5.0/V5.1.2: Endpoint para GUARDAR la configuración (Con impersonación Admin)
 	v1Agent.POST("/config/save", AuthMiddleware(), func(c *gin.Context) {
 		var req struct {
 			AgentID   string   `json:"agent_id"`
@@ -289,15 +237,25 @@ func main() {
 		}
 
 		token := c.GetString("token")
+		isAdmin := c.GetBool("is_admin")
+
+		// Impersonación para Admin
+		effectiveToken := token
+		if isAdmin {
+			var agent AgentStatus
+			if err := DB.Limit(1).Where("id = ?", req.AgentID).Find(&agent).Error; err == nil && agent.ID != "" {
+				effectiveToken = agent.Token
+			}
+		}
 		
 		var config BackupConfig
-		res := DB.Where("token = ? AND agent_id = ?", token, req.AgentID).First(&config)
+		res := DB.Where("token = ? AND agent_id = ?", effectiveToken, req.AgentID).First(&config)
 		
 		pathsJSON, _ := json.Marshal(req.Paths)
 		
 		if res.Error != nil {
 			config = BackupConfig{
-				Token:     token,
+				Token:     effectiveToken,
 				AgentID:   req.AgentID,
 				Schedule:  req.Schedule,
 				Paths:     string(pathsJSON),
