@@ -77,7 +77,8 @@ export default function DashboardPage() {
       }
 
       if (activeTab === 'history') {
-          const respHist = await fetch("https://api.hwperu.com/v1/history", {
+          // V6.6: Apuntamos al nuevo endpoint de Telemetría Pro
+          const respHist = await fetch("https://api.hwperu.com/v1/activities", {
             headers: { "Authorization": token }
           });
           if (respHist.ok) {
@@ -178,51 +179,65 @@ export default function DashboardPage() {
              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                    <History className="text-emerald-500" size={24} />
-                   <h3 className="text-lg font-black text-white uppercase italic tracking-widest">Global Activity Log</h3>
+                   <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">Control Absolute Audit Log</h2>
                 </div>
-                <span className="text-[10px] text-gray-500 font-bold uppercase">{activities.length} total entries</span>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{activities.length} entries registered</span>
              </div>
-             {activities.length > 0 ? (
-                <div className="bg-gray-950/50 border border-gray-900 rounded-3xl overflow-hidden shadow-2xl">
-                   <table className="w-full text-left border-collapse">
-                      <thead>
-                         <tr className="bg-black/60 border-b border-gray-900">
-                            <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Timestamp</th>
-                            <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Agent ID</th>
-                            <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Snapshot ID</th>
-                            <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Size</th>
-                            <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Status</th>
+
+             <div className="bg-gray-950/50 border border-gray-900 rounded-3xl overflow-hidden shadow-2xl">
+                <table className="w-full text-left border-collapse">
+                   <thead>
+                      <tr className="bg-black/40 border-b border-gray-900">
+                         <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Event</th>
+                         <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Source Agent</th>
+                         <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Status</th>
+                         <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Timestamp</th>
+                         <th className="p-5 text-[10px] text-gray-500 font-black uppercase tracking-widest">Detailed Log Message</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-900/50">
+                      {activities.map((act: any) => (
+                         <tr key={act.id} className="hover:bg-gray-900/30 transition-colors group">
+                            <td className="p-5">
+                               <div className="flex items-center gap-2">
+                                  {act.type === 'backup' && <Database size={14} className="text-emerald-500" />}
+                                  {act.type === 'restore' && <RotateCcw size={14} className="text-sky-500" />}
+                                  {act.type === 'prune' && <ShieldCheck size={14} className="text-amber-500" />}
+                                  {act.type === 'OFFLINE' && <AlertCircle size={14} className="text-red-500 animate-pulse" />}
+                                  {act.type === 'DELETED' && <Lock size={14} className="text-gray-500" />}
+                                  <span className="text-xs font-black text-white uppercase italic tracking-tighter">{act.type}</span>
+                               </div>
+                            </td>
+                            <td className="p-5">
+                               <span className="text-[11px] font-mono text-gray-400 group-hover:text-emerald-400 transition-colors">{act.agent_id}</span>
+                            </td>
+                            <td className="p-5">
+                                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${
+                                   act.status === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                   act.status === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                   'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                }`}>
+                                   {act.status}
+                                </span>
+                            </td>
+                            <td className="p-5 text-[10px] text-gray-500 font-bold whitespace-nowrap">
+                               {new Date(act.started_at).toLocaleString()}
+                            </td>
+                            <td className="p-5">
+                               <p className="text-[11px] text-gray-300 font-medium max-w-md line-clamp-1 group-hover:line-clamp-none transition-all">
+                                  {act.message}
+                               </p>
+                            </td>
                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-900">
-                         {activities.map((act: any) => (
-                            <tr key={act.id} className="hover:bg-emerald-500/5 transition-colors">
-                               <td className="p-5 text-xs text-gray-400 font-mono">{new Date(act.timestamp).toLocaleString()}</td>
-                               <td className="p-5 text-xs text-white uppercase font-black italic">{act.agent_id}</td>
-                               <td className="p-5 text-xs text-emerald-400 font-mono">{act.snapshot_id || '---'}</td>
-                               <td className="p-5 text-xs text-gray-300 font-bold whitespace-nowrap">
-                                  {act.size_bytes > 1024 * 1024 * 1024
-                                    ? `${(act.size_bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-                                    : act.size_bytes > 1024 * 1024 
-                                      ? `${(act.size_bytes / (1024 * 1024)).toFixed(2)} MB` 
-                                      : act.size_bytes > 1024 
-                                        ? `${(act.size_bytes / 1024).toFixed(1)} KB`
-                                        : `${act.size_bytes || 0} B`}
-                               </td>
-                               <td className="p-5">
-                                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${act.status === 'SUCCESS' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/25' : 'bg-red-500/10 text-red-500 border border-red-500/25'}`}>
-                                     {act.status}
-                                  </span>
-                               </td>
-                            </tr>
-                         ))}
-                      </tbody>
-                   </table>
-                </div>
-             ) : (
+                      ))}
+                   </tbody>
+                </table>
+             </div>
+
+             {activities.length === 0 && (
                 <div className="bg-gray-950/20 border-2 border-dashed border-gray-900 rounded-3xl p-20 text-center">
                    <History className="mx-auto text-gray-800 mb-4 animate-pulse" size={48} />
-                   <p className="text-sm text-gray-600 font-bold uppercase italic tracking-widest">No history recorded yet in HWPeru Cloud.</p>
+                   <p className="text-sm text-gray-600 font-bold uppercase italic tracking-widest">No system events recorded yet.</p>
                 </div>
              )}
           </div>

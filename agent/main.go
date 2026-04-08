@@ -15,6 +15,7 @@ import (
 
 var IsSyncing bool = false
 var ActivePID int = 0
+var LastKnownSnapshots []interface{} // V6.6: Caché persistente para evitar parpadeos
 
 func main() {
 	LogInfo("🚀 Docker Backup Pro Agent Starting...")
@@ -149,8 +150,15 @@ func main() {
 		var snapshots []interface{}
 		if repo != "" && pass != "" {
 			snapshotsRaw := GetSnapshotsJSON(repo, pass, key, secret)
-			json.Unmarshal(snapshotsRaw, &snapshots)
-			LogInfo("[SNAPSHOTS] Detected %d snapshots.", len(snapshots))
+			var currentSnapshots []interface{}
+			if errS := json.Unmarshal(snapshotsRaw, &currentSnapshots); errS == nil && len(currentSnapshots) > 0 {
+				snapshots = currentSnapshots
+				LastKnownSnapshots = currentSnapshots // Actualizamos caché
+				LogInfo("[SNAPSHOTS] Detected %d snapshots.", len(snapshots))
+			} else if len(LastKnownSnapshots) > 0 {
+				snapshots = LastKnownSnapshots // Usamos caché si Wasabi falla o va lento
+				LogInfo("[SNAPSHOTS] Latency detected. Using cached inventory (%d items).", len(snapshots))
+			}
 		}
 
 		free, total := GetDiskCapacity()
@@ -173,19 +181,21 @@ func main() {
 		shouldRun := false
 		if force != "none" && force != "" {
 			shouldRun = true
-		} else if config.Schedule == "daily_2am" || config.Schedule == "daily_2am_basic" {
+		} else if config.Schedule == "daily_2am" || config.Schedule == "daily_2am_basic" || config.Schedule == "custom" {
 			now := time.Now()
-			if now.Hour() >= 2 && now.Hour() <= 4 {
+			// V6.6: Scheduler Universal para planes basic/custom a las 2 AM
+			if now.Hour() == 2 && now.Minute() < 10 {
 				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
 					shouldRun = true
+					LogInfo("[SCHEDULER] Auto-trigger detected for Plan: %s", config.Schedule)
 				}
 			}
 		} else if config.Schedule == "weekly_2am" {
 			now := time.Now()
-			// Solo Domingos (Weekday 0) a las 2 AM
-			if now.Weekday() == time.Sunday && now.Hour() >= 2 && now.Hour() <= 4 {
+			if now.Weekday() == time.Sunday && now.Hour() == 2 && now.Minute() < 10 {
 				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
 					shouldRun = true
+					LogInfo("[SCHEDULER] Weekly Auto-trigger detected.")
 				}
 			}
 		}

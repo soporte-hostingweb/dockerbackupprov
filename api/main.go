@@ -59,6 +59,36 @@ func main() {
 		c.Data(200, "text/x-shellscript", installScript)
 	})
 
+	// V6.6: Monitor de Salud Proactivo - Detecta agentes caídos cada 60s
+	go func() {
+		for {
+			time.Sleep(60 * time.Second)
+			var agents []AgentStatus
+			DB.Find(&agents)
+			for _, a := range agents {
+				// Si no ha reportado en más de 5 minutos y no estaba ya marcado como error/offline
+				if time.Since(a.UpdatedAt) > 5*time.Minute {
+					var lastLog ActivityLog
+					DB.Where("agent_id = ? AND type = 'OFFLINE'", a.ID).Order("started_at desc").First(&lastLog)
+					
+					// Solo logueamos si la última actividad OFFLINE fue hace más de 1 hora para no saturar
+					if lastLog.ID == 0 || time.Since(lastLog.StartedAt) > 1*time.Hour {
+						DB.Create(&ActivityLog{
+							Token:      a.Token,
+							AgentID:    a.ID,
+							Type:       "OFFLINE",
+							Status:     "error",
+							Message:    fmt.Sprintf("Agent %s lost connection (Heartbeat Timeout)", a.ID),
+							StartedAt:  time.Now(),
+							FinishedAt: time.Now(),
+						})
+						fmt.Printf("[MONITOR] Agent %s marked as OFFLINE\n", a.ID)
+					}
+				}
+			}
+		}
+	}()
+
 	r.GET("/v1/version", func(c *gin.Context) {
 		c.JSON(200, gin.H{"version": Version, "status": "active", "network": "HWPeru SaaS"})
 	})
@@ -201,8 +231,20 @@ func main() {
 			return
 		}
 
+		// V6.6: Registro de auditoría antes de eliminar
+		audit := ActivityLog{
+			Token:     agent.Token,
+			AgentID:   agent.ID,
+			Type:      "DELETED",
+			Status:    "success",
+			Message:   fmt.Sprintf("Agent %s was manually deleted from Control Plane", agent.ID),
+			StartedAt: time.Now(),
+			FinishedAt: time.Now(),
+		}
+		DB.Create(&audit)
+
 		DB.Delete(&agent)
-		c.JSON(200, gin.H{"status": "Deleted", "id": id})
+		c.JSON(200, gin.H{"status": "Deleted", "id": id, "audit_id": audit.ID})
 	})	// --- ENDPOINTS DE CONFIGURACIÓN (V5.1.2) ---
 
 	v1Agent.GET("/config", AuthMiddleware(), func(c *gin.Context) {
