@@ -275,7 +275,7 @@ func main() {
 				finishedAt := time.Now().Unix()
 				duration := int(finishedAt - startedAt)
 				status := "success"
-				msg := fmt.Sprintf("Backup completed. Size: %d bytes", bytesProcessed)
+				msg := fmt.Sprintf("Backup completed. Size: %s", FormatBytes(bytesProcessed))
 				
 				if errB != nil {
 					status = "error"
@@ -283,7 +283,7 @@ func main() {
 					LogInfo("[ASYNC ERROR] %v", errB)
 				} else {
 					lastBackupUnix = finishedAt
-					LogInfo("[ASYNC] Finished. ID: %s | Dur: %ds", snapID, duration)
+					LogInfo("[ASYNC] Finished. ID: %s | Size: %s | Dur: %ds", snapID, FormatBytes(bytesProcessed), duration)
 
 					// V9.0: Verification Workflow (restic check & partial restore) para planes Standard/Enterprise
 					planTier := os.Getenv("PLAN_TIER")
@@ -402,3 +402,29 @@ func GetDiskCapacity() (string, string) {
 	return fmt.Sprintf("%.1fGB", freeGB), fmt.Sprintf("%.1fGB", totalGB)
 }
 
+// FormatBytes convierte bytes a una unidad legible (B, MB, GB, TB) (V9.2)
+func FormatBytes(b int64) string {
+	const unit = 1024
+	if b < unit*unit { // Menos de 1MB, mostrar en KB
+		return fmt.Sprintf("%.2f KB", float64(b)/float64(unit))
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	
+	units := []string{"MB", "GB", "TB", "PB"}
+	if exp >= len(units) {
+		return fmt.Sprintf("%d bytes", b)
+	}
+
+	value := float64(b) / float64(div)
+	
+	// Si es exactamente un entero, no mostrar decimales innecesarios
+	if value == float64(int64(value)) {
+		return fmt.Sprintf("%.0f%s", value, units[exp])
+	}
+	
+	return fmt.Sprintf("%.2f%s", value, units[exp])
+}

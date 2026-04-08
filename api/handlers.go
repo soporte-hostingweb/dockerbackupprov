@@ -30,7 +30,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		masterToken := os.Getenv("MASTER_ADMIN_TOKEN")
 		isAdmin := (cleanToken != "" && masterToken != "" && cleanToken == masterToken)
 		
-		if !isAdmin && cleanToken != "vps_token_dev" && !strings.HasPrefix(cleanToken, "dbp_tenant_") {
+		if !isAdmin && cleanToken != "vps_token_dev" && !strings.HasPrefix(cleanToken, "dbp_") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API token"})
 			c.Abort()
 			return

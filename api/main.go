@@ -772,6 +772,8 @@ func main() {
 		// 1. Guardamos la actividad histórica (V4.1.0)
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", payload.AgentID).Error; err == nil {
+			fmt.Printf("[METRICS] Receiving backup metrics for Agent %s. Size: %d bytes\n", payload.AgentID, payload.TotalSizeBytes)
+			
 			activity := BackupActivity{
 				AgentID:      payload.AgentID,
 				Token:        agent.Token,
