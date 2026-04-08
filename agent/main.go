@@ -275,6 +275,7 @@ func main() {
 				target := parts[2]
 				
 				// V6.3: Reportar Inicio de Restauración
+				LogInfo("[AUDIT] Reporting restoration start...")
 				activityID := ReportActivity(0, agentID, "restore", "running", fmt.Sprintf("Restoring snapshot %s to %s", snapID, target))
 				
 				var restorePaths []string
@@ -293,6 +294,7 @@ func main() {
 					}
 					
 					// V6.3: Reportar Fin de Restauración
+					LogInfo("[AUDIT] Reporting restoration final status: %s", status)
 					ReportActivity(activityID, agentID, "restore", status, msg)
 					
 					ReportTaskResult(agentID, taskType, msg)

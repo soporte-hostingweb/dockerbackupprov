@@ -45,7 +45,7 @@ services:
       # Aqui el cliente debería modificar AWS_ACCESS_KEY_ID u otra configuración
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/host_root:ro # Importante para poder escanear todo el servidor
+      - /:/host_root:rw # V6.9: Cambiado a RW para permitir restauraciones in-place
       # Persistencia de identidad (V2.4.3)
       - dbp-agent-data:/app/data
 

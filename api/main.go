@@ -186,6 +186,9 @@ func main() {
 			return
 		}
 
+		fmt.Printf("[%s] [ACTIVITY] Agent %s reporting %s status: %s\n", 
+			time.Now().Format("15:04:05"), req.AgentID, req.Type, req.Status)
+
 		var activity ActivityLog
 		if req.ActivityID > 0 {
 			// Actualizamos una actividad existente
@@ -208,7 +211,10 @@ func main() {
 			Type:      req.Type,
 			Status:    req.Status,
 			Message:   req.Message,
-			StartedAt: time.Now(),
+			StartedAt: time.Now().UTC(),
+		}
+		if req.Status == "success" || req.Status == "error" {
+			activity.FinishedAt = time.Now().UTC()
 		}
 		DB.Create(&activity)
 		c.JSON(200, gin.H{"status": "created", "activity_id": activity.ID})
