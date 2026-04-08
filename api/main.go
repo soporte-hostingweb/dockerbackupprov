@@ -479,8 +479,9 @@ func main() {
 
 
 		// Importante: No machacar Maintenance, PendingForce y Tareas si ya existen
-		var existing AgentStatus
-		if err := DB.Where("id = ?", payload.AgentID).First(&existing).Error; err == nil {
+		var existingList []AgentStatus
+		if err := DB.Limit(1).Where("id = ?", payload.AgentID).Find(&existingList).Error; err == nil && len(existingList) > 0 {
+			existing := existingList[0]
 			agent.Maintenance = existing.Maintenance
 			agent.PendingForce = existing.PendingForce
 			agent.KillSync = existing.KillSync
