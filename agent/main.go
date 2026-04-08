@@ -16,6 +16,7 @@ import (
 var IsSyncing bool = false
 var ActivePID int = 0
 var LastKnownSnapshots []interface{} // V6.6: Caché persistente para evitar parpadeos
+var LastKnownContainers []string      // V6.7: Caché de contenedores para evitar parpadeos
 
 func main() {
 	LogInfo("🚀 Docker Backup Pro Agent Starting...")
@@ -117,9 +118,17 @@ func main() {
 			continue
 		}
 
-		// Descubrimiento de contenedores (Normal)
-		containerNames, _ := GetRunningContainers()
-		LogInfo("[INFO] Discovered %d containers.", len(containerNames))
+		// Descubrimiento de contenedores (Normal) con Caché V6.7
+		containerNames, errC := GetRunningContainers()
+		if errC == nil && len(containerNames) > 0 {
+			LastKnownContainers = containerNames
+			LogInfo("[INFO] Discovered %d containers.", len(containerNames))
+		} else if len(LastKnownContainers) > 0 {
+			containerNames = LastKnownContainers
+			LogInfo("[INFO] Docker Latency: Using cached containers (%d items).", len(containerNames))
+		} else {
+			LogInfo("[WARNING] No containers found and cache is empty.")
+		}
 
 		// Preparar explorer data
 		explorerData := make(map[string][]string)

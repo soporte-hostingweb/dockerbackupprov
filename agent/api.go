@@ -59,7 +59,7 @@ func ReportMetrics(metrics BackupMetrics) {
 	}
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
 	
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -108,7 +108,7 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 
 	payload, _ := json.Marshal(payloadObj)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 60 * time.Second}
@@ -170,7 +170,7 @@ func ReportTaskResult(agentID string, task string, result string) {
 
 	payload, _ := json.Marshal(payloadObj)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
 	req.Header.Set("Content-Type", "application/json")
 	
 	client := &http.Client{Timeout: 30 * time.Second} // El 'ls' puede ser lento
@@ -204,7 +204,7 @@ func GetAgentConfig(agentID string) (*AgentConfigV2, error) {
 	url := fmt.Sprintf("%s/v1/agent/config?agent_id=%s", apiEndpoint, agentID)
 
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -241,7 +241,7 @@ func ReportActivity(activityID uint, agentID string, taskType string, status str
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Token", token)
+	req.Header.Set("Authorization", "Bearer " + token)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

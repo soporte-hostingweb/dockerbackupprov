@@ -14,6 +14,10 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
 		if token == "" {
+			token = c.GetHeader("X-API-Token") // Fallback V6.7: Por si el agente aún no se actualizó
+		}
+
+		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header."})
 			c.Abort()
 			return
