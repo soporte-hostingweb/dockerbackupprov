@@ -41,6 +41,10 @@ type AgentStatus struct {
 	CmdResult    string    `gorm:"type:text" json:"cmd_result"` // JSON output del comando
 	LastBackupAt time.Time `json:"last_backup_at"`
 	LastBackupBytes int64  `json:"last_backup_bytes"` // V8.1: Consumo en Wasabi
+	HealthStatus       string `json:"health_status" gorm:"default:'ONLINE'"` // V9.0: ONLINE, DEGRADED, OFFLINE
+	VerificationStatus string `json:"verification_status"` // V9.0: VALID, INVALID, PENDING
+	EstRtoSecs         int    `json:"est_rto_secs"`        // V9.0: Recovery Time Objective estimado
+	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -100,11 +104,36 @@ type BackupActivity struct {
 	SizeBytes    int64     `json:"size_bytes"` // V4.6.1: Precisión para archivos pequeños
 	DurationSecs int       `json:"duration_secs"`
 	Message      string    `json:"message"`
+	ValidationStatus string `json:"validation_status"` // V9.0: VALID, INVALID
+	ValidationErrors string `gorm:"type:text" json:"validation_errors"` // V9.0: Detalles del restic check
+	RestoreDurationSecs int `json:"restore_duration_secs"` // V9.0: Tracker de velocidad real
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
 	CreatedAt    time.Time `json:"timestamp"`
 }
 
+// TenantPlan: Centralización Comercial (V9.0) define los atributos del plan. Source of Truth sobre WHMCS.
+type TenantPlan struct {
+	ID             uint      `gorm:"primaryKey"`
+	Token          string    `gorm:"uniqueIndex" json:"token"`
+	Plan           string    `json:"plan" gorm:"default:'basic'"` // basic, standard, enterprise
+	RetentionDays  int       `json:"retention_days"`
+	Priority       bool      `json:"priority"`
+	ValidationLvl  string    `json:"validation_lvl"` // none, basic, advanced
+	WhmcsServiceID string    `json:"whmcs_service_id" gorm:"index"` // V9.1: Vínculo con WHMCS Billing
+	ClientEmail    string    `json:"client_email"`                  // V9.1: Trazabilidad comercial
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// AlertConfig: Webhook Settings para n8n / integraciones universales (V9.0)
+type AlertConfig struct {
+	ID         uint      `gorm:"primaryKey"`
+	Token      string    `gorm:"uniqueIndex" json:"token"`
+	WebhookURL string    `json:"webhook_url"`
+	Events     string    `json:"events"` // JSON string de eventos suscritos: "backup_failed", "agent_offline"
+	UpdatedAt  time.Time `json:"updated_at"`
+}
 
 // InitDB inicializa la conexión a PostgreSQL y realiza las migraciones
 
@@ -132,8 +161,8 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{})
-	fmt.Println("✅ Database Migrated Successfully with ActivityLog (V6.3)")
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{})
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.0)")
 
 
 	DB = db

@@ -22,11 +22,13 @@ type HeartbeatPayload struct {
 	TotalSpace   string              `json:"total_space"`
 }
 
-// UserSettingsPayload mapea el JSON de configuración de Wasabi
+// UserSettingsPayload mapea el JSON de configuración de Wasabi (V9.0 SaaS Pro)
 type UserSettingsPayload struct {
-	WasabiKey    string `json:"wasabi_key"`
-	WasabiSecret string `json:"wasabi_secret"`
-	WasabiBucket string `json:"wasabi_bucket"`
-	WasabiRegion string `json:"wasabi_region"`
-	ResticPass   string `json:"restic_password"`
+	WasabiKey      string `json:"wasabi_key"`
+	WasabiSecret   string `json:"wasabi_secret"`
+	WasabiBucket   string `json:"wasabi_bucket"`
+	WasabiRegion   string `json:"wasabi_region"`
+	ResticPass     string `json:"restic_password"`
+	WebhookURL     string `json:"webhook_url"`
+	WebhookEvents  string `json:"webhook_events"` // Formato: "backup_failed,agent_offline"
 }

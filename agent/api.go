@@ -73,6 +73,49 @@ func ReportMetrics(metrics BackupMetrics) {
 	fmt.Printf("[API] Metrics sent to %s. Status: %s\n", url, resp.Status)
 }
 
+// ReportRestoreMetrics envía el RTO calculado a la nube (V9.0)
+func ReportRestoreMetrics(agentID, snapshotID string, durationSecs int) {
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" { apiEndpoint = "https://api.hwperu.com" }
+	
+	url := fmt.Sprintf("%s/v1/agent/restore/metrics", apiEndpoint)
+	payload, _ := json.Marshal(map[string]interface{}{
+		"agent_id":      agentID,
+		"snapshot_id":   snapshotID,
+		"total_seconds": durationSecs,
+	})
+
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil { resp.Body.Close() }
+}
+
+// ReportVerification envía el resultado destructivo o check del repo (V9.0)
+func ReportVerification(agentID, snapshotID, status string, errors []string) {
+	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
+	if apiEndpoint == "" { apiEndpoint = "https://api.hwperu.com" }
+	
+	url := fmt.Sprintf("%s/v1/agent/verification/report", apiEndpoint)
+	payload, _ := json.Marshal(map[string]interface{}{
+		"agent_id":    agentID,
+		"snapshot_id": snapshotID,
+		"status":      status,
+		"errors":      errors,
+	})
+
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+	
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil { resp.Body.Close() }
+}
+
 // ReportHeartbeat envía el estado del agente y recibe órdenes (V4.5.5)
 func ReportHeartbeat(agentID string, containers []string, explorer map[string][]string, snapshots []interface{}, syncing bool, activePID int, lastBackupAt int64, freeSpace string, totalSpace string) (bool, string, bool, error) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")

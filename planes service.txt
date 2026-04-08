@@ -1,0 +1,137 @@
+Reestructuración TOTAL de planes (optimizada para vender)
+
+Te dejo estructura lista para WHMCS 👇
+
+🟢 PLAN BÁSICO (FREE / incluido)
+
+👉 Objetivo: entrada + gancho
+
+💡 Posicionamiento:
+
+“Protección mínima incluida”
+
+🔧 Incluye:
+1 backup diario
+retención: 2 copias
+selección manual (volúmenes o rutas)
+restore manual (desde panel)
+sin validación avanzada
+sin prioridad en cola
+❌ Limitaciones (IMPORTANTE)
+❌ sin validación automática
+❌ sin métricas RTO
+❌ sin restore asistido
+❌ sin SLA
+
+👉 Esto hace que el cliente diga:
+
+“ok… pero necesito algo más serio”
+
+🟡 PLAN STANDARD (TU PLAN PRINCIPAL $$$)
+
+👉 Este es el que DEBES vender siempre
+
+💡 Posicionamiento:
+
+“Protección profesional para operación continua”
+
+🔧 Incluye:
+🔹 Backup
+backup diario automático
+retención: 7 – 15 copias
+exclusión inteligente (no backups innecesarios)
+🔹 Validación (AQUÍ GANAS)
+✔ restic check
+✔ validación estructural parcial
+✔ verificación de integridad
+🔹 Restore
+restore completo desde panel
+restore parcial (DB / archivos)
+tiempo estimado visible (RTO)
+🔹 Monitoreo
+estado del agente (online/offline)
+alertas:
+backup fallido
+agente caído
+🔹 Performance
+cola optimizada (no prioridad total)
+💰 Valor percibido:
+
+👉 “Si algo falla, puedo recuperar sin problemas”
+
+🔴 PLAN ENTERPRISE (alto margen)
+
+👉 Aquí vendes tranquilidad total
+
+💡 Posicionamiento:
+
+“Continuidad operativa garantizada”
+
+🔧 Incluye TODO lo de Standard +
+🔥 🔹 PRIORIDAD
+ejecución prioritaria en cola
+restore prioritario
+🔥 🔹 RTO BAJO
+estimación avanzada de recuperación
+optimización de restore
+🔥 🔹 VALIDACIÓN AVANZADA
+restore parcial automatizado
+validación extendida (DB + config)
+🔥 🔹 AUTOMATIZACIÓN
+restore asistido (semi 1-click)
+opción “clonar a nuevo VPS”
+🔥 🔹 SEGURIDAD
+políticas avanzadas (retención extendida)
+protección WORM (si aplicas)
+🔥 🔹 SOPORTE
+soporte prioritario
+asistencia en desastre
+💰 Valor percibido:
+
+👉 “Si mi sistema cae, vuelvo en minutos”
+
+
+DIFERENCIA CLAVE ENTRE PLANES
+Feature	Básico	Standard	Enterprise
+Backup diario	✔	✔	✔
+Retención	2	7–15	15–30
+Validación	❌	✔ básica	✔ avanzada
+Restore	manual	completo	prioritario
+RTO visible	❌	✔	✔ avanzado
+Alertas	❌	✔	✔
+Prioridad cola	❌	❌	✔
+DR (clonar VPS)	❌	❌	✔
+Soporte	básico	normal	prioritario
+
+ESTRATEGIA PARA FORZAR STANDARD
+
+Esto es clave 👇
+
+🎯 1. LIMITA el básico
+
+Haz que:
+
+sirva
+pero no dé confianza
+🎯 2. VENDE SEGURIDAD (no features)
+
+En vez de decir:
+❌ “más backups”
+
+Di:
+👉 “evita perder información crítica”
+
+🎯 3. MENSAJES CLAVE
+🟢 Básico
+
+“Protección mínima incluida”
+
+🟡 Standard
+
+“Protección profesional con verificación y monitoreo”
+
+🔴 Enterprise
+
+“Recuperación rápida y continuidad del negocio”
+
+

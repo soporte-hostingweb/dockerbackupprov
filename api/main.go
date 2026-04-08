@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
-
 
 	_ "embed"
 
@@ -24,6 +25,79 @@ const Version = "V2.7.2"
 
 //go:embed install.sh
 var installScript []byte
+
+// DispatchAlert: Función asíncrona universal (V9.0 SaaS)
+// Busca si el tenant tiene un Webhook y dispara una alerta POST en goroutine.
+func DispatchAlert(token string, eventType string, details map[string]interface{}) {
+	go func() {
+		var config AlertConfig
+		// Consultar el webhook según el token del tenant
+		if err := DB.Where("token = ?", token).First(&config).Error; err != nil {
+			return // No tiene configurado n8n/webhook u ocurrió error
+		}
+		
+		if config.WebhookURL == "" || !strings.Contains(config.Events, eventType) {
+			return // Webhook vacío o no suscrito a este evento
+		}
+
+		payload := map[string]interface{}{
+			"event":     eventType,
+			"token":     token,
+			"timestamp": time.Now().Format(time.RFC3339),
+			"details":   details,
+		}
+
+		jsonBody, _ := json.Marshal(payload)
+		
+		req, err := http.NewRequest("POST", config.WebhookURL, bytes.NewBuffer(jsonBody))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "DBP-SaaS-Orchestrator/V9.0")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+}
+
+// UpdateHealthScore: Calcula el robustez del agente (0-100) basado en 4 KPIs críticos (V9.1)
+func UpdateHealthScore(agentID string) {
+	var agent AgentStatus
+	if err := DB.First(&agent, "id = ?", agentID).Error; err != nil {
+		return
+	}
+
+	score := 100
+
+	// 1. Penalización por Conectividad (Offline: -50, Degraded: -30)
+	if agent.HealthStatus == "OFFLINE" {
+		score -= 50
+	} else if agent.HealthStatus == "DEGRADED" {
+		score -= 30
+	}
+
+	// 2. Penalización por Obsolescencia (Backup > 24h: -20)
+	// Solo penalizamos si ya ha tenido al menos un backup exitoso
+	if !agent.LastBackupAt.IsZero() && time.Since(agent.LastBackupAt) > 24*time.Hour {
+		score -= 20
+	}
+
+	// 3. Penalización por Integridad (Validación Fallida: -40)
+	if agent.VerificationStatus == "INVALID" {
+		score -= 40
+	}
+
+	// Capamos el score entre 0 y 100
+	if score < 0 { score = 0 }
+	if score > 100 { score = 100 }
+
+	// Persistir resultado
+	DB.Model(&agent).Update("health_score", score)
+}
 
 func main() {
 	// 0. Cargar variables de entorno
@@ -84,14 +158,98 @@ func main() {
 							FinishedAt: time.Now(),
 						})
 						fmt.Printf("[MONITOR] Agent %s marked as OFFLINE\n", a.ID)
+						
+						// V9.0: Guardar en el nuevo HealthStatus y Disparar Alerta Universal
+						DB.Model(&a).Update("health_status", "OFFLINE")
+						DispatchAlert(a.Token, "agent_offline", map[string]interface{}{
+							"agent_id": a.ID,
+							"time_since_last_seen": time.Since(a.UpdatedAt).String(),
+						})
+						// V9.1: Actualizar Score de Salud
+						UpdateHealthScore(a.ID)
+					}
+				} else if a.HealthStatus == "OFFLINE" {
+					// Auto-curación HealthCheck si está vivo (V9.1)
+					DB.Model(&a).Update("health_status", "ONLINE")
+					DispatchAlert(a.Token, "agent_recovered", map[string]interface{}{
+						"agent_id": a.ID,
+						"status":   "Connection restored",
+					})
+					UpdateHealthScore(a.ID)
+					if a.HealthStatus == "OFFLINE" {
+						DB.Model(&a).Update("health_status", "ONLINE")
 					}
 				}
 			}
 		}
 	}()
 
-	r.GET("/v1/version", func(c *gin.Context) {
+	r.GET("/v1/version", AuthMiddleware(), func(c *gin.Context) {
 		c.JSON(200, gin.H{"version": Version, "status": "active", "network": "HWPeru SaaS"})
+	})
+
+	// --- ENDPOINT PROVISIÓN WHMCS (V9.1) ---
+	r.POST("/v1/whmcs/provision", func(c *gin.Context) {
+		adminKey := os.Getenv("API_ADMIN_KEY")
+		providedKey := c.GetHeader("X-Admin-Key")
+		if adminKey == "" || providedKey != adminKey {
+			c.JSON(401, gin.H{"error": "Unauthorized API Admin Access"})
+			return
+		}
+
+		var req struct {
+			ServiceID   string `json:"service_id"`
+			ClientEmail string `json:"client_email"`
+			Plan        string `json:"plan"` // basic, standard, enterprise
+			Retention   int    `json:"retention_days"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid provisioning request payload"})
+			return
+		}
+
+		// Generar Token Único para el Cliente (SSO)
+		token := "dbp_" + fmt.Sprintf("%x", time.Now().Unix()) + "_" + req.ServiceID
+
+		// 1. Crear/Actualizar TenantPlan (Source of Truth Comercial)
+		var plan TenantPlan
+		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
+		plan.Token = token
+		plan.WhmcsServiceID = req.ServiceID
+		plan.ClientEmail = req.ClientEmail
+		plan.Plan = req.Plan
+		plan.RetentionDays = req.Retention
+		if req.Plan == "enterprise" {
+			plan.Priority = true
+			plan.ValidationLvl = "advanced"
+		} else if req.Plan == "standard" {
+			plan.ValidationLvl = "basic"
+		} else {
+			plan.ValidationLvl = "none"
+		}
+		DB.Save(&plan)
+
+		// 2. Asegurar que UserSettings exista para Wasabi
+		var settings UserSettings
+		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
+			DB.Create(&UserSettings{Token: token})
+		}
+
+		// 3. Configurar Alertas por Defecto (Habilitar todos por ser SaaS)
+		var alerts AlertConfig
+		if err := DB.Where("token = ?", token).First(&alerts).Error; err != nil {
+			DB.Create(&AlertConfig{
+				Token:  token,
+				Events: "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed",
+			})
+		}
+
+		c.JSON(200, gin.H{
+			"status":        "success",
+			"token":         token,
+			"dashboard_url": "https://backup.hwperu.com/?sso=" + token,
+		})
 	})
 
 	v1Agent := r.Group("/v1/agent")
@@ -503,6 +661,7 @@ func main() {
 			ID:           payload.AgentID,
 			Token:        token,
 			Status:       "Healthy",
+			HealthStatus: "ONLINE", // Asegurar estado ONLINE en cada latido exitoso (V9.1)
 			LastSeen:     time.Now().UTC(),
 			LastSeenUnix: time.Now().Unix(),
 			OS:           payload.OS,
@@ -562,6 +721,9 @@ func main() {
 			"cmd_task":      agent.CmdTask,
 			"cmd_param":     agent.CmdParam,
 		})
+
+		// V9.1: Recalcular Score de Salud en cada Heartbeat
+		go UpdateHealthScore(payload.AgentID)
 	})
 
 	// --- RECEPCIÓN DE RESULTADOS DE TAREAS (V4.2.3) ---
@@ -630,11 +792,110 @@ func main() {
 					"last_backup_at":    time.Unix(payload.Timestamp, 0).UTC(),
 					"last_backup_bytes": payload.TotalSizeBytes,
 				})
+				// V9.1: Alerta Éxito
+				DispatchAlert(agent.Token, "backup_success", map[string]interface{}{
+					"agent_id": payload.AgentID,
+					"size_mb":  payload.TotalSizeMB,
+				})
+			} else {
+				// V9.0: Enviar alerta si el backup falló
+				DispatchAlert(agent.Token, "backup_failed", map[string]interface{}{
+					"agent_id": payload.AgentID,
+					"error":    "Backup process returned non-success status",
+					"duration": payload.DurationSecs,
+				})
 			}
+			// V9.1: Siempre actualizar score tras backup
+			go UpdateHealthScore(payload.AgentID)
 		}
 
 
 		c.JSON(200, gin.H{"status": "Metrics recorded and activity saved"})
+	})
+
+	// --- VERIFICACIÓN DE INTEGRIDAD RTO & VALIDACIÓN (V9.0) ---
+	v1Agent.POST("/verification/report", AuthMiddleware(), func(c *gin.Context) {
+		var req struct {
+			AgentID    string   `json:"agent_id"`
+			SnapshotID string   `json:"snapshot_id"`
+			Status     string   `json:"status"` // VALID, INVALID
+			Errors     []string `json:"errors"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid verification report"})
+			return
+		}
+
+		var agent AgentStatus
+		if err := DB.First(&agent, "id = ?", req.AgentID).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Agent not found"})
+			return
+		}
+
+		healthStatus := "ONLINE"
+		if req.Status == "INVALID" {
+			healthStatus = "DEGRADED"
+			// V9.1: Evento SaaS Estandarizado
+			DispatchAlert(agent.Token, "backup_validation_failed", map[string]interface{}{
+				"agent_id":    req.AgentID,
+				"snapshot_id": req.SnapshotID,
+				"errors":      req.Errors,
+			})
+		}
+
+		DB.Model(&agent).Updates(map[string]interface{}{
+			"verification_status": req.Status,
+			"health_status":       healthStatus,
+		})
+
+		// V9.1: Actualizar Score tras validación
+		go UpdateHealthScore(req.AgentID)
+
+		errStr := strings.Join(req.Errors, " | ")
+		DB.Model(&BackupActivity{}).Where("snapshot_id = ?", req.SnapshotID).Updates(map[string]interface{}{
+			"validation_status": req.Status,
+			"validation_errors": errStr,
+		})
+
+		c.JSON(200, gin.H{"status": "Verification report processed"})
+	})
+
+	// --- MÉTRICAS DE RESTAURACIÓN DE DATOS RTO (V9.0) ---
+	v1Agent.POST("/restore/metrics", AuthMiddleware(), func(c *gin.Context) {
+		var req struct {
+			AgentID      string `json:"agent_id"`
+			SnapshotID   string `json:"snapshot_id"`
+			TotalSeconds int    `json:"total_seconds"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid restore metrics"})
+			return
+		}
+
+		DB.Model(&BackupActivity{}).Where("snapshot_id = ?", req.SnapshotID).Update("restore_duration_secs", req.TotalSeconds)
+		
+		// Calcular Nuevo RTO Estimado (avg de los últimos 5)
+		var agent AgentStatus
+		if err := DB.First(&agent, "id = ?", req.AgentID).Error; err == nil {
+			var activities []BackupActivity
+			DB.Where("agent_id = ? AND restore_duration_secs > 0", req.AgentID).Order("started_at desc").Limit(5).Find(&activities)
+			
+			if len(activities) > 0 {
+				var total int
+				for _, act := range activities {
+					total += act.RestoreDurationSecs
+				}
+				avg := total / len(activities)
+				DB.Model(&agent).Update("est_rto_secs", avg)
+			}
+
+			DispatchAlert(agent.Token, "restore_completed", map[string]interface{}{
+				"agent_id":     req.AgentID,
+				"snapshot_id":  req.SnapshotID,
+				"duration_sec": req.TotalSeconds,
+			})
+		}
+		c.JSON(200, gin.H{"status": "Restore metrics saved"})
 	})
 
 	// --- ORQUESTADOR BARE-METAL RESTORE (V8.0) ---
@@ -811,6 +1072,12 @@ fi
 				"cmd_param":  param,
 				"cmd_result": "pending",
 			})
+			// V9.1: Evento Inicio Restauración
+			DispatchAlert(agent.Token, "restore_started", map[string]interface{}{
+				"agent_id":    id,
+				"snapshot_id": req.SnapshotID,
+				"target":      req.Destination,
+			})
 		}
 
 		// V4.5.8: PERSISTIR CAMBIOS (Crítico para que el heartbeat los detecte)
@@ -832,7 +1099,7 @@ fi
 	// Guardar/Actualizar Settings (V2.5)
 	v1User.POST("/settings", AuthMiddleware(), func(c *gin.Context) {
 		token := c.GetString("token")
-		var input UserSettings
+		var input UserSettingsPayload
 		if err := c.ShouldBindJSON(&input); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid input"})
 			return
@@ -871,6 +1138,14 @@ fi
 			c.JSON(500, gin.H{"error": "Failed to save settings: " + err.Error()})
 			return
 		}
+
+		// V9.0: Guardar/Actualizar AlertConfig (Webhooks n8n)
+		var alertConfig AlertConfig
+		DB.Where("token = ?", saveToken).First(&alertConfig)
+		alertConfig.Token = saveToken
+		alertConfig.WebhookURL = input.WebhookURL
+		alertConfig.Events = input.WebhookEvents
+		DB.Save(&alertConfig)
 		
 		c.JSON(200, gin.H{"message": "Settings saved successfully", "mode": saveToken})
 
@@ -905,7 +1180,21 @@ fi
 		settings.WasabiSecret, _ = Decrypt(settings.WasabiSecret)
 		settings.ResticPass, _ = Decrypt(settings.ResticPass)
 
-		c.JSON(200, settings)
+		// V9.0: Incluir Configuración de Alertas
+		var alertConfig AlertConfig
+		DB.Where("token = ?", searchToken).First(&alertConfig)
+
+		response := UserSettingsPayload{
+			WasabiKey:     settings.WasabiKey,
+			WasabiSecret:  settings.WasabiSecret,
+			WasabiBucket:  settings.WasabiBucket,
+			WasabiRegion:  settings.WasabiRegion,
+			ResticPass:    settings.ResticPass,
+			WebhookURL:    alertConfig.WebhookURL,
+			WebhookEvents: alertConfig.Events,
+		}
+
+		c.JSON(200, response)
 	})
 
 

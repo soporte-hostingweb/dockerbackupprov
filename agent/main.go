@@ -90,7 +90,11 @@ func main() {
 					var paths []string
 					if len(parts) > 2 && parts[2] != "" { paths = strings.Split(parts[2], ",") }
 					LogInfo("[TASK] Executing remote restoration of %s to %s", snapID, dest)
-					errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret)
+					duration, errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret)
+					
+					// V9.0: Reportar métricas
+					go ReportRestoreMetrics(agentID, snapID, duration)
+
 					resMsg := "Success"
 					if errR != nil { resMsg = "Error: " + errR.Error() }
 					ReportTaskResult(agentID, "restore", resMsg)
@@ -280,6 +284,26 @@ func main() {
 				} else {
 					lastBackupUnix = finishedAt
 					LogInfo("[ASYNC] Finished. ID: %s | Dur: %ds", snapID, duration)
+
+					// V9.0: Verification Workflow (restic check & partial restore) para planes Standard/Enterprise
+					planTier := os.Getenv("PLAN_TIER")
+					if planTier == "" { planTier = "Standard" } // Default para legacy tenants
+					
+					if strings.ToLower(planTier) != "basic" {
+						LogInfo("[VERIFICATION] SaaS Plan (%s): Running integrity check and structural validations...", planTier)
+						var verifyErrors []string
+						
+						vErr1 := RunResticVerify(r, p, k, s)
+						if vErr1 != nil { verifyErrors = append(verifyErrors, "Integrity Check Failed: "+vErr1.Error()) }
+						
+						vErr2 := RunPartialTestRestore(snapID, r, p, k, s, agentID)
+						if vErr2 != nil { verifyErrors = append(verifyErrors, "Partial Test Failed: "+vErr2.Error()) }
+						
+						verStatus := "VALID"
+						if len(verifyErrors) > 0 { verStatus = "INVALID" }
+						ReportVerification(agentID, snapID, verStatus, verifyErrors)
+						LogInfo("[VERIFICATION] Final Status: %s", verStatus)
+					}
 				}
 
 				// V6.3: Reportar Fin al Monitor Global
@@ -325,8 +349,11 @@ func main() {
 				}
 
 				go func() {
-					errR := RunResticRestore(snapID, target, restorePaths, repo, pass, key, secret)
+					duration, errR := RunResticRestore(snapID, target, restorePaths, repo, pass, key, secret)
 					
+					// V9.0: Enviar RTO Telemetry
+					go ReportRestoreMetrics(agentID, snapID, duration)
+
 					status := "success"
 					msg := "Restoration completed successfully"
 					if errR != nil {

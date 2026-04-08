@@ -22,6 +22,10 @@ interface AgentStatus {
   active_pid?: number;
   snapshots?: any[];
   last_backup_bytes?: number;
+  health_status?: string;
+  verification_status?: string;
+  est_rto_secs?: number;
+  health_score?: number;
 }
 
 interface ServerListProps {
@@ -222,21 +226,37 @@ export default function ServerList({ onRestore }: ServerListProps) {
               <div className="p-3 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20 transition-all">
                 <Activity className="h-6 w-6 text-emerald-500" />
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-wide">
-                  {data.agent_id}
-                  <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
-                    {data.os || 'Linux'}
-                  </span>
-                  {localStorage.getItem("dbp_sso_token")?.startsWith("dbp_admin_") && data.token && (
-                     <span className="text-[9px] bg-blue-950 text-blue-400 px-2 py-0.5 rounded border border-blue-800 font-bold uppercase tracking-widest">
-                       Account: {data.token.substring(0, 15)}...
-                     </span>
-                  )}
-                </h3>
-
-                <p className="text-xs text-gray-500 mt-1 font-mono">Real-time Telemetry: {data.last_sync || 'Connected'}</p>
-              </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-wide">
+                      {data.agent_id}
+                      <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
+                        {data.os || 'Linux'}
+                      </span>
+                    </h3>
+                    {data.health_status && (
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full border ${
+                          data.health_status === 'ONLINE' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                          data.health_status === 'DEGRADED' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
+                          'bg-red-500/10 text-red-500 border-red-500/20'
+                        }`}>
+                          {data.health_status}
+                        </span>
+                        {data.health_score !== undefined && (
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded border italic ${
+                            data.health_score >= 80 ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20' :
+                            data.health_score >= 40 ? 'bg-amber-500 text-black border-amber-400' :
+                            'bg-red-600 text-white border-red-500 animate-pulse'
+                          }`}>
+                            SCORE: {data.health_score}%
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 font-mono">Real-time Telemetry: {data.last_sync || 'Connected'}</p>
+                </div>
             </div>
 
             <div className="flex items-center gap-8">
@@ -444,8 +464,35 @@ export default function ServerList({ onRestore }: ServerListProps) {
               <div className="mt-10 pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
                   <div className="text-center">
+                     <p className="text-[10px] text-gray-600 uppercase font-black">Plan Health</p>
+                     <p className={`text-xs font-bold ${
+                       data.verification_status === 'VALID' ? 'text-emerald-500' : 
+                       data.verification_status === 'INVALID' ? 'text-red-500' : 'text-gray-400'
+                     }`}>
+                       {data.verification_status || 'PENDING'}
+                     </p>
+                  </div>
+                  <div className="h-8 w-px bg-gray-800"></div>
+                  <div className="text-center">
+                     <p className="text-[10px] text-gray-600 uppercase font-black">Estimated RTO</p>
+                     <p className="text-xs text-blue-400 font-bold">
+                       {data.est_rto_secs ? `${Math.ceil(data.est_rto_secs / 60)} min` : '--'}
+                     </p>
+                  </div>
+                  <div className="h-8 w-px bg-gray-800"></div>
+                  <div className="text-center">
                      <p className="text-[10px] text-gray-600 uppercase font-black">Plan Limit</p>
                      <p className="text-xs text-white font-bold">100 GB</p>
+                  </div>
+                  <div className="h-8 w-px bg-gray-800"></div>
+                  <div className="text-center">
+                     <p className="text-[10px] text-gray-600 uppercase font-black">SaaS Security Score</p>
+                     <p className={`text-xs font-bold ${
+                       (data.health_score || 0) >= 80 ? 'text-emerald-500' : 
+                       (data.health_score || 0) >= 40 ? 'text-amber-500' : 'text-red-500'
+                     }`}>
+                       {data.health_score ?? 100}%
+                     </p>
                   </div>
                   <div className="h-8 w-px bg-gray-800"></div>
                   <div className="text-center">

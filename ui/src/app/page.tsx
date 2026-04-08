@@ -36,7 +36,9 @@ export default function DashboardPage() {
     wasabi_secret: '',
     wasabi_bucket: '',
     wasabi_region: 'us-east-1',
-    restic_password: ''
+    restic_password: '',
+    webhook_url: '',
+    webhook_events: 'backup_failed,agent_offline,restore_completed,verification_failed'
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -71,7 +73,9 @@ export default function DashboardPage() {
               wasabi_secret: sData.wasabi_secret || '',
               wasabi_bucket: sData.wasabi_bucket || '',
               wasabi_region: sData.wasabi_region || 'us-east-1',
-              restic_password: sData.restic_password || ''
+              restic_password: sData.restic_password || '',
+              webhook_url: sData.webhook_url || '',
+              webhook_events: sData.webhook_events || 'backup_failed,agent_offline,restore_completed,verification_failed'
             });
           }
       }
@@ -274,6 +278,49 @@ export default function DashboardPage() {
                 <button type="button" onClick={(e) => saveSettings(e, false)} disabled={savingSettings} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl transition-all shadow-xl shadow-emerald-950/40">
                     {savingSettings ? 'SYNCING...' : 'SAVE CONFIGURATION'}
                 </button>
+
+                <div className="pt-6 border-t border-gray-900 space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-500"><AlertCircle size={24} /></div>
+                        <h3 className="text-lg font-black text-white uppercase italic tracking-widest">Universal Webhook (n8n / API)</h3>
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Desacopla tus notificaciones. Enviamos un POST con el evento estructurado hacia tu URL configurada en n8n.</p>
+                    
+                    <div className="space-y-2">
+                        <label className="text-[10px] text-gray-500 font-black uppercase">Webhook URL (Target)</label>
+                        <input 
+                          type="text" 
+                          placeholder="https://tu-instancia-n8n.com/webhook/..."
+                          value={settings.webhook_url} 
+                          onChange={(e) => setSettings({...settings, webhook_url: e.target.value})} 
+                          className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-blue-400 focus:border-blue-500 outline-none font-mono" 
+                        />
+                    </div>
+
+                    <div className="space-y-3">
+                        <label className="text-[10px] text-gray-500 font-black uppercase">Subscribed Events</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            {['backup_failed', 'agent_offline', 'restore_completed', 'verification_failed'].map(ev => (
+                                <label key={ev} className="flex items-center gap-2 cursor-pointer group">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={settings.webhook_events.includes(ev)}
+                                      onChange={(e) => {
+                                          const current = settings.webhook_events.split(',').filter(x => x);
+                                          const next = e.target.checked ? [...current, ev] : current.filter(x => x !== ev);
+                                          setSettings({...settings, webhook_events: next.join(',')});
+                                      }}
+                                      className="sr-only"
+                                    />
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${settings.webhook_events.includes(ev) ? 'bg-blue-500 border-blue-500' : 'border-gray-800 bg-black/40 group-hover:border-gray-600'}`}>
+                                        {settings.webhook_events.includes(ev) && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                                    </div>
+                                    <span className={`text-[10px] font-bold uppercase transition-colors ${settings.webhook_events.includes(ev) ? 'text-white' : 'text-gray-600'}`}>{ev.replace('_', ' ')}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </div>
               </form>
           </div>
         );

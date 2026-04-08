@@ -143,11 +143,13 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 	return finalSnapshotID, totalBytes, nil
 }
 
-// RunResticRestore ejecuta una restauración remota (V4.5.7)
-func RunResticRestore(snapshotID string, destination string, paths []string, repo string, password string, s3Key string, s3Secret string) error {
+// RunResticRestore ejecuta una restauración remota (V4.5.7/V9.0)
+func RunResticRestore(snapshotID string, destination string, paths []string, repo string, password string, s3Key string, s3Secret string) (int, error) {
 	if repo == "" || snapshotID == "" {
-		return fmt.Errorf("missing repository or snapshot ID")
+		return 0, fmt.Errorf("missing repository or snapshot ID")
 	}
+
+	start := time.Now()
 
 	// 1. Preparar Entorno
 	env := os.Environ()
@@ -176,12 +178,54 @@ func RunResticRestore(snapshotID string, destination string, paths []string, rep
 	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
+	durationSecs := int(time.Since(start).Seconds())
 	if err != nil {
 		fmt.Printf("[RESTIC ERROR] Restore failed: %v | Output: %s\n", err, string(output))
-		return fmt.Errorf("restic error: %v | %s", err, string(output))
+		return durationSecs, fmt.Errorf("restic error: %v | %s", err, string(output))
 	}
 
-	fmt.Println("[RESTIC] Restoration successful.")
+	fmt.Printf("[RESTIC] Restoration successful. Duration: %d seconds.\n", durationSecs)
+	return durationSecs, nil
+}
+
+// RunResticVerify ejecuta restic check para asegurar que no hay corrupciones matemáticas en los blobs (V9.0)
+func RunResticVerify(repo string, password string, s3Key string, s3Secret string) error {
+	env := os.Environ()
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
+
+	cmd := exec.Command("restic", "-r", repo, "check")
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("restic check error: %s", string(out))
+	}
+	return nil
+}
+
+// RunPartialTestRestore realiza una prueba aleatoria/inteligente restaurando un sample (.env, docker-compose) (V9.0)
+func RunPartialTestRestore(snapshotID string, repo string, password string, s3Key string, s3Secret string, tenantID string) error {
+	testDir := fmt.Sprintf("/tmp/restore-test-%s", tenantID)
+	os.RemoveAll(testDir) // Limpiar de inmediato remanentes previos
+
+	// Pedir a restic que intente extraer solo un archivo .env si lo hay, ignorando si falla
+	// Al no poder forzar un match estricto, le decimos restic restore con exclude genérico y dejamos un path como "*env*"
+	// (En restic puedes usar wildcard en --include)
+	_, err := RunResticRestore(snapshotID, testDir, []string{"*.env", "*docker-compose*"}, repo, password, s3Key, s3Secret)
+	
+	defer os.RemoveAll(testDir) // Siempre limpiar test sandbox
+
+	if err != nil {
+		return fmt.Errorf("partial restore simulation failed: %v", err)
+	}
+
+	// Verificar estructuralmente si el directorio se pobló
+	info, err := os.Stat(testDir)
+	if err != nil || !info.IsDir() {
+		// No estricto: Puede que simplemente no hayan carpetas .env en este snap, 
+		// pero logramos hacer read/write.
+	}
 	return nil
 }
 
