@@ -31,7 +31,9 @@ export default function ServerList({ onRestore }: ServerListProps) {
   const [agents, setAgents] = useState<Record<string, AgentStatus>>({});
   const [loading, setLoading] = useState(true);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
-  const [schedules, setSchedules] = useState<Record<string, string>>({}); // V2.3: { agentId: "daily_2am" }
+  const [schedules, setSchedules] = useState<Record<string, string>>({}); 
+  const [timezones, setTimezones] = useState<Record<string, string>>({}); 
+  const [customSchedules, setCustomSchedules] = useState<Record<string, string>>({}); 
 
   useEffect(() => {
     async function fetchAgents() {
@@ -48,10 +50,17 @@ export default function ServerList({ onRestore }: ServerListProps) {
           
           // V5.0: Sincronizar el estado de schedules local con lo que viene del servidor
           const loadedSchedules: Record<string, string> = {};
+          const loadedTimezones: Record<string, string> = {};
+          const loadedCustoms: Record<string, string> = {};
+
           Object.entries(data).forEach(([id, agent]: [string, any]) => {
              loadedSchedules[id] = agent.schedule || "manual";
+             loadedTimezones[id] = agent.timezone || "America/Lima";
+             loadedCustoms[id] = agent.custom_schedule || "1,2,3,4,5,6,7|02";
           });
           setSchedules(loadedSchedules);
+          setTimezones(loadedTimezones);
+          setCustomSchedules(loadedCustoms);
         }
       } catch (error) {
         console.error("Error fetching agents:", error);
@@ -97,7 +106,9 @@ export default function ServerList({ onRestore }: ServerListProps) {
             agent_id: agentId,
             schedule: schedule,
             retention: retention,
-            paths: currentPaths
+            paths: currentPaths,
+            timezone: timezones[agentId] || "America/Lima",
+            custom_schedule: customSchedules[agentId] || "1,2,3,4,5,6,7|02"
          })
        });
 
@@ -295,6 +306,20 @@ export default function ServerList({ onRestore }: ServerListProps) {
                 </div>
                   <div className="flex gap-2">
                     <select 
+                      className="bg-gray-800 text-[10px] text-gray-300 px-3 py-1.5 rounded font-bold border border-gray-700 uppercase focus:outline-none focus:border-emerald-500"
+                      value={timezones[id] || "America/Lima"}
+                      onChange={(e) => {
+                         setTimezones(prev => ({ ...prev, [id]: e.target.value }));
+                      }}
+                    >
+                       <option value="America/Lima">Perú (Lima)</option>
+                       <option value="America/Mexico_City">México (CDMX)</option>
+                       <option value="America/Bogota">Colombia (Bogotá)</option>
+                       <option value="America/Santiago">Chile (Santiago)</option>
+                       <option value="UTC">UTC (Universal)</option>
+                    </select>
+
+                    <select 
                       id={`schedule-${id}`}
                       className="bg-gray-800 text-[10px] text-emerald-400 px-3 py-1.5 rounded font-bold border border-gray-700 uppercase focus:outline-none focus:border-emerald-500"
                       value={schedules[id] || "manual"}
@@ -325,6 +350,65 @@ export default function ServerList({ onRestore }: ServerListProps) {
                   </div>
 
               </div>
+
+              {/* V7.2: UI DE PROGRAMACIÓN PERSONALIZADA SEGMENTADA */}
+              {schedules[id] === 'custom' && (
+                <div className="mb-8 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl animate-in fade-in zoom-in duration-300">
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex flex-col gap-2">
+                       <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Select Backup Days</span>
+                       <div className="flex gap-2">
+                          {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((day, idx) => {
+                             const dayVal = (idx + 1).toString();
+                             const currentCustom = customSchedules[id] || "1,2,3,4,5,6,7|02";
+                             const [days, hour] = currentCustom.split('|');
+                             const dayList = days.split(',');
+                             const isActive = dayList.includes(dayVal);
+
+                             return (
+                               <button
+                                 key={day}
+                                 onClick={() => {
+                                    let newDays = isActive ? dayList.filter(d => d !== dayVal) : [...dayList, dayVal];
+                                    if (newDays.length === 0) newDays = [dayVal]; // Al menos un día
+                                    setCustomSchedules(prev => ({ ...prev, [id]: `${newDays.sort().join(',')}|${hour}` }));
+                                 }}
+                                 className={`w-9 h-9 rounded-lg text-[10px] font-bold border transition-all ${
+                                    isActive 
+                                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-lg shadow-emerald-500/20' 
+                                    : 'bg-gray-900 text-gray-500 border-gray-800 hover:border-gray-700'
+                                 }`}
+                               >
+                                 {day}
+                               </button>
+                             )
+                          })}
+                       </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                       <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Execution Hour (24h)</span>
+                       <div className="flex items-center gap-4 bg-gray-900 border border-gray-800 p-2 rounded-xl">
+                          <input 
+                            type="range" 
+                            min="1" 
+                            max="24" 
+                            className="accent-emerald-500 w-32"
+                            value={parseInt((customSchedules[id] || "|02").split('|')[1])}
+                            onChange={(e) => {
+                               const [days, _] = (customSchedules[id] || "1,2,3,4,5,6,7|02").split('|');
+                               const nextHour = e.target.value.padStart(2, '0');
+                               setCustomSchedules(prev => ({ ...prev, [id]: `${days}|${nextHour}` }));
+                            }}
+                          />
+                          <span className="text-xl font-black text-white w-12 text-center tabular-nums">
+                             {(customSchedules[id] || "|02").split('|')[1]}:00
+                          </span>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {data.containers && data.containers.map((container, idx) => (

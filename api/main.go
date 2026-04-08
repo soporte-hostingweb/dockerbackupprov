@@ -297,35 +297,28 @@ func main() {
 		wasabiRegion := settings.WasabiRegion
 		if wasabiRegion == "" { wasabiRegion = "us-east-1" }
 
-		// Construir URL Correcta
+		// V7.0: Aislamiento Multi-Tenant Profesional
 		endpoint := "s3.wasabisys.com"
 		if wasabiRegion != "us-east-1" {
 			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", wasabiRegion)
 		}
-		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s", endpoint, wasabiBucket, agentID)
+		
+		// Estructura: BUCKET / TOKEN_CLIENTE / AGENT_ID
+		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s/%s", endpoint, wasabiBucket, effectiveToken, agentID)
 
-		if len(configs) == 0 {
-			c.JSON(200, gin.H{
-				"status":          "no_config",
-				"paths":           []string{},
-				"schedule":        "manual",
-				"retention":       1,
-				"full_repo_url":   fullRepo,
-				"restic_password": resticPass,
-				"wasabi_key":      wasabiKey,
-				"wasabi_secret":   wasabiSecret,
-			})
-			return
-		}
+		var config BackupConfig
+		if len(configs) > 0 { config = configs[0] }
 
 		var paths []string
-		_ = json.Unmarshal([]byte(configs[0].Paths), &paths)
+		if config.Paths != "" { json.Unmarshal([]byte(config.Paths), &paths) }
 
 		c.JSON(200, gin.H{
 			"status":          "success",
 			"paths":           paths,
-			"schedule":        configs[0].Schedule,
-			"retention":       configs[0].Retention,
+			"schedule":        config.Schedule,
+			"retention":       config.Retention,
+			"timezone":        config.TimeZone,
+			"custom_schedule": config.CustomSchedule,
 			"full_repo_url":   fullRepo,
 			"restic_password": resticPass,
 			"wasabi_key":      wasabiKey,
@@ -337,10 +330,12 @@ func main() {
 	// V5.0/V5.1.2: Endpoint para GUARDAR la configuración (Con impersonación Admin)
 	v1Agent.POST("/config/save", AuthMiddleware(), func(c *gin.Context) {
 		var req struct {
-			AgentID   string   `json:"agent_id"`
-			Schedule  string   `json:"schedule"`
-			Paths     []string `json:"paths"`
-			Retention int      `json:"retention"`
+			AgentID        string   `json:"agent_id"`
+			Schedule       string   `json:"schedule"`
+			Paths          []string `json:"paths"`
+			Retention      int      `json:"retention"`
+			TimeZone       string   `json:"timezone"`
+			CustomSchedule string   `json:"custom_schedule"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
@@ -366,21 +361,27 @@ func main() {
 		
 		if res.Error != nil {
 			config = BackupConfig{
-				Token:     effectiveToken,
-				AgentID:   req.AgentID,
-				Schedule:  req.Schedule,
-				Paths:     string(pathsJSON),
-				Retention: req.Retention,
+				Token:          effectiveToken,
+				AgentID:        req.AgentID,
+				Schedule:       req.Schedule,
+				Paths:          string(pathsJSON),
+				Retention:      req.Retention,
+				TimeZone:       req.TimeZone,
+				CustomSchedule: req.CustomSchedule,
 			}
 			DB.Create(&config)
 		} else {
 			config.Schedule = req.Schedule
 			config.Paths = string(pathsJSON)
 			config.Retention = req.Retention
+			config.TimeZone = req.TimeZone
+			config.CustomSchedule = req.CustomSchedule
 			DB.Model(&config).Updates(BackupConfig{
-				Schedule:  req.Schedule,
-				Paths:     string(pathsJSON),
-				Retention: req.Retention,
+				Schedule:       req.Schedule,
+				Paths:          string(pathsJSON),
+				Retention:      req.Retention,
+				TimeZone:       req.TimeZone,
+				CustomSchedule: req.CustomSchedule,
 			})
 		}
 

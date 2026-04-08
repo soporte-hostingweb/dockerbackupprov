@@ -54,10 +54,12 @@ type BackupConfig struct {
 	ID        uint   `gorm:"primaryKey"`
 	Token     string `gorm:"index" json:"token"`
 	AgentID   string `gorm:"index" json:"agent_id"`
-	Paths     string `json:"paths"`    // JSON array de paths
-	Schedule  string `json:"schedule"` // manual, daily_2am, weekly_2am, custom
-	Retention int    `json:"retention"` // 1, 2, 7 (V5.1.1)
-	CreatedAt time.Time
+	Paths          string `json:"paths"`    // JSON array de paths
+	Schedule       string `json:"schedule"` // manual, daily_2am, weekly_2am, custom
+	Retention      int    `json:"retention"` // 1, 2, 7 (V5.1.1)
+	TimeZone       string `json:"timezone" gorm:"default:America/Lima"` // V7.1: Soporte para horario local
+	CustomSchedule string `json:"custom_schedule"` // V7.2: Días y horas personalizados (ej: 1,3,5|14)
+	CreatedAt      time.Time
 }
 
 // ActivityLog: Registro de operaciones globales en tiempo real (V6.3)

@@ -183,21 +183,48 @@ func main() {
 		shouldRun := false
 		if force != "none" && force != "" {
 			shouldRun = true
-		} else if config.Schedule == "daily_2am" || config.Schedule == "daily_2am_basic" || config.Schedule == "custom" {
-			now := time.Now()
-			// V6.6: Scheduler Universal para planes basic/custom a las 2 AM
-			if now.Hour() == 2 && now.Minute() < 10 {
-				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
-					shouldRun = true
-					LogInfo("[SCHEDULER] Auto-trigger detected for Plan: %s", config.Schedule)
+		} else if config.Schedule != "manual" && config.Schedule != "" {
+			// V7.1: Soporte para Zonas Horarias Regionales
+			tz := config.TimeZone
+			if tz == "" { tz = "America/Lima" }
+			loc, errLoc := time.LoadLocation(tz)
+			if errLoc != nil { loc = time.FixedZone("UTC-5", -5*60*60) } // Fallback a Perú si falla la carga
+
+			now := time.Now().In(loc)
+			h := now.Hour()
+			d := int(now.Weekday())
+			if d == 0 { d = 7 } // Normalizar Domingo a 7
+
+			// V7.2: Lógica de Programación por Planes
+			isScheduledTime := false
+			if config.Schedule == "daily_2am" || config.Schedule == "daily_2am_basic" {
+				if h == 2 && now.Minute() < 10 { isScheduledTime = true }
+			} else if config.Schedule == "weekly_2am" {
+				if d == 7 && h == 2 && now.Minute() < 10 { isScheduledTime = true }
+			} else if config.Schedule == "custom" && config.CustomSchedule != "" {
+				// Formato: "1,3,5|14" (Dias|Hora)
+				parts := strings.Split(config.CustomSchedule, "|")
+				if len(parts) == 2 {
+					confDays := strings.Split(parts[0], ",")
+					confHour := 0
+					fmt.Sscanf(parts[1], "%d", &confHour)
+					if confHour == 24 { confHour = 0 } // Normalizar 24h a 0h
+
+					dayMatch := false
+					for _, cd := range confDays {
+						if cd == fmt.Sprintf("%d", d) { dayMatch = true; break }
+					}
+
+					if dayMatch && h == confHour && now.Minute() < 10 {
+						isScheduledTime = true
+					}
 				}
 			}
-		} else if config.Schedule == "weekly_2am" {
-			now := time.Now()
-			if now.Weekday() == time.Sunday && now.Hour() == 2 && now.Minute() < 10 {
+
+			if isScheduledTime {
 				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
 					shouldRun = true
-					LogInfo("[SCHEDULER] Weekly Auto-trigger detected.")
+					LogInfo("[SCHEDULER] Auto-trigger detected (TZ: %s, Plan: %s)", tz, config.Schedule)
 				}
 			}
 		}

@@ -187,6 +187,8 @@ type AgentConfigV2 struct {
 	Paths           []string `json:"paths"`
 	Schedule        string   `json:"schedule"`
 	Retention       int      `json:"retention"`
+	TimeZone        string   `json:"timezone"`        // V7.1
+	CustomSchedule  string   `json:"custom_schedule"` // V7.2
 	FullRepoURL     string   `json:"full_repo_url"`
 	ResticPassword  string   `json:"restic_password"`
 	WasabiKey       string   `json:"wasabi_key"`
