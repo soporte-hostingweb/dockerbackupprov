@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+const Version = "V9.2.1"
 
 
 
@@ -20,7 +21,16 @@ var LastKnownContainers []string      // V6.7: Caché de contenedores para evita
 var LastKnownExplorer map[string][]string // V6.8: Estado persistente del explorador
 
 func main() {
-	LogInfo("🚀 Docker Backup Pro Agent Starting...")
+	// Soporte para flags básicos (V9.2.1)
+	if len(os.Args) > 1 {
+		arg := strings.ToLower(os.Args[1])
+		if arg == "-v" || arg == "-version" || arg == "--version" {
+			fmt.Printf("Docker Backup Pro Agent %s\n", Version)
+			return
+		}
+	}
+
+	LogInfo("🚀 Docker Backup Pro Agent %s Starting...", Version)
 	
 	// Cargar persistencia si existe (V2.4)
 	agentID := GetPersistentID()
@@ -275,7 +285,7 @@ func main() {
 				finishedAt := time.Now().Unix()
 				duration := int(finishedAt - startedAt)
 				status := "success"
-				msg := fmt.Sprintf("Backup completed. Size: %s", FormatBytes(bytesProcessed))
+				msg := fmt.Sprintf("[%s] Backup successful. Final size: %s (Time: %ds)", Version, FormatBytes(bytesProcessed), duration)
 				
 				if errB != nil {
 					status = "error"
@@ -307,7 +317,7 @@ func main() {
 				}
 
 				// V6.3: Reportar Fin al Monitor Global
-				ReportActivity(activityID, agentID, "backup", status, msg)
+				ReportActivity(activityID, agentID, "backup", status, "[V9.2.1] "+msg)
 
 				ReportMetrics(BackupMetrics{
 					AgentID: agentID, Status: strings.ToUpper(status), StartedAt: startedAt, Timestamp: finishedAt,
@@ -405,26 +415,19 @@ func GetDiskCapacity() (string, string) {
 // FormatBytes convierte bytes a una unidad legible (B, MB, GB, TB) (V9.2)
 func FormatBytes(b int64) string {
 	const unit = 1024
-	if b < unit*unit { // Menos de 1MB, mostrar en KB
-		return fmt.Sprintf("%.2f KB", float64(b)/float64(unit))
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
 	}
 	div, exp := int64(unit), 0
 	for n := b / unit; n >= unit; n /= unit {
 		div *= unit
 		exp++
 	}
-	
-	units := []string{"MB", "GB", "TB", "PB"}
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
 	if exp >= len(units) {
-		return fmt.Sprintf("%d bytes", b)
+		return fmt.Sprintf("%d B", b)
 	}
-
+	
 	value := float64(b) / float64(div)
-	
-	// Si es exactamente un entero, no mostrar decimales innecesarios
-	if value == float64(int64(value)) {
-		return fmt.Sprintf("%.0f%s", value, units[exp])
-	}
-	
 	return fmt.Sprintf("%.2f%s", value, units[exp])
 }

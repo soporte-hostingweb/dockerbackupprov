@@ -21,7 +21,7 @@ import (
 )
 
 
-const Version = "V2.7.2"
+const Version = "V9.2.1"
 
 //go:embed install.sh
 var installScript []byte
@@ -341,6 +341,10 @@ func main() {
 				"active_pid":     a.ActivePID,
 				"last_backup_at": a.LastBackupAt,
 				"last_backup_bytes": a.LastBackupBytes,
+				"health_score":      a.HealthScore,
+				"health_status":     a.HealthStatus,
+				"verification_status": a.VerificationStatus,
+				"est_rto_secs":      a.EstRtoSecs,
 				"schedule":       config.Schedule,
 				"timezone":       config.TimeZone,
 				"custom_schedule": config.CustomSchedule,
@@ -365,6 +369,11 @@ func main() {
 			DB.Where("token = ?", token).Order("started_at desc").Limit(50).Find(&activities)
 		}
 		c.JSON(200, activities)
+	})
+
+	// V9.2.1: Alias para compatibilidad con el UI
+	r.GET("/v1/history", AuthMiddleware(), func(c *gin.Context) {
+		c.Redirect(http.StatusPermanentRedirect, "/v1/activities")
 	})
 
 	// Endpoint para que el AGENTE reporte su estado en tiempo real (V6.3)
@@ -1184,7 +1193,7 @@ fi
 
 		// V9.0: Incluir Configuración de Alertas
 		var alertConfig AlertConfig
-		DB.Where("token = ?", searchToken).First(&alertConfig)
+		_ = DB.Where("token = ?", searchToken).First(&alertConfig).Error
 
 		response := UserSettingsPayload{
 			WasabiKey:     settings.WasabiKey,
