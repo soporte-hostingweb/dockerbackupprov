@@ -461,14 +461,16 @@ func main() {
 			LastSeen:     time.Now().UTC(),
 			LastSeenUnix: time.Now().Unix(),
 			OS:           payload.OS,
-			Containers:   string(contJSON),
-			Explorer:     string(expJSON),
-			Snapshots:    string(snapJSON),
 			FreeSpace:    payload.FreeSpace,
 			TotalSpace:   payload.TotalSpace,
 			IsSyncing:    payload.IsSyncing,
 			ActivePID:    payload.ActivePID,
 		}
+
+		// V6.8: Protección de Inventario - Solo actualizamos si el payload no viene vacío
+		if len(payload.Containers) > 0 { agent.Containers = string(contJSON) }
+		if len(payload.ExplorerData) > 0 { agent.Explorer = string(expJSON) }
+		if len(payload.Snapshots) > 0 { agent.Snapshots = string(snapJSON) }
 
 
 		if payload.LastBackupAt > 0 {
@@ -494,9 +496,10 @@ func main() {
 			}
 			
 			// Si se procesó una orden de kill, la reiniciamos (V3.4.1)
-			if !payload.IsSyncing && agent.KillSync {
-				agent.KillSync = false
-			}
+			// V6.8: Si el payload vino vacío, recuperamos lo que ya teníamos en DB
+			if agent.Containers == "" { agent.Containers = existing.Containers }
+			if agent.Explorer == ""   { agent.Explorer = existing.Explorer }
+			if agent.Snapshots == ""  { agent.Snapshots = existing.Snapshots }
 		}
 
 		if err := DB.Save(&agent).Error; err != nil {

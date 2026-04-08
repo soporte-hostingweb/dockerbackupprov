@@ -17,6 +17,7 @@ var IsSyncing bool = false
 var ActivePID int = 0
 var LastKnownSnapshots []interface{} // V6.6: Caché persistente para evitar parpadeos
 var LastKnownContainers []string      // V6.7: Caché de contenedores para evitar parpadeos
+var LastKnownExplorer map[string][]string // V6.8: Estado persistente del explorador
 
 func main() {
 	LogInfo("🚀 Docker Backup Pro Agent Starting...")
@@ -108,9 +109,10 @@ func main() {
 
 		// V4.7.1: MODO TURBO - Si hay actividad reciente del Wizard, omitimos el pesado proceso de discovery
 		if time.Since(lastWizardActivity) < 30*time.Second {
-			LogInfo("[TURBO] Skipping heavy discovery (Wizard Active). Response time optimized.")
+			LogInfo("[TURBO] Skipping heavy discovery (Wizard Active). Using persistent state.")
 			free, total := GetDiskCapacity()
-			_, taskInfo, _, _ = ReportHeartbeat(agentID, nil, nil, nil, IsSyncing, ActivePID, lastBackupUnix, free, total)
+			// V6.8: Enviamos el último estado conocido en lugar de 'nil' para proteger la vista
+			_, taskInfo, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
 			if taskInfo != "" && taskInfo != "none" { continue }
 			
 			// V4.7.2: Super Turbo (Reducción de 5s a 2s de espera interactiva)
@@ -118,24 +120,19 @@ func main() {
 			continue
 		}
 
-		// Descubrimiento de contenedores (Normal) con Caché V6.7
+		// Descubrimiento de contenedores (Normal) con Estado Permanente V6.8
 		containerNames, errC := GetRunningContainers()
 		if errC == nil && len(containerNames) > 0 {
 			LastKnownContainers = containerNames
 			LogInfo("[INFO] Discovered %d containers.", len(containerNames))
-		} else if len(LastKnownContainers) > 0 {
-			containerNames = LastKnownContainers
-			LogInfo("[INFO] Docker Latency: Using cached containers (%d items).", len(containerNames))
-		} else {
-			LogInfo("[WARNING] No containers found and cache is empty.")
 		}
 
-		// Preparar explorer data
-		explorerData := make(map[string][]string)
+		// Preparar explorer data de forma atómica
+		currentExplorer := make(map[string][]string)
 		pathToRealMap := make(map[string]string) 
 		var backupPaths []string
 
-		for _, name := range containerNames {
+		for _, name := range LastKnownContainers {
 			if name == "dbp-client-agent" { continue }
 			hostMounts := GetContainerMounts(name)
 			for _, hostPath := range hostMounts {
@@ -144,34 +141,30 @@ func main() {
 					backupPaths = append(backupPaths, bridgePath)
 					subItems := ScanVolumeFolders(bridgePath)
 					for _, item := range subItems {
-						explorerData[name] = append(explorerData[name], item)
+						currentExplorer[name] = append(currentExplorer[name], item)
 						itemName := strings.TrimPrefix(strings.TrimPrefix(item, "📂 "), "📄 ")
 						pathToRealMap[item] = bridgePath + "/" + itemName
 					}
 					fullVolEntry := "📂 [Full Volume] " + name
-					explorerData[name] = append(explorerData[name], fullVolEntry)
+					currentExplorer[name] = append(currentExplorer[name], fullVolEntry)
 					pathToRealMap[fullVolEntry] = bridgePath
 				}
 			}
 		}
+		if len(currentExplorer) > 0 { LastKnownExplorer = currentExplorer }
 
-		// Reportar Heartbeat Completo (Discover) si ya validamos tareas
-		var snapshots []interface{}
+		// Reportar Heartbeat Completo con Estado Persistente
 		if repo != "" && pass != "" {
 			snapshotsRaw := GetSnapshotsJSON(repo, pass, key, secret)
 			var currentSnapshots []interface{}
 			if errS := json.Unmarshal(snapshotsRaw, &currentSnapshots); errS == nil && len(currentSnapshots) > 0 {
-				snapshots = currentSnapshots
-				LastKnownSnapshots = currentSnapshots // Actualizamos caché
-				LogInfo("[SNAPSHOTS] Detected %d snapshots.", len(snapshots))
-			} else if len(LastKnownSnapshots) > 0 {
-				snapshots = LastKnownSnapshots // Usamos caché si Wasabi falla o va lento
-				LogInfo("[SNAPSHOTS] Latency detected. Using cached inventory (%d items).", len(snapshots))
+				LastKnownSnapshots = currentSnapshots
+				LogInfo("[SNAPSHOTS] Detected %d snapshots.", len(LastKnownSnapshots))
 			}
 		}
 
 		free, total := GetDiskCapacity()
-		_, taskInfo, _, _ = ReportHeartbeat(agentID, containerNames, explorerData, snapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
+		_, taskInfo, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
 
 		// 6. Scheduler (Backup Logic)
 		force := "none"
@@ -230,7 +223,7 @@ func main() {
 				activityID := ReportActivity(0, agentID, "backup", "running", "Scheduled backup started")
 				
 				f, t := GetDiskCapacity()
-				ReportHeartbeat(agentID, containerNames, explorerData, nil, true, ActivePID, lastBackupUnix, f, t)
+				ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, true, ActivePID, lastBackupUnix, f, t)
 				
 				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s, config.Retention)
 				
@@ -261,7 +254,8 @@ func main() {
 				rawSnaps := GetSnapshotsJSON(r, p, k, s)
 				var updatedSnapshots []interface{}
 				json.Unmarshal(rawSnaps, &updatedSnapshots)
-				ReportHeartbeat(agentID, containerNames, explorerData, updatedSnapshots, false, ActivePID, lastBackupUnix, f, t)
+				if len(updatedSnapshots) > 0 { LastKnownSnapshots = updatedSnapshots }
+				ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, false, ActivePID, lastBackupUnix, f, t)
 
 				IsSyncing = false
 			}(currentPaths, repo, pass, key, secret)
