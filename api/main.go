@@ -182,6 +182,7 @@ func main() {
 				"is_syncing":     a.IsSyncing,
 				"active_pid":     a.ActivePID,
 				"last_backup_at": a.LastBackupAt,
+				"last_backup_bytes": a.LastBackupBytes,
 				"schedule":       config.Schedule,
 				"timezone":       config.TimeZone,
 				"custom_schedule": config.CustomSchedule,
@@ -625,7 +626,10 @@ func main() {
 			
 			// Actualizamos el último backup exitoso en el estado del agente
 			if payload.Status == "SUCCESS" {
-				DB.Model(&agent).Update("last_backup_at", time.Unix(payload.Timestamp, 0).UTC())
+				DB.Model(&agent).Updates(map[string]interface{}{
+					"last_backup_at":    time.Unix(payload.Timestamp, 0).UTC(),
+					"last_backup_bytes": payload.TotalSizeBytes,
+				})
 			}
 		}
 

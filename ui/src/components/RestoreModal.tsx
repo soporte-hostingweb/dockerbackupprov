@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from "react";
-import { X, RotateCcw, FolderInput, ShieldCheck, Database, HardDrive, AlertCircle, ChevronRight, Calendar, Clock, Search, FileText, Folder, Activity, CheckSquare, Square } from "lucide-react";
+import { Server, X, RotateCcw, FolderInput, ShieldCheck, Database, HardDrive, AlertCircle, ChevronRight, Calendar, Clock, Search, FileText, Folder, Activity, CheckSquare, Square } from "lucide-react";
 
 interface RestoreModalProps {
   isOpen: boolean;
@@ -21,6 +21,12 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const [isLodingContent, setIsLoadingContent] = useState(false);
   const [agentData, setAgentData] = useState<any>(null);
   const [currentPath, setCurrentPath] = useState(""); 
+  
+  // V8.0: Bare-Metal Clone State
+  const [isCloneMode, setIsCloneMode] = useState(false);
+  const [targetIP, setTargetIP] = useState("");
+  const [targetPort, setTargetPort] = useState("22");
+  const [targetPass, setTargetPass] = useState("");
 
   useEffect(() => {
     if (isOpen && agentId) {
@@ -93,17 +99,33 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const handleRestore = async () => {
     setLoading(true);
     try {
-      const resp = await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
-        method: "POST",
-        headers: { "Authorization": token, "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            action: "restore", 
-            snapshot_id: selectedSnapshot.id || selectedSnapshot.short_id,
-            destination: isOverwriteMode ? "/" : restorePath,
-            paths: selectedPaths 
-        })
-      });
-      if (resp.ok) setStep(4);
+      if (isCloneMode) {
+          const resp = await fetch(`https://api.hwperu.com/v1/agent/clone`, {
+            method: "POST",
+            headers: { "Authorization": token, "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                source_agent_id: agentId,
+                snapshot_id: selectedSnapshot.id || selectedSnapshot.short_id,
+                ip: targetIP,
+                port: targetPort,
+                pass: targetPass
+            })
+          });
+          if (resp.ok) setStep(4);
+          else alert("Error orchestrating Target SSH Connection.");
+      } else {
+          const resp = await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
+            method: "POST",
+            headers: { "Authorization": token, "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                action: "restore", 
+                snapshot_id: selectedSnapshot.id || selectedSnapshot.short_id,
+                destination: isOverwriteMode ? "/" : restorePath,
+                paths: selectedPaths 
+            })
+          });
+          if (resp.ok) setStep(4);
+      }
     } catch (err) { alert("Error de red"); } finally { setLoading(false); }
   };
 
@@ -223,31 +245,66 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                     </div>
                 </div>
 
-                <div className={`p-6 rounded-[2rem] border transition-all ${snapshots.length < 2 ? 'bg-red-500/5 border-red-500/20' : 'bg-orange-500/5 border-orange-500/20'}`}>
+                <div className={`p-6 rounded-[2rem] border transition-all ${snapshots.length < 2 && !isCloneMode ? 'bg-red-500/5 border-red-500/20' : 'bg-orange-500/5 border-orange-500/20'}`}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className={`p-3 rounded-2xl ${snapshots.length < 2 ? 'bg-red-500/10 text-red-500' : 'bg-orange-500/10 text-orange-500'}`}><AlertCircle size={20} /></div>
+                            <div className={`p-3 rounded-2xl ${snapshots.length < 2 && !isCloneMode ? 'bg-red-500/10 text-red-500' : 'bg-orange-500/10 text-orange-500'}`}><AlertCircle size={20} /></div>
                             <div>
                                 <h4 className="text-[11px] font-black text-white uppercase italic">In-Place Restore (Direct Host)</h4>
-                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">{snapshots.length < 2 ? '❌ BLOCK: Min 2 snapshots required' : '⚠️ WARNING: Overwrites current host files'}</p>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">{snapshots.length < 2 && !isCloneMode ? '❌ BLOCK: Min 2 snapshots required' : '⚠️ WARNING: Overwrites current host files'}</p>
                             </div>
                         </div>
-                        <button disabled={snapshots.length < 2} onClick={() => setIsOverwriteMode(!isOverwriteMode)} className={`w-12 h-6 rounded-full transition-all flex items-center px-1 ${isOverwriteMode ? 'bg-orange-500' : 'bg-gray-800'} ${snapshots.length < 2 ? 'opacity-20 cursor-not-allowed' : ''}`}>
+                        <button disabled={snapshots.length < 2 || isCloneMode} onClick={() => setIsOverwriteMode(!isOverwriteMode)} className={`w-12 h-6 rounded-full transition-all flex items-center px-1 ${isOverwriteMode ? 'bg-orange-500' : 'bg-gray-800'} ${snapshots.length < 2 || isCloneMode ? 'opacity-20 cursor-not-allowed' : ''}`}>
                             <div className={`w-4 h-4 bg-white rounded-full transition-all ${isOverwriteMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
                         </button>
                     </div>
                 </div>
 
-                {!isOverwriteMode && (
+                {/* V8.0 Bare Metal Clone Toggle */}
+                <div className="p-6 rounded-[2rem] border bg-emerald-500/5 border-emerald-500/20 transition-all">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500"><Server size={20} /></div>
+                            <div>
+                                <h4 className="text-[11px] font-black text-white uppercase italic">Clone to New VPS (Bare-Metal)</h4>
+                                <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-widest">Reconstruct this snapshot in an empty instance via SSH</p>
+                            </div>
+                        </div>
+                        <button onClick={() => { setIsCloneMode(!isCloneMode); setIsOverwriteMode(false); }} className={`w-12 h-6 rounded-full transition-all flex items-center px-1 ${isCloneMode ? 'bg-emerald-500' : 'bg-gray-800'}`}>
+                            <div className={`w-4 h-4 bg-white rounded-full transition-all ${isCloneMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                        </button>
+                    </div>
+
+                    {isCloneMode && (
+                        <div className="mt-6 space-y-3 animate-in fade-in slide-in-from-top-2 p-4 bg-black/40 border border-emerald-900/50 rounded-2xl">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-emerald-600 font-black uppercase ml-1 tracking-widest">Target IP</label>
+                                    <input type="text" value={targetIP} onChange={(e) => setTargetIP(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none font-mono" placeholder="192.168.1.10" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-emerald-600 font-black uppercase ml-1 tracking-widest">SSH Port</label>
+                                    <input type="text" value={targetPort} onChange={(e) => setTargetPort(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none font-mono" placeholder="22" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] text-emerald-600 font-black uppercase ml-1 tracking-widest">Root Password</label>
+                                <input type="password" value={targetPass} onChange={(e) => setTargetPass(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none font-mono" placeholder="••••••••••••" />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {!isOverwriteMode && !isCloneMode && (
                     <div className="space-y-2 animate-in fade-in duration-300">
                         <label className="text-[10px] text-gray-500 font-black uppercase italic ml-1">Safe Sandbox Destination</label>
                         <input type="text" value={restorePath} onChange={(e) => setRestorePath(e.target.value)} className="w-full bg-black/40 border border-gray-800 rounded-2xl px-6 py-5 text-xs text-white focus:border-blue-500 outline-none font-mono tracking-widest" placeholder="/restore_data" />
                     </div>
                 )}
 
-                <button onClick={handleRestore} disabled={loading} className={`w-full font-black uppercase text-xs py-6 rounded-3xl transition-all shadow-xl flex items-center justify-center gap-3 ${isOverwriteMode ? 'bg-orange-600 hover:bg-orange-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
-                    {loading ? <Activity className="animate-spin" size={18} /> : (isOverwriteMode ? <Database size={18} /> : <ShieldCheck size={18} />)}
-                    {loading ? 'SYNCING...' : (isOverwriteMode ? 'CONFIRM HOST OVERWRITE' : 'START SAFE RESTORATION')}
+                <button onClick={handleRestore} disabled={loading || (isCloneMode && (!targetIP || !targetPass))} className={`w-full font-black uppercase text-xs py-6 rounded-3xl transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed ${isCloneMode ? 'bg-emerald-600 hover:bg-emerald-500' : (isOverwriteMode ? 'bg-orange-600 hover:bg-orange-500' : 'bg-blue-600 hover:bg-blue-500')}`}>
+                    {loading ? <Activity className="animate-spin" size={18} /> : (isCloneMode ? <Server size={18} /> : (isOverwriteMode ? <Database size={18} /> : <ShieldCheck size={18} />))}
+                    {loading ? 'SYNCING...' : (isCloneMode ? 'ORCHESTRATE BARE-METAL CLONE' : (isOverwriteMode ? 'CONFIRM HOST OVERWRITE' : 'START SAFE RESTORATION'))}
                 </button>
             </div>
           )}

@@ -40,6 +40,7 @@ type AgentStatus struct {
 	CmdParam     string    `json:"cmd_param"`  // snapshot_id
 	CmdResult    string    `gorm:"type:text" json:"cmd_result"` // JSON output del comando
 	LastBackupAt time.Time `json:"last_backup_at"`
+	LastBackupBytes int64  `json:"last_backup_bytes"` // V8.1: Consumo en Wasabi
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

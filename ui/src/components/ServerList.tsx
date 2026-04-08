@@ -21,6 +21,7 @@ interface AgentStatus {
   is_syncing?: boolean;
   active_pid?: number;
   snapshots?: any[];
+  last_backup_bytes?: number;
 }
 
 interface ServerListProps {
@@ -442,15 +443,17 @@ export default function ServerList({ onRestore }: ServerListProps) {
               
               <div className="mt-10 pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
-                   <div className="text-center">
-                      <p className="text-[10px] text-gray-600 uppercase font-black">Plan Limit</p>
-                      <p className="text-xs text-white font-bold">100 GB</p>
-                   </div>
-                   <div className="h-8 w-px bg-gray-800"></div>
-                   <div className="text-center">
-                      <p className="text-[10px] text-gray-600 uppercase font-black">Current Usage</p>
-                      <p className="text-xs text-emerald-500 font-bold">12.4 GB</p>
-                   </div>
+                  <div className="text-center">
+                     <p className="text-[10px] text-gray-600 uppercase font-black">Plan Limit</p>
+                     <p className="text-xs text-white font-bold">100 GB</p>
+                  </div>
+                  <div className="h-8 w-px bg-gray-800"></div>
+                  <div className="text-center">
+                     <p className="text-[10px] text-gray-600 uppercase font-black">Current Usage (Wasabi)</p>
+                     <p className="text-xs text-emerald-500 font-bold">
+                       {data.last_backup_bytes ? (data.last_backup_bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB" : "0.00 GB"}
+                     </p>
+                  </div>
                 </div>
                 
                 <div className="flex flex-col gap-2 w-full md:w-auto">
