@@ -15,13 +15,14 @@ RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o dbp-api .
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata openssh-client sshpass
 
 # Crear usuario no-root para seguridad (CIS Benchmark)
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /home/appuser/
 COPY --from=builder /app/dbp-api .
+COPY --from=builder /app/lang ./lang
 
 # Ajustar permisos
 RUN chown -R appuser:appgroup /home/appuser/

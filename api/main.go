@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -94,6 +95,40 @@ func main() {
 	})
 
 	v1Agent := r.Group("/v1/agent")
+
+	// --- ENDPOINTS DE TRADUCCIÓN (i18n) ---
+	r.GET("/v1/translations", func(c *gin.Context) {
+		lang := c.Query("lang")
+		if lang == "" { lang = "en" }
+
+		// 1. Cargar base según el idioma o fallback a 'en'
+		baseFile := fmt.Sprintf("lang/%s.json", lang)
+		if _, err := os.Stat(baseFile); os.IsNotExist(err) {
+			baseFile = "lang/en.json" // Fallback seguro
+		}
+
+		baseData, err := os.ReadFile(baseFile)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Base language file not found internally."})
+			return
+		}
+
+		baseDict := make(map[string]string)
+		json.Unmarshal(baseData, &baseDict)
+
+		// 2. Fusionar Custom Override (modificación del Admin) si existe
+		customData, errC := os.ReadFile("lang/custom_lang.json")
+		if errC == nil {
+			customDict := make(map[string]string)
+			if errJ := json.Unmarshal(customData, &customDict); errJ == nil {
+				for k, v := range customDict {
+					baseDict[k] = v // Sobrescribir
+				}
+			}
+		}
+
+		c.JSON(200, baseDict)
+	})
 
 	// --- ENDPOINTS DE ESTADO ---
 
@@ -598,9 +633,117 @@ func main() {
 		c.JSON(200, gin.H{"status": "Metrics recorded and activity saved"})
 	})
 
+	// --- ORQUESTADOR BARE-METAL RESTORE (V8.0) ---
+	v1Agent.POST("/clone", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		isAdmin := c.GetBool("is_admin")
 
+		var req struct {
+			SourceAgentID string `json:"source_agent_id"`
+			SnapshotID    string `json:"snapshot_id"`
+			TargetIP      string `json:"ip"`
+			TargetPort    string `json:"port"`
+			TargetPass    string `json:"pass"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid payload"})
+			return
+		}
 
+		// 1. Obtener Token Efectivo y Validar Agente Origen
+		var sourceAgent AgentStatus
+		if err := DB.Where("id = ?", req.SourceAgentID).First(&sourceAgent).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Source agent not found"})
+			return
+		}
+		if !isAdmin && sourceAgent.Token != token {
+			c.JSON(403, gin.H{"error": "Unauthorized access to source agent"})
+			return
+		}
+		effectiveToken := sourceAgent.Token
 
+		// 2. Bloquear Agente Origen (Prevención de colisiones)
+		sourceAgent.Maintenance = true
+		DB.Save(&sourceAgent)
+
+		// 3. Obtener Configuración y Credenciales para el Nuevo Servidor
+		var settings UserSettings
+		DB.Limit(1).Where("token = ?", effectiveToken).Find(&settings)
+		if settings.ID == 0 {
+			DB.Limit(1).Where("token = ?", "SYSTEM_GLOBAL").Find(&settings)
+		}
+		wasabiKey, _ := Decrypt(settings.WasabiKey)
+		wasabiSecret, _ := Decrypt(settings.WasabiSecret)
+		resticPass, _ := Decrypt(settings.ResticPass)
+		bucket := settings.WasabiBucket
+		region := settings.WasabiRegion
+		if region == "" { region = "us-east-1" }
+		endpoint := "s3.wasabisys.com"
+		if region != "us-east-1" { endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region) }
+		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s/%s", endpoint, bucket, effectiveToken, req.SourceAgentID)
+
+		// 4. Inyección Asíncrona (Conexión SSH y Restauración)
+		go func() {
+			activity := ActivityLog{
+				Token:     effectiveToken,
+				AgentID:   req.SourceAgentID, // Agrupado bajo el ID origen para trazabilidad
+				Type:      "bare_metal_restore",
+				Status:    "running",
+				Message:   fmt.Sprintf("Connecting via SSH to %s...", req.TargetIP),
+				StartedAt: time.Now().UTC(),
+			}
+			DB.Create(&activity)
+
+			defer func() {
+				// Al terminar, devolver Agent a la vida
+				sourceAgent.Maintenance = false
+				DB.Save(&sourceAgent)
+			}()
+
+			importSSH := true // Referencia
+			_ = importSSH
+
+			// V8.0: Script Mágico de Rescate Automático
+			rescueScript := fmt.Sprintf(`#!/bin/bash
+echo "[DBP] Inbound Secure Restoration Thread initialized."
+export AWS_ACCESS_KEY_ID='%s'
+export AWS_SECRET_ACCESS_KEY='%s'
+export RESTIC_PASSWORD='%s'
+export RESTIC_REPOSITORY='%s'
+
+if ! command -v restic &> /dev/null; then
+    wget -qO restic.bz2 https://github.com/restic/restic/releases/download/v0.16.4/restic_0.16.4_linux_amd64.bz2
+    bzip2 -d restic.bz2 && chmod +x restic && mv restic /usr/local/bin/
+fi
+
+echo "[DBP] Commencing Bare-Metal Snapshot Extraction: %s"
+restic restore %s --target / > /var/log/dbp_restore.log 2>&1
+C_RES=$?
+
+if [ $C_RES -eq 0 ]; then
+    curl -s -X POST -H "Content-Type: application/json" -d '{"activity_id": %d, "agent_id": "%s", "type": "bare_metal_restore", "status": "success", "message": "Bare metal restore fully completed on target %s"}' http://api.hwperu.com/v1/agent/activity/report > /dev/null
+    sleep 3; reboot
+else
+    curl -s -X POST -H "Content-Type: application/json" -d '{"activity_id": %d, "agent_id": "%s", "type": "bare_metal_restore", "status": "error", "message": "Restore crashed. Code: '"$C_RES"'"}' http://api.hwperu.com/v1/agent/activity/report > /dev/null
+fi
+`, wasabiKey, wasabiSecret, resticPass, fullRepo, req.SnapshotID, req.SnapshotID, activity.ID, req.SourceAgentID, req.TargetIP, activity.ID, req.SourceAgentID)
+
+			cmdSSH := exec.Command("sshpass", "-p", req.TargetPass, "ssh", "-o", "StrictHostKeyChecking=no", "-p", req.TargetPort, "root@"+req.TargetIP, rescueScript)
+			// Lanzarlo en background desatendido
+			err := cmdSSH.Start()
+			
+			if err != nil {
+				activity.Status = "error"
+				activity.Message = fmt.Sprintf("SSH Negotiation failed with %s: %v", req.TargetIP, err)
+			} else {
+				activity.Message = fmt.Sprintf("Rescue agent successfully deployed to %s. Decoding snapshot %s...", req.TargetIP, req.SnapshotID)
+			}
+			activity.FinishedAt = time.Now().UTC()
+			DB.Save(&activity)
+		}()
+
+		c.JSON(200, gin.H{"status": "Bootstrapping Target Server...", "target": req.TargetIP})
+	})
 
 	// --- ACCIONES ADMINISTRATIVAS ---
 
