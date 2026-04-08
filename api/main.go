@@ -148,6 +148,8 @@ func main() {
 				"active_pid":     a.ActivePID,
 				"last_backup_at": a.LastBackupAt,
 				"schedule":       config.Schedule,
+				"timezone":       config.TimeZone,
+				"custom_schedule": config.CustomSchedule,
 				"cmd_task":       a.CmdTask,
 				"cmd_param":      a.CmdParam,
 				"cmd_result":     a.CmdResult,

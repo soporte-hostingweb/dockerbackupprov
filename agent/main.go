@@ -233,7 +233,21 @@ func main() {
 			LogInfo("[SCHEDULER] Triggering backup...")
 			currentPaths := []string{}
 			for _, sel := range config.Paths {
-				if realPath, ok := pathToRealMap[sel]; ok {
+				if strings.HasPrefix(sel, "[ALL_TARGETS]:") {
+					cName := strings.TrimPrefix(sel, "[ALL_TARGETS]:")
+					// Buscar la entrada de volumen completo para garantizar recolección futura
+					fullVolKey := "📂 [Full Volume] " + cName
+					if realPath, ok := pathToRealMap[fullVolKey]; ok {
+						currentPaths = append(currentPaths, realPath)
+						LogInfo("[DYNAMIC TARGET] Included full volume for container %s", cName)
+					} else { // Fallback: Iterar sobre lo que tengamos
+						for _, item := range LastKnownExplorer[cName] {
+							if realPath, ok := pathToRealMap[item]; ok {
+								currentPaths = append(currentPaths, realPath)
+							}
+						}
+					}
+				} else if realPath, ok := pathToRealMap[sel]; ok {
 					currentPaths = append(currentPaths, realPath)
 				} else {
 					currentPaths = append(currentPaths, sel)

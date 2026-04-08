@@ -44,9 +44,11 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
   }, [agentId]);
 
   const toggleFolder = (folderPath: string) => {
-    setSelectedFolders(prev => 
-      prev.includes(folderPath) ? prev.filter(f => f !== folderPath) : [...prev, folderPath]
-    );
+    setSelectedFolders(prev => {
+      // Si estaba en All Targets, lo quitamos para volver a selección manual
+      let current = prev.filter(f => f !== `[ALL_TARGETS]:${containerName}`);
+      return current.includes(folderPath) ? current.filter(f => f !== folderPath) : [...current, folderPath];
+    });
   };
 
   const handleSave = async () => {
@@ -67,7 +69,7 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
         
         // 2. Filtrar lo que NO sea de este contenedor
         // (Asumimos que las carpetas de este contenedor están en la lista 'folders' que recibimos por props)
-        allPaths = existingPaths.filter((p: string) => !folders.includes(p));
+        allPaths = existingPaths.filter((p: string) => !folders.includes(p) && p !== `[ALL_TARGETS]:${containerName}`);
       }
 
       // 3. Mezclar con la selección actual de este componente
@@ -107,10 +109,10 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
         </div>
         <div className="flex gap-2">
             <button 
-              onClick={(e) => { e.stopPropagation(); setSelectedFolders([...folders]); }}
+              onClick={(e) => { e.stopPropagation(); setSelectedFolders([`[ALL_TARGETS]:${containerName}`]); }}
               className="text-[9px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-500/20 hover:bg-emerald-500/20 transition-all font-bold uppercase"
             >
-              Select All
+              Select All (Dynamic)
             </button>
             <button 
               onClick={(e) => { e.stopPropagation(); setSelectedFolders([]); }}
@@ -126,7 +128,8 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">
         {folders && folders.length > 0 ? (
           folders.map((fullPath, idx) => {
-            const isSelected = selectedFolders.some(f => f === fullPath);
+            const isAllTargets = selectedFolders.includes(`[ALL_TARGETS]:${containerName}`);
+            const isSelected = isAllTargets || selectedFolders.some(f => f === fullPath);
             return (
               <div 
                 key={idx}
@@ -155,10 +158,14 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       </div>
 
       {(selectedFolders.length > 0 || !loadingConfig) && (
-        <div className="bg-emerald-950/30 p-3 flex items-center justify-between border-t border-emerald-900/50">
+        <div className="bg-emerald-950/30 p-3 flex flex-col md:flex-row md:items-center justify-between border-t border-emerald-900/50 gap-3">
           <div className="flex items-center gap-2 text-xs text-emerald-400">
             <ShieldCheck size={14} />
-            <span className="font-bold">{selectedFolders.length} targets ready</span>
+            <span className="font-bold">
+              {selectedFolders.includes(`[ALL_TARGETS]:${containerName}`) 
+                ? "ALL TARGETS (DYNAMIC TRACKING ACTIVE)" 
+                : `${selectedFolders.length} targets ready`}
+            </span>
           </div>
           <button 
             disabled={saving}
