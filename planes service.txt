@@ -11,12 +11,12 @@ Te dejo estructura lista para WHMCS 👇
 “Protección mínima incluida”
 
 🔧 Incluye:
-1 backup diario
-retención: 2 copias
-selección manual (volúmenes o rutas)
-restore manual (desde panel)
-sin validación avanzada
-sin prioridad en cola
+    1 backup diario
+    retención: 2 copias
+    selección manual (volúmenes o rutas)
+    restore manual (desde panel)
+    sin validación avanzada
+    sin prioridad en cola
 ❌ Limitaciones (IMPORTANTE)
 ❌ sin validación automática
 ❌ sin métricas RTO
@@ -37,24 +37,24 @@ sin prioridad en cola
 
 🔧 Incluye:
 🔹 Backup
-backup diario automático
-retención: 7 – 15 copias
-exclusión inteligente (no backups innecesarios)
+        backup diario automático
+        retención: 7 – 15 copias
+        exclusión inteligente (no backups innecesarios)
 🔹 Validación (AQUÍ GANAS)
-✔ restic check
-✔ validación estructural parcial
-✔ verificación de integridad
+        ✔ restic check
+        ✔ validación estructural parcial
+        ✔ verificación de integridad
 🔹 Restore
-restore completo desde panel
-restore parcial (DB / archivos)
-tiempo estimado visible (RTO)
+        restore completo desde panel
+        restore parcial (DB / archivos)
+        tiempo estimado visible (RTO)
 🔹 Monitoreo
-estado del agente (online/offline)
-alertas:
-backup fallido
-agente caído
+        estado del agente (online/offline)
+        alertas:
+        backup fallido
+        agente caído
 🔹 Performance
-cola optimizada (no prioridad total)
+        cola optimizada (no prioridad total)
 💰 Valor percibido:
 
 👉 “Si algo falla, puedo recuperar sin problemas”
@@ -69,23 +69,23 @@ cola optimizada (no prioridad total)
 
 🔧 Incluye TODO lo de Standard +
 🔥 🔹 PRIORIDAD
-ejecución prioritaria en cola
-restore prioritario
+        ejecución prioritaria en cola
+        restore prioritario
 🔥 🔹 RTO BAJO
-estimación avanzada de recuperación
-optimización de restore
+        estimación avanzada de recuperación
+        optimización de restore
 🔥 🔹 VALIDACIÓN AVANZADA
-restore parcial automatizado
-validación extendida (DB + config)
+        restore parcial automatizado
+        validación extendida (DB + config)
 🔥 🔹 AUTOMATIZACIÓN
-restore asistido (semi 1-click)
-opción “clonar a nuevo VPS”
+        restore asistido (semi 1-click)
+        opción “clonar a nuevo VPS”
 🔥 🔹 SEGURIDAD
-políticas avanzadas (retención extendida)
-protección WORM (si aplicas)
+        políticas avanzadas (retención extendida)
+        protección WORM (si aplicas)
 🔥 🔹 SOPORTE
-soporte prioritario
-asistencia en desastre
+        soporte prioritario
+        asistencia en desastre
 💰 Valor percibido:
 
 👉 “Si mi sistema cae, vuelvo en minutos”
