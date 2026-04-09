@@ -125,9 +125,10 @@ func UpdateHealthScore(agentID string) {
 	score := 100
 
 	// 1. Penalización por Conectividad (Offline: -50, Degraded: -30)
-	if agent.HealthStatus == "OFFLINE" {
+	switch agent.HealthStatus {
+	case "OFFLINE":
 		score -= 50
-	} else if agent.HealthStatus == "DEGRADED" {
+	case "DEGRADED":
 		score -= 30
 	}
 
@@ -138,7 +139,7 @@ func UpdateHealthScore(agentID string) {
 
 	// 3. Penalización por Integridad (V10: Dependiente del PlanPolicy)
 	var tPlan TenantPlan
-	DB.Where("token = ?", agent.Token).First(&tPlan)
+	DB.Where("token = ?", agent.Token).Limit(1).Find(&tPlan)
 	policy := GetPolicyForTenant(tPlan.Plan)
 
 	if policy.ValidationLvl != "none" {
@@ -806,8 +807,9 @@ func main() {
 		}
 
 		// V10.1: Bloqueo de Concurrencia - Verificar si ya hay un job pesado en ejecución
-		var activeJob Job
-		hasActive := DB.Where("agent_id = ? AND status = ?", payload.AgentID, "running").First(&activeJob).Error == nil
+		var activeJobList []Job
+		DB.Where("agent_id = ? AND status = ?", payload.AgentID, "running").Limit(1).Find(&activeJobList)
+		hasActive := len(activeJobList) > 0
 
 		taskName := "none"
 		taskParam := ""
@@ -815,12 +817,13 @@ func main() {
 
 		if !hasActive && !payload.IsSyncing {
 			// Buscar el siguiente trabajo pendiente por prioridad y fecha de reintento
-			var nextJob Job
-			errJ := DB.Order("priority DESC, created_at ASC").
+			var nextJobList []Job
+			DB.Order("priority DESC, created_at ASC").
 				Where("agent_id = ? AND status = ? AND next_run_at <= ?", payload.AgentID, "pending", time.Now().UTC()).
-				First(&nextJob).Error
+				Limit(1).Find(&nextJobList)
 			
-			if errJ == nil {
+			if len(nextJobList) > 0 {
+				nextJob := nextJobList[0]
 				taskName = nextJob.Type
 				taskParam = nextJob.Param
 				taskJobID = nextJob.ID
