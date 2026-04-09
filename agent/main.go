@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Version = "V9.2.7"
+const Version = "V9.2.8"
 
 
 
@@ -41,6 +41,10 @@ func main() {
 	var lastWizardActivity time.Time
 
 	for {
+		// V9.2.8: El marcapasos se mueve al inicio para asegurar que el agente siempre 
+		// respire 10s entre ciclos, independientemente de los 'continue' internos.
+		time.Sleep(10 * time.Second)
+		
 		LogInfo("--- [CYCLE START] ---")
 
 		// 1. Obtener Configuración Primaria (V3.4.2)
@@ -383,8 +387,7 @@ func main() {
 			continue
 		}
 
-		// REDUCCIÓN CRÍTICA DE LATENCIA (V4.6.8: de 60s a 10s)
-		time.Sleep(10 * time.Second)
+		// V9.2.8: El sleep se movió al inicio del bucle para mayor seguridad.
 	}
 }
 

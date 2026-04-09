@@ -162,11 +162,21 @@ func InitDB() {
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
 	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{})
-	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.2.7)")
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.2.8)")
 
 
 	DB = db
 	fmt.Println("[DB] PostgreSQL is ready and migrated.")
+
+	// V9.2.8: Sembrar Configuración Global de Alertas si no existe
+	var globalAlert AlertConfig
+	if err := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&globalAlert).Error; err != nil {
+		fmt.Println("[DB] Seeding SYSTEM_GLOBAL AlertConfig...")
+		DB.Create(&AlertConfig{
+			Token:  "SYSTEM_GLOBAL",
+			Events: "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered",
+		})
+	}
 }
 
 // --- MOTOR DE CIFRADO AES-256-GCM ---
