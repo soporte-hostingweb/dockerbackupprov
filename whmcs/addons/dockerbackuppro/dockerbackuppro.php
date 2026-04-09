@@ -123,8 +123,8 @@ function dockerbackuppro_output($vars) {
                           ->orWhere('tblproducts.name', 'like', '%SaaS%')
                           ->orWhere('tblproducts.name', 'like', '%Backup%');
                 })
-                ->where('tblhosting.domainstatus', 'Active')
-                ->select('tblhosting.id', 'tblhosting.userid', 'tblproducts.name')
+                ->whereIn('tblhosting.domainstatus', ['Active', 'Pending', 'Suspended'])
+                ->select('tblhosting.id', 'tblhosting.userid', 'tblproducts.name', 'tblhosting.domainstatus')
                 ->get();
 
             $count = 0;
