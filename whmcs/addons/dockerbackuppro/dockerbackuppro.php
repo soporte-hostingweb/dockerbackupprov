@@ -16,7 +16,7 @@ function dockerbackuppro_config() {
         "description" => "Portal Administrativo central para monitoreo de Agentes y Backups en Wasabi S3.",
         "author" => "HWPeru / Docker Backup Pro",
         "language" => "spanish",
-        "version" => "1.0",
+        "version" => "11.2",
         "fields" => [
             "master_token" => [
                 "FriendlyName" => "Master Admin Token",
@@ -39,6 +39,12 @@ function dockerbackuppro_config() {
                 "FriendlyName" => "Modo Diagnóstico (Debug)",
                 "Type" => "yesno",
                 "Description" => "Activa herramientas técnicas en el dashboard para detectar fallos de red o errores de token.",
+            ],
+            "n8n_webhook" => [
+                "FriendlyName" => "N8N Webhook URL",
+                "Type" => "text",
+                "Size" => "100",
+                "Description" => "URL global para recibir alertas (n8n). V11.2+",
             ]
         ]
     ];
@@ -141,7 +147,16 @@ function dockerbackuppro_output($vars) {
                     $count++;
                 }
             }
-            echo "<div class='alert alert-success'>Sincronización completada: {$count} servicios procesados en el API.</div>";
+
+            // Sincronizar el Webhook Global
+            $webhookUrl = $vars['n8n_webhook'];
+            if (function_exists('dbp_call_api') && !empty($webhookUrl)) {
+                dbp_call_api('/v1/admin/webhook', [
+                    'webhook_url' => $webhookUrl
+                ]);
+            }
+
+            echo "<div class='alert alert-success'>Sincronización completada: {$count} servicios procesados en el API y Webhook Global actualizado.</div>";
         } else {
             echo "<div class='alert alert-danger'>Error crítico: No se encuentra el motor de API en: {$hooksPath}</div>";
         }

@@ -436,6 +436,37 @@ func main() {
 		c.JSON(200, gin.H{"status": "Tenant terminated"})
 	})
 
+	// v1/admin/webhook: Configuración del Webhook Global (V11.2)
+	r.POST("/v1/admin/webhook", func(c *gin.Context) {
+		adminKey := os.Getenv("API_ADMIN_KEY")
+		if c.GetHeader("X-Admin-Key") != adminKey {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req struct { WebhookURL string `json:"webhook_url"` }
+		c.ShouldBindJSON(&req)
+
+		// Buscar/Crear record de AlertConfig para SYSTEM_GLOBAL
+		var alertConfig AlertConfig
+		if err := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&alertConfig).Error; err != nil {
+			alertConfig = AlertConfig{
+				Token:      "SYSTEM_GLOBAL",
+				Events:     "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed",
+				WebhookURL: req.WebhookURL,
+			}
+			DB.Create(&alertConfig)
+		} else {
+			alertConfig.WebhookURL = req.WebhookURL
+			if alertConfig.Events == "" {
+				alertConfig.Events = "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed"
+			}
+			DB.Save(&alertConfig)
+		}
+
+		c.JSON(200, gin.H{"status": "Webhook globally synced", "url": req.WebhookURL})
+	})
+
 	v1Agent := r.Group("/v1/agent")
 
 	// --- ENDPOINTS DE TRADUCCIÓN (i18n) ---

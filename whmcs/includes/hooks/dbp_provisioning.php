@@ -43,8 +43,14 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
 
         $plan = 'basic';
         $retention = 2;
-        if (stripos($product->name, 'Enterprise') !== false) { $plan = 'enterprise'; $retention = 30; }
-        elseif (stripos($product->name, 'Standard') !== false) { $plan = 'standard'; $retention = 7; }
+        $name = $product->name;
+        if (stripos($name, 'Enterprise') !== false || stripos($name, 'Premium') !== false) { 
+            $plan = 'enterprise'; 
+            $retention = 30; 
+        } elseif (stripos($name, 'Standard') !== false || stripos($name, 'Pro') !== false) { 
+            $plan = 'standard'; 
+            $retention = 7; 
+        }
 
         $client = Capsule::table('tblclients')->where('id', $service->userid)->first();
 
@@ -75,8 +81,14 @@ add_hook('AfterProductUpgrade', 1, function($vars) {
 
     $plan = 'basic';
     $retention = 2;
-    if (stripos($product->name, 'Enterprise') !== false) { $plan = 'enterprise'; $retention = 30; }
-    elseif (stripos($product->name, 'Standard') !== false) { $plan = 'standard'; $retention = 7; }
+    $name = $product->name;
+    if (stripos($name, 'Enterprise') !== false || stripos($name, 'Premium') !== false) { 
+        $plan = 'enterprise'; 
+        $retention = 30; 
+    } elseif (stripos($name, 'Standard') !== false || stripos($name, 'Pro') !== false) { 
+        $plan = 'standard'; 
+        $retention = 7; 
+    }
 
     dbp_call_api('/v1/tenant/update-plan', [
         'service_id'     => (string)$service->id,
