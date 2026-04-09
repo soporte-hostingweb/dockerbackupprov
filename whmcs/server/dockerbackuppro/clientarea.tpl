@@ -15,7 +15,7 @@
         <p class="text-muted"><small>Keep this token secret. Do not share it.</small></p>
         
         <br>
-        <a href="https://portal.hwperu.com/?sso={$dbpToken}{$debug}" target="_blank" class="btn btn-default btn-block">
+        <a href="https://backup.hwperu.com/?sso={$dbpToken}{$debug}" target="_blank" class="btn btn-default btn-block">
             <i class="fas fa-external-link-alt"></i> Open Dashboard in New Tab
         </a>
     </div>
@@ -29,7 +29,7 @@
     </div>
     <div style="padding: 0; background: #000;">
         <iframe 
-            src="https://portal.hwperu.com/?sso={$dbpToken}&embed=1{$debug}" 
+            src="https://backup.hwperu.com/?sso={$dbpToken}&embed=1{$debug}" 
             style="width: 100%; height: 800px; border: none; display: block;"
             scrolling="no"
         ></iframe>

@@ -64,5 +64,5 @@ fi
 echo "=========================================="
 echo "🚀 ¡Instalación Exitosa! 🚀"
 echo "El Agente ya se conectó a api.hwperu.com"
-echo "Puedes revisar el estado en https://portal.hwperu.com"
+echo "Puedes revisar el estado en https://backup.hwperu.com"
 echo "=========================================="

@@ -33,7 +33,7 @@ function dockerbackuppro_config() {
             "portal_url" => [
                 "FriendlyName" => "Portal Dashboard URL",
                 "Type" => "text",
-                "Default" => "https://portal.hwperu.com",
+                "Default" => "https://backup.hwperu.com",
             ],
             "debug_mode" => [
                 "FriendlyName" => "Modo Diagnóstico (Debug)",
