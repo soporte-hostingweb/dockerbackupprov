@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Version = "V9.2.1"
+const Version = "V9.2.6"
 
 
 
@@ -178,7 +178,7 @@ func main() {
 		}
 
 		free, total := GetDiskCapacity()
-		_, taskInfo, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
+		_, taskInfo, kill, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
 
 		// 6. Scheduler (Backup Logic)
 		force := "none"

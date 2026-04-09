@@ -162,7 +162,7 @@ func InitDB() {
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
 	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{})
-	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.0)")
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.2.5)")
 
 
 	DB = db

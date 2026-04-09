@@ -21,7 +21,7 @@ import (
 )
 
 
-const Version = "V9.2.1"
+const Version = "V9.2.5"
 
 //go:embed install.sh
 var installScript []byte

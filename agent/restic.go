@@ -150,26 +150,14 @@ func RunResticRestore(snapshotID string, destination string, paths []string, rep
 	}
 
 	start := time.Now()
-
-	// 1. Preparar Entorno
 	env := os.Environ()
-	if password != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
-	}
-	if s3Key != "" {
-		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
-	}
-	if s3Secret != "" {
-		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
-	}
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
 
-	// 2. Preparar Argumentos
 	args := []string{"-r", repo, "restore", snapshotID, "--target", destination}
-	
-	// Si hay paths específicos, solo restauramos esos (V4.5.6)
 	for _, p := range paths {
-		clean := strings.TrimPrefix(p, "📂 ")
-		clean = strings.TrimPrefix(clean, "📄 ")
+		clean := strings.TrimPrefix(strings.TrimPrefix(p, "📂 "), "📄 ")
 		args = append(args, "--include", clean)
 	}
 
@@ -177,18 +165,29 @@ func RunResticRestore(snapshotID string, destination string, paths []string, rep
 	cmd := exec.Command("restic", args...)
 	cmd.Env = env
 
-	output, err := cmd.CombinedOutput()
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	ActivePID = cmd.Process.Pid
+	IsSyncing = true
+	
+	err := cmd.Wait()
+	ActivePID = 0
+	IsSyncing = false
+
 	durationSecs := int(time.Since(start).Seconds())
 	if err != nil {
-		fmt.Printf("[RESTIC ERROR] Restore failed: %v | Output: %s\n", err, string(output))
-		return durationSecs, fmt.Errorf("restic error: %v | %s", err, string(output))
+		return durationSecs, fmt.Errorf("restic error: %v | %s", err, out.String())
 	}
 
 	fmt.Printf("[RESTIC] Restoration successful. Duration: %d seconds.\n", durationSecs)
 	return durationSecs, nil
 }
 
-// RunResticVerify ejecuta restic check para asegurar que no hay corrupciones matemáticas en los blobs (V9.0)
 func RunResticVerify(repo string, password string, s3Key string, s3Secret string) error {
 	env := os.Environ()
 	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
@@ -197,9 +196,20 @@ func RunResticVerify(repo string, password string, s3Key string, s3Secret string
 
 	cmd := exec.Command("restic", "-r", repo, "check")
 	cmd.Env = env
-	out, err := cmd.CombinedOutput()
+	
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	ActivePID = cmd.Process.Pid
+	err := cmd.Wait()
+	ActivePID = 0
+	
 	if err != nil {
-		return fmt.Errorf("restic check error: %s", string(out))
+		return fmt.Errorf("restic check error: %s", out.String())
 	}
 	return nil
 }
@@ -258,10 +268,15 @@ func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret s
 	cmd := exec.Command("restic", "-r", repo, "forget", "--keep-last", fmt.Sprintf("%d", keepLast), "--prune")
 	cmd.Env = env
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("[RESTIC ERROR] Retention failed: %v | Output: %s\n", err, string(output))
+	if err := cmd.Start(); err != nil {
 		return err
+	}
+	ActivePID = cmd.Process.Pid
+	err := cmd.Wait()
+	ActivePID = 0
+
+	if err != nil {
+		return fmt.Errorf("retention failed: %v", err)
 	}
 	
 	fmt.Printf("[RESTIC] Retention successful (Last %d copies). Storage optimized.\n", keepLast)
