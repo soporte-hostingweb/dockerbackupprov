@@ -21,23 +21,32 @@ import (
 )
 
 
-const Version = "V9.2.6"
+const Version = "V9.2.7"
 
 //go:embed install.sh
 var installScript []byte
 
-// DispatchAlert: Función asíncrona universal (V9.0 SaaS)
-// Busca si el tenant tiene un Webhook y dispara una alerta POST en goroutine.
+// DispatchAlert: Función asíncrona universal (V9.2.7)
 func DispatchAlert(token string, eventType string, details map[string]interface{}) {
 	go func() {
 		var config AlertConfig
-		// Consultar el webhook según el token del tenant
+		// 1. Intentar buscar config específica para el inquilino
 		if err := DB.Where("token = ?", token).First(&config).Error; err != nil {
-			return // No tiene configurado n8n/webhook u ocurrió error
+			// V9.2.7 Fallback: Si no tiene config propia, usar la GLOBAL (SYSTEM_GLOBAL)
+			if errG := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&config).Error; errG != nil {
+				fmt.Printf("[WEBHOOK] Skipped: No AlertConfig found for %s or GLOBAL.\n", token)
+				return
+			}
 		}
 		
-		if config.WebhookURL == "" || !strings.Contains(config.Events, eventType) {
-			return // Webhook vacío o no suscrito a este evento
+		if config.WebhookURL == "" {
+			fmt.Printf("[WEBHOOK] Skipped: Webhook URL is empty for token %s\n", config.Token)
+			return
+		}
+
+		// Filtrar eventos (V9.0)
+		if !strings.Contains(config.Events, eventType) {
+			return 
 		}
 
 		payload := map[string]interface{}{
@@ -48,19 +57,22 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 		}
 
 		jsonBody, _ := json.Marshal(payload)
+		fmt.Printf("[WEBHOOK] Attempting dispatch to %s (Event: %s)...\n", config.WebhookURL, eventType)
 		
 		req, err := http.NewRequest("POST", config.WebhookURL, bytes.NewBuffer(jsonBody))
+		if err != nil { return }
+		
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "DBP-SaaS-Orchestrator/"+Version)
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
+			fmt.Printf("[WEBHOOK ERROR] Delivery failed for %s: %v\n", eventType, err)
 			return
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", "DBP-SaaS-Orchestrator/V9.0")
-
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err == nil {
-			resp.Body.Close()
-		}
+		defer resp.Body.Close()
+		fmt.Printf("[WEBHOOK SUCCESS] Delivered %s to %s (Status: %s)\n", eventType, config.WebhookURL, resp.Status)
 	}()
 }
 
@@ -81,7 +93,6 @@ func UpdateHealthScore(agentID string) {
 	}
 
 	// 2. Penalización por Obsolescencia (Backup > 24h: -20)
-	// Solo penalizamos si ya ha tenido al menos un backup exitoso
 	if !agent.LastBackupAt.IsZero() && time.Since(agent.LastBackupAt) > 24*time.Hour {
 		score -= 20
 	}
@@ -95,32 +106,29 @@ func UpdateHealthScore(agentID string) {
 	if score < 0 { score = 0 }
 	if score > 100 { score = 100 }
 
-	// V9.2.6: Solo registrar actividad si el puntaje o estado ha cambiado para evitar bucle infinito
-	if agent.HealthScore != score || agent.HealthStatus != agent.HealthStatus || agent.VerificationStatus != agent.VerificationStatus {
-		// Nota: En este punto, 'agent' aún tiene los valores del DB porque Update aún no se ha reflejado en el objeto local, 
-		// pero vamos a hacerlo de forma segura comparando antes de la persistencia final.
-	}
-
 	// 1. Capturar versión previa (para comparar)
 	oldScore := agent.HealthScore
 	oldHStatus := agent.HealthStatus
 	oldVStatus := agent.VerificationStatus
 
-	// 2. Persistir resultado
-	DB.Model(&agent).Update("health_score", score)
+	// 2. Persistir resultado si hubo cambio de score matemático
+	if oldScore != score {
+		DB.Model(&agent).Update("health_score", score)
+	}
 
-	// 3. Evaluar si emitir log (Anti-Saturación V9.2.6)
+	// 3. Evaluar si emitir log (Anti-Saturación V9.2.7)
 	if oldScore != score || oldHStatus != agent.HealthStatus || oldVStatus != agent.VerificationStatus {
 		vStatus := agent.VerificationStatus
 		if vStatus == "" { vStatus = "PENDING" }
 
+		// V9.2.7: Usamos tipo SYSTEM y status completed para evitar ruidos
 		DB.Create(&ActivityLog{
-			Token:     agent.Token,
-			AgentID:   agent.ID,
-			Type:      "TELEMETRY",
-			Status:    "success",
-			Message:   fmt.Sprintf("[SCORE] Puntaje actualizado a %d%%. [H:%s|V:%s]", score, agent.HealthStatus, vStatus),
-			StartedAt: time.Now().UTC(),
+			Token:      agent.Token,
+			AgentID:    agent.ID,
+			Type:       "SYSTEM",
+			Status:     "completed",
+			Message:    fmt.Sprintf("[SCORE] Puntaje actualizado a %d%%. [S:%s|V:%s]", score, agent.HealthStatus, vStatus),
+			StartedAt:  time.Now().UTC(),
 			FinishedAt: time.Now().UTC(),
 		})
 	}
@@ -192,8 +200,8 @@ func main() {
 							"agent_id": a.ID,
 							"time_since_last_seen": time.Since(a.UpdatedAt).String(),
 						})
-						// V9.1: Actualizar Score de Salud
-						UpdateHealthScore(a.ID)
+						// V9.2.7: Desactivamos score desde monitor para evitar competencia con Heartbeat
+						// UpdateHealthScore(a.ID)
 					}
 				} else if a.HealthStatus == "OFFLINE" {
 					// Auto-curación HealthCheck si está vivo (V9.1)
@@ -202,7 +210,7 @@ func main() {
 						"agent_id": a.ID,
 						"status":   "Connection restored",
 					})
-					UpdateHealthScore(a.ID)
+					// UpdateHealthScore(a.ID)
 					if a.HealthStatus == "OFFLINE" {
 						DB.Model(&a).Update("health_status", "ONLINE")
 					}

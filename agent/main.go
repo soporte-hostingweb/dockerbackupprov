@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Version = "V9.2.6"
+const Version = "V9.2.7"
 
 
 
