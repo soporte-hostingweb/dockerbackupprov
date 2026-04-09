@@ -97,6 +97,17 @@ func UpdateHealthScore(agentID string) {
 
 	// Persistir resultado
 	DB.Model(&agent).Update("health_score", score)
+
+	// V9.2.5: Auditoría de Score (Detalle técnico para el usuario)
+	DB.Create(&ActivityLog{
+		Token:     agent.Token,
+		AgentID:   agent.ID,
+		Type:      "TELEMETRY",
+		Status:    "success",
+		Message:   fmt.Sprintf("[SCORE] Puntaje actualizado a %d%%. [H:%s|V:%s]", score, agent.HealthStatus, agent.VerificationStatus),
+		StartedAt: time.Now().UTC(),
+		FinishedAt: time.Now().UTC(),
+	})
 }
 
 func main() {
@@ -804,6 +815,18 @@ func main() {
 					"last_backup_at":    time.Unix(payload.Timestamp, 0).UTC(),
 					"last_backup_bytes": payload.TotalSizeBytes,
 				})
+
+				// V9.2.5: Auditoría de Métricas
+				DB.Create(&ActivityLog{
+					Token:     agent.Token,
+					AgentID:   agent.ID,
+					Type:      "TELEMETRY",
+					Status:    "success",
+					Message:   fmt.Sprintf("[METRICS] Consumo Wasabi registrado: %d bytes.", payload.TotalSizeBytes),
+					StartedAt: time.Now().UTC(),
+					FinishedAt: time.Now().UTC(),
+				})
+
 				// V9.1: Alerta Éxito
 				DispatchAlert(agent.Token, "backup_success", map[string]interface{}{
 					"agent_id": payload.AgentID,
@@ -869,6 +892,17 @@ func main() {
 			"validation_errors": errStr,
 		})
 
+		// V9.2.5: Auditoría de Verificación
+		DB.Create(&ActivityLog{
+			Token:     agent.Token,
+			AgentID:   req.AgentID,
+			Type:      "TELEMETRY",
+			Status:    "success",
+			Message:   fmt.Sprintf("[INTEGRITY] Snapshot %s verificado: %s", req.SnapshotID, req.Status),
+			StartedAt: time.Now().UTC(),
+			FinishedAt: time.Now().UTC(),
+		})
+
 		c.JSON(200, gin.H{"status": "Verification report processed"})
 	})
 
@@ -899,6 +933,17 @@ func main() {
 				}
 				avg := total / len(activities)
 				DB.Model(&agent).Update("est_rto_secs", avg)
+
+				// V9.2.5: Auditoría de RTO
+				DB.Create(&ActivityLog{
+					Token:     agent.Token,
+					AgentID:   agent.ID,
+					Type:      "TELEMETRY",
+					Status:    "success",
+					Message:   fmt.Sprintf("[RTO] Nuevo tiempo estimado de recuperación: %d segundos.", avg),
+					StartedAt: time.Now().UTC(),
+					FinishedAt: time.Now().UTC(),
+				})
 			}
 
 			DispatchAlert(agent.Token, "restore_completed", map[string]interface{}{
