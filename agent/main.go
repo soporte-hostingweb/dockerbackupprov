@@ -209,12 +209,12 @@ func main() {
 			d := int(now.Weekday())
 			if d == 0 { d = 7 } // Normalizar Domingo a 7
 
-			// V7.2: Lógica de Programación por Planes
+			// V9.2.4: Lógica de Programación por Hora Alcanzada (Must-Run)
 			isScheduledTime := false
 			if config.Schedule == "daily_2am" || config.Schedule == "daily_2am_basic" {
-				if h == 2 && now.Minute() < 10 { isScheduledTime = true }
+				if h >= 2 { isScheduledTime = true }
 			} else if config.Schedule == "weekly_2am" {
-				if d == 7 && h == 2 && now.Minute() < 10 { isScheduledTime = true }
+				if d == 7 && h >= 2 { isScheduledTime = true }
 			} else if config.Schedule == "custom" && config.CustomSchedule != "" {
 				// Formato: "1,3,5|14" (Dias|Hora)
 				parts := strings.Split(config.CustomSchedule, "|")
@@ -222,23 +222,25 @@ func main() {
 					confDays := strings.Split(parts[0], ",")
 					confHour := 0
 					fmt.Sscanf(parts[1], "%d", &confHour)
-					if confHour == 24 { confHour = 0 } // Normalizar 24h a 0h
+					if confHour == 24 { confHour = 0 }
 
 					dayMatch := false
 					for _, cd := range confDays {
 						if cd == fmt.Sprintf("%d", d) { dayMatch = true; break }
 					}
 
-					if dayMatch && h == confHour && now.Minute() < 10 {
+					if dayMatch && h >= confHour {
 						isScheduledTime = true
 					}
 				}
 			}
 
 			if isScheduledTime {
+				// Solo permitimos el disparo automático si el último backup NO fue hoy
+				// Esto evita bucles infinitos dentro de la hora programada.
 				if time.Unix(lastBackupUnix, 0).Format("2006-01-02") != now.Format("2006-01-02") {
 					shouldRun = true
-					LogInfo("[SCHEDULER] Auto-trigger detected (TZ: %s, Plan: %s)", tz, config.Schedule)
+					LogInfo("[SCHEDULER] Auto-trigger detected (TZ: %s, Hour: %d, Plan: %s)", tz, h, config.Schedule)
 				}
 			}
 		}

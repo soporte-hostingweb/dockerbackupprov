@@ -42,7 +42,7 @@ type AgentStatus struct {
 	LastBackupAt time.Time `json:"last_backup_at"`
 	LastBackupBytes int64  `json:"last_backup_bytes"` // V8.1: Consumo en Wasabi
 	HealthStatus       string `json:"health_status" gorm:"default:'ONLINE'"` // V9.0: ONLINE, DEGRADED, OFFLINE
-	VerificationStatus string `json:"verification_status"` // V9.0: VALID, INVALID, PENDING
+	VerificationStatus string `json:"verification_status" gorm:"default:'PENDING'"` // V9.0: VALID, INVALID, PENDING
 	EstRtoSecs         int    `json:"est_rto_secs"`        // V9.0: Recovery Time Objective estimado
 	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
 	CreatedAt    time.Time
