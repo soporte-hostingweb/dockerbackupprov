@@ -1,15 +1,9 @@
-<?php
 /**
- * DBP Provisioning Hook: Link WHMCS Service to SaaS Control Plane
- * Centralized SaaS Configuration V9.1
+ * DBP Lifecycle Management Hooks (v11.0)
+ * Triggers API actions based on WHMCS Service Events
  */
 
-use Illuminate\Database\Capsule\Manager as Capsule;
-
-add_hook('AfterAcceptOrder', 1, function($vars) {
-    $orderId = (int)$vars['orderid'];
-    
-    // 1. Obtener Configuración Global desde el Addon Module
+function dbp_call_api($endpoint_path, $payload) {
     $addonSettings = Capsule::table('tbladdonmodules')
         ->where('module', 'dockerbackuppro')
         ->pluck('value', 'setting');
@@ -18,53 +12,98 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
     $adminKey = $addonSettings['master_token'] ?? '';
 
     if (empty($endpoint) || empty($adminKey)) {
-        logActivity("[DBP] Error: API Endpoint o Master Token no configurados en el Addon Module.");
-        return;
+        logActivity("[DBP] Error: API Configuration missing in Addon Module.");
+        return false;
     }
 
-    // 2. Obtener los servicios asociados a esta orden
+    $ch = curl_init($endpoint . $endpoint_path);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'X-Admin-Key: ' . $adminKey
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return ['code' => $httpCode, 'response' => $response];
+}
+
+// 1. PROVISIÓN INICIAL
+add_hook('AfterAcceptOrder', 1, function($vars) {
+    $orderId = (int)$vars['orderid'];
     $services = Capsule::table('tblhosting')->where('orderid', $orderId)->get();
     
     foreach ($services as $service) {
-        // Validar que el producto use nuestro módulo provisioning
-        $product = Capsule::table('tblproducts')
-            ->where('id', $service->packageid)
-            ->where('servertype', 'dockerbackuppro')
-            ->first();
-
+        $product = Capsule::table('tblproducts')->where('id', $service->packageid)->where('servertype', 'dockerbackuppro')->first();
         if (!$product) continue;
 
-        // 3. Mapeo de Planes internos SaaS basados en nombre del producto
         $plan = 'basic';
-        if (stripos($product->name, 'Enterprise') !== false) $plan = 'enterprise';
-        elseif (stripos($product->name, 'Standard') !== false) $plan = 'standard';
+        $retention = 2;
+        if (stripos($product->name, 'Enterprise') !== false) { $plan = 'enterprise'; $retention = 30; }
+        elseif (stripos($product->name, 'Standard') !== false) { $plan = 'standard'; $retention = 7; }
 
-        // 4. Obtener Email del cliente
         $client = Capsule::table('tblclients')->where('id', $service->userid)->first();
 
-        $payload = [
+        $res = dbp_call_api('/v1/whmcs/provision', [
             'service_id'     => (string)$service->id,
             'client_email'   => $client->email,
             'plan'           => $plan,
-            'retention_days' => ($plan == 'enterprise') ? 30 : 7
-        ];
-
-        // 5. Ejecutar Provisión vía API Central
-        $ch = curl_init($endpoint . '/v1/whmcs/provision');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'X-Admin-Key: ' . $adminKey
+            'retention_days' => (int)$retention
         ]);
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpCode != 200) {
-            logActivity("[DBP] Fallo en provisión API para servicio {$service->id}. HTTP Code: {$httpCode}");
+        if ($res['code'] == 200) {
+            $data = json_decode($res['response'], true);
+            $token = $data['token'] ?? '';
+            logActivity("[DBP] Provisión exitosa para Servicio #{$service->id}. Token: {$token}");
+            
+            // Guardar token en Custom Field (Asumimos ID 1 para 'Token')
+            // Capsule::table('tblcustomfieldsvalues')->updateOrInsert(...)
         }
     }
+});
+
+// 2. CAMBIO DE PLAN (Upgrade/Downgrade)
+add_hook('AfterProductUpgrade', 1, function($vars) {
+    $upgradeId = $vars['upgradeid'];
+    $upgrade = Capsule::table('tblupgrades')->where('id', $upgradeId)->first();
+    $service = Capsule::table('tblhosting')->where('id', $upgrade->relid)->first();
+    $product = Capsule::table('tblproducts')->where('id', $service->packageid)->first();
+
+    $plan = 'basic';
+    $retention = 2;
+    if (stripos($product->name, 'Enterprise') !== false) { $plan = 'enterprise'; $retention = 30; }
+    elseif (stripos($product->name, 'Standard') !== false) { $plan = 'standard'; $retention = 7; }
+
+    dbp_call_api('/v1/tenant/update-plan', [
+        'service_id'     => (string)$service->id,
+        'plan'           => $plan,
+        'retention_days' => (int)$retention
+    ]);
+    
+    logActivity("[DBP] Plan actualizado por Upgrade para Servicio #{$service->id} -> {$plan}");
+});
+
+// 3. SUSPENSIÓN
+add_hook('ModuleSuspend', 1, function($vars) {
+    $serviceId = $vars['params']['serviceid'];
+    dbp_call_api('/v1/tenant/suspend', ['service_id' => (string)$serviceId]);
+    logActivity("[DBP] Servicio #{$serviceId} suspendido (Mantenimiento Forzoso aplicado).");
+});
+
+// 4. REACTIVACIÓN
+add_hook('ModuleUnsuspend', 1, function($vars) {
+    $serviceId = $vars['params']['serviceid'];
+    dbp_call_api('/v1/tenant/unsuspend', ['service_id' => (string)$serviceId]);
+    logActivity("[DBP] Servicio #{$serviceId} reactivado.");
+});
+
+// 5. TERMINACIÓN
+add_hook('ModuleTerminate', 1, function($vars) {
+    $serviceId = $vars['params']['serviceid'];
+    dbp_call_api('/v1/tenant/terminate', ['service_id' => (string)$serviceId]);
+    logActivity("[DBP] Servicio #{$serviceId} terminado (Token invalidado).");
 });

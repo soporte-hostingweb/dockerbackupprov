@@ -108,8 +108,24 @@ func main() {
 					snapID, dest := parts[0], parts[1]
 					var paths []string
 					if len(parts) > 2 && parts[2] != "" { paths = strings.Split(parts[2], ",") }
-					LogInfo("[TASK] Executing remote restoration of %s to %s", snapID, dest)
-					duration, errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret)
+					
+					autoUp := false
+					if len(parts) > 3 { autoUp = (parts[3] == "true") }
+					
+					installDeps := false
+					if len(parts) > 4 { installDeps = (parts[4] == "true") }
+
+					LogInfo("[TASK] Executing orchestrated restoration of %s to %s (AutoUp: %v, InstallDeps: %v)", snapID, dest, autoUp, installDeps)
+					
+					// V10.2: Fase de Preparación de Orquestador (DRaaS)
+					if installDeps && !CheckDockerEnvironment() {
+						LogInfo("[ORCHESTRATOR] Environment setup needed. Running auto-installer...")
+						if errP := InstallDockerOnHost(); errP != nil {
+							LogInfo("[ORCHESTRATOR ERROR] Prep failed: %v", errP)
+						}
+					}
+
+					duration, errR := RunResticRestore(snapID, dest, paths, repo, pass, key, secret, autoUp)
 					
 					// V9.0: Reportar métricas
 					go ReportRestoreMetrics(agentID, snapID, duration)
@@ -364,13 +380,21 @@ func main() {
 				LogInfo("[AUDIT] Reporting restoration start...")
 				activityID := ReportActivity(0, agentID, "restore", "running", fmt.Sprintf("Restoring snapshot %s to %s", snapID, target))
 				
-				var restorePaths []string
-				if len(parts) > 3 {
-					restorePaths = strings.Split(parts[3], ",")
-				}
+				go func(jobID uint, info string) {
+					// Re-parsear para obtener flags en el handler asíncrono
+					p := strings.Split(info, "|")
+					var rPaths []string
+					if len(p) > 3 && p[3] != "" { rPaths = strings.Split(p[3], ",") }
+					aUp := false
+					if len(p) > 4 { aUp = (p[4] == "true") }
+					iDeps := false
+					if len(p) > 5 { iDeps = (p[5] == "true") }
 
-				go func(jobID uint) {
-					duration, errR := RunResticRestore(snapID, target, restorePaths, repo, pass, key, secret)
+					if iDeps && !CheckDockerEnvironment() {
+						InstallDockerOnHost()
+					}
+
+					duration, errR := RunResticRestore(snapID, target, rPaths, repo, pass, key, secret, aUp)
 					
 					// V9.0: Enviar RTO Telemetry
 					go ReportRestoreMetrics(agentID, snapID, duration)
@@ -387,7 +411,7 @@ func main() {
 					ReportActivity(activityID, agentID, "restore", status, msg)
 					
 					ReportTaskResult(agentID, taskType, msg, jobID)
-				}(currentJobID)
+				}(currentJobID, taskInfo)
 			}
 			continue
 		}

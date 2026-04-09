@@ -335,6 +335,103 @@ func main() {
 		})
 	})
 
+	// --- ENDPOINTS DE CICLO DE VIDA TENANT (v11.0: Lifecycle Management) ---
+	
+	// v1/tenant/update-plan: Sincroniza cambios comerciales con políticas técnicas
+	r.POST("/v1/tenant/update-plan", func(c *gin.Context) {
+		adminKey := os.Getenv("API_ADMIN_KEY")
+		if c.GetHeader("X-Admin-Key") != adminKey {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req struct {
+			ServiceID string `json:"service_id"`
+			Plan      string `json:"plan"`
+			Retention int    `json:"retention_days"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid payload"})
+			return
+		}
+
+		var plan TenantPlan
+		if err := DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Tenant service not found"})
+			return
+		}
+
+		policy := GetPolicyForTenant(req.Plan)
+		plan.Plan = req.Plan
+		plan.RetentionDays = req.Retention
+		plan.Priority = (policy.Priority > 1)
+		plan.ValidationLvl = policy.ValidationLvl
+		DB.Save(&plan)
+
+		c.JSON(200, gin.H{"status": "Plan updated", "plan": req.Plan, "retention": req.Retention})
+	})
+
+	// v1/tenant/suspend: Bloquea operaciones del agente
+	r.POST("/v1/tenant/suspend", func(c *gin.Context) {
+		adminKey := os.Getenv("API_ADMIN_KEY")
+		if c.GetHeader("X-Admin-Key") != adminKey {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req struct { ServiceID string `json:"service_id"` }
+		c.ShouldBindJSON(&req)
+
+		var plan TenantPlan
+		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
+		
+		// Forzar mantenimiento en todos los agentes del token (suspensión total)
+		DB.Model(&AgentStatus{}).Where("token = ?", plan.Token).Update("maintenance", true)
+
+		c.JSON(200, gin.H{"status": "Tenant suspended", "token": plan.Token})
+	})
+
+	// v1/tenant/unsuspend: Reactiva operaciones
+	r.POST("/v1/tenant/unsuspend", func(c *gin.Context) {
+		adminKey := os.Getenv("API_ADMIN_KEY")
+		if c.GetHeader("X-Admin-Key") != adminKey {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req struct { ServiceID string `json:"service_id"` }
+		c.ShouldBindJSON(&req)
+
+		var plan TenantPlan
+		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
+		
+		DB.Model(&AgentStatus{}).Where("token = ?", plan.Token).Update("maintenance", false)
+
+		c.JSON(200, gin.H{"status": "Tenant unsuspended", "token": plan.Token})
+	})
+
+	// v1/tenant/terminate: Desactivación total
+	r.POST("/v1/tenant/terminate", func(c *gin.Context) {
+		adminKey := os.Getenv("API_ADMIN_KEY")
+		if c.GetHeader("X-Admin-Key") != adminKey {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req struct { ServiceID string `json:"service_id"` }
+		c.ShouldBindJSON(&req)
+
+		var plan TenantPlan
+		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
+		
+		// Borrado lógico: Cambiamos token a 'TERMINATED' para que no sincronicen
+		oldToken := plan.Token
+		DB.Model(&plan).Update("token", "TERMINATED_" + oldToken)
+		DB.Model(&AgentStatus{}).Where("token = ?", oldToken).Update("token", "TERMINATED")
+
+		c.JSON(200, gin.H{"status": "Tenant terminated"})
+	})
+
 	v1Agent := r.Group("/v1/agent")
 
 	// --- ENDPOINTS DE TRADUCCIÓN (i18n) ---
@@ -1207,6 +1304,8 @@ fi
 			Destination string   `json:"destination"`
 			Paths       []string `json:"paths"`
 			Path        string   `json:"path"` // Ruta para filtrar ls_snapshot (V4.5.9)
+			AutoUp      bool     `json:"auto_up"` // V10.2: Orquestar docker-compose up
+			InstallDeps bool     `json:"install_deps"` // V10.2: Auto-instalar Docker si falta
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid action"})
@@ -1260,7 +1359,14 @@ fi
 			})
 		case "restore":
 			pathsStr := strings.Join(req.Paths, ",")
-			param := fmt.Sprintf("%s|%s|%s", req.SnapshotID, req.Destination, pathsStr)
+			autoUpStr := "false"
+			if req.AutoUp { autoUpStr = "true" }
+			installDockerStr := "false"
+			if req.InstallDeps { installDockerStr = "true" }
+			
+			// Formato Param: snapID | target | paths | autoUp | installDocker
+			param := fmt.Sprintf("%s|%s|%s|%s|%s", req.SnapshotID, req.Destination, pathsStr, autoUpStr, installDockerStr)
+			
 			DB.Create(&Job{
 				AgentID:  id,
 				Type:     "restore",

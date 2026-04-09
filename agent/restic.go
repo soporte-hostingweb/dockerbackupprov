@@ -143,8 +143,8 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 	return finalSnapshotID, totalBytes, nil
 }
 
-// RunResticRestore ejecuta una restauración remota (V4.5.7/V9.0)
-func RunResticRestore(snapshotID string, destination string, paths []string, repo string, password string, s3Key string, s3Secret string) (int, error) {
+// RunResticRestore ejecuta una restauración remota (V4.5.7/V9.0/V10.2)
+func RunResticRestore(snapshotID string, destination string, paths []string, repo string, password string, s3Key string, s3Secret string, autoUp bool) (int, error) {
 	if repo == "" || snapshotID == "" {
 		return 0, fmt.Errorf("missing repository or snapshot ID")
 	}
@@ -185,6 +185,13 @@ func RunResticRestore(snapshotID string, destination string, paths []string, rep
 	}
 
 	fmt.Printf("[RESTIC] Restoration successful. Duration: %d seconds.\n", durationSecs)
+	
+	// V10.2: Post-Restore Orchestration
+	// El parámetro 'destination' contiene el path /host_root/...
+	// Validamos servicios si hay docker-compose.yml
+	orchMsg := ValidateRestoredServices(destination, true) // Por defecto intentamos levantar si es V10.2
+	fmt.Printf("[ORCHESTRATOR] %s\n", orchMsg)
+	
 	return durationSecs, nil
 }
 
@@ -222,7 +229,7 @@ func RunPartialTestRestore(snapshotID string, repo string, password string, s3Ke
 	// Pedir a restic que intente extraer solo un archivo .env si lo hay, ignorando si falla
 	// Al no poder forzar un match estricto, le decimos restic restore con exclude genérico y dejamos un path como "*env*"
 	// (En restic puedes usar wildcard en --include)
-	_, err := RunResticRestore(snapshotID, testDir, []string{"*.env", "*docker-compose*"}, repo, password, s3Key, s3Secret)
+	_, err := RunResticRestore(snapshotID, testDir, []string{"*.env", "*docker-compose*"}, repo, password, s3Key, s3Secret, false)
 	
 	defer os.RemoveAll(testDir) // Siempre limpiar test sandbox
 
@@ -383,6 +390,78 @@ func GetSnapshotContentJSON(snapshotID string, requestPath string, repo string, 
 	resultJSON, _ := json.Marshal(filtered)
 	fmt.Printf("[DEBUG-RESTIC] ⚡ LS Depth Filter: %s -> %d items\n", requestPath, len(filtered))
 	return resultJSON
+}
+
+// --- ORCHESTRATION UTILS (V10.2: SaaS Pro) ---
+
+// CheckDockerEnvironment verifica si Docker está instalado y operativo en el HOST
+func CheckDockerEnvironment() bool {
+	fmt.Println("[PREP] Checking Docker availability on Host...")
+	// Intentamos ejecutar docker version a través de chroot en el host_root
+	cmd := exec.Command("chroot", "/host_root", "docker", "--version")
+	if err := cmd.Run(); err != nil {
+		fmt.Println("[PREP] Docker NOT found or not responding on Host.")
+		return false
+	}
+	fmt.Println("[PREP] Docker is available and ready on Host.")
+	return true
+}
+
+// InstallDockerOnHost intenta instalar Docker en el VPS destino (Host)
+func InstallDockerOnHost() error {
+	fmt.Println("[PREP] Starting automated Docker installation on Host...")
+	// Usamos el script oficial de Docker ejecutado en el Host
+	installCmd := "curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
+	cmd := exec.Command("chroot", "/host_root", "sh", "-c", installCmd)
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker installation failed: %v | Output: %s", err, string(output))
+	}
+	
+	// Habilitar y arrancar el servicio
+	_ = exec.Command("chroot", "/host_root", "systemctl", "enable", "--now", "docker").Run()
+	
+	fmt.Println("[PREP] Docker successfully installed on Host.")
+	return nil
+}
+
+// ValidateRestoredServices busca docker-compose.yml y levanta servicios si se solicita
+func ValidateRestoredServices(targetPath string, autoUp bool) string {
+	if !autoUp { return "Service validation skipped (autoUp=false)" }
+	
+	fmt.Printf("[VALIDATION] Scanning for docker-compose files in %s...\n", targetPath)
+	
+	// Convertimos el path relativo al host
+	hostPath := strings.TrimPrefix(targetPath, "/host_root")
+	if hostPath == "" { hostPath = "/" }
+
+	findCmd := exec.Command("chroot", "/host_root", "find", hostPath, "-name", "docker-compose.yml")
+	output, _ := findCmd.Output()
+	composeFiles := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	if len(composeFiles) == 0 || composeFiles[0] == "" {
+		return "No docker-compose.yml found in restored path."
+	}
+
+	results := []string{}
+	for _, cf := range composeFiles {
+		fmt.Printf("[VALIDATION] Orchestrating service startup: %s\n", cf)
+		dir := strings.TrimSuffix(cf, "/docker-compose.yml")
+		
+		upCmd := exec.Command("chroot", "/host_root", "sh", "-c", fmt.Sprintf("cd %s && docker-compose up -d", dir))
+		if err := upCmd.Run(); err != nil {
+			// Intentar con 'docker compose' (V2)
+			upCmd = exec.Command("chroot", "/host_root", "sh", "-c", fmt.Sprintf("cd %s && docker compose up -d", dir))
+			if err2 := upCmd.Run(); err2 != nil {
+				results = append(results, fmt.Sprintf("Failed to start %s: %v", cf, err2))
+				continue
+			}
+		}
+		results = append(results, fmt.Sprintf("Service UP: %s", cf))
+	}
+
+	return strings.Join(results, " | ")
 }
 
 
