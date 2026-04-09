@@ -898,6 +898,7 @@ func main() {
 			HealthStatus: "ONLINE", // Asegurar estado ONLINE en cada latido exitoso (V9.1)
 			LastSeen:     time.Now().UTC(),
 			LastSeenUnix: time.Now().Unix(),
+			IpAddress:    c.ClientIP(),
 			OS:           payload.OS,
 			FreeSpace:    payload.FreeSpace,
 			TotalSpace:   payload.TotalSpace,

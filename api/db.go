@@ -45,6 +45,7 @@ type AgentStatus struct {
 	VerificationStatus string `json:"verification_status" gorm:"default:'PENDING'"` // V9.0: VALID, INVALID, PENDING
 	EstRtoSecs         int    `json:"est_rto_secs"`        // V9.0: Recovery Time Objective estimado
 	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
+	IpAddress          string `json:"ip_address"`                  // V11.2.1: Trackear IP del nodo anfitrión
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
