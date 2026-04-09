@@ -21,7 +21,7 @@ import (
 )
 
 
-const Version = "V9.2.5"
+const Version = "V9.2.6"
 
 //go:embed install.sh
 var installScript []byte
@@ -95,19 +95,35 @@ func UpdateHealthScore(agentID string) {
 	if score < 0 { score = 0 }
 	if score > 100 { score = 100 }
 
-	// Persistir resultado
+	// V9.2.6: Solo registrar actividad si el puntaje o estado ha cambiado para evitar bucle infinito
+	if agent.HealthScore != score || agent.HealthStatus != agent.HealthStatus || agent.VerificationStatus != agent.VerificationStatus {
+		// Nota: En este punto, 'agent' aún tiene los valores del DB porque Update aún no se ha reflejado en el objeto local, 
+		// pero vamos a hacerlo de forma segura comparando antes de la persistencia final.
+	}
+
+	// 1. Capturar versión previa (para comparar)
+	oldScore := agent.HealthScore
+	oldHStatus := agent.HealthStatus
+	oldVStatus := agent.VerificationStatus
+
+	// 2. Persistir resultado
 	DB.Model(&agent).Update("health_score", score)
 
-	// V9.2.5: Auditoría de Score (Detalle técnico para el usuario)
-	DB.Create(&ActivityLog{
-		Token:     agent.Token,
-		AgentID:   agent.ID,
-		Type:      "TELEMETRY",
-		Status:    "success",
-		Message:   fmt.Sprintf("[SCORE] Puntaje actualizado a %d%%. [H:%s|V:%s]", score, agent.HealthStatus, agent.VerificationStatus),
-		StartedAt: time.Now().UTC(),
-		FinishedAt: time.Now().UTC(),
-	})
+	// 3. Evaluar si emitir log (Anti-Saturación V9.2.6)
+	if oldScore != score || oldHStatus != agent.HealthStatus || oldVStatus != agent.VerificationStatus {
+		vStatus := agent.VerificationStatus
+		if vStatus == "" { vStatus = "PENDING" }
+
+		DB.Create(&ActivityLog{
+			Token:     agent.Token,
+			AgentID:   agent.ID,
+			Type:      "TELEMETRY",
+			Status:    "success",
+			Message:   fmt.Sprintf("[SCORE] Puntaje actualizado a %d%%. [H:%s|V:%s]", score, agent.HealthStatus, vStatus),
+			StartedAt: time.Now().UTC(),
+			FinishedAt: time.Now().UTC(),
+		})
+	}
 }
 
 func main() {
