@@ -117,7 +117,7 @@ func ReportVerification(agentID, snapshotID, status string, errors []string) {
 }
 
 // ReportHeartbeat envía el estado del agente y recibe órdenes (V4.5.5)
-func ReportHeartbeat(agentID string, containers []string, explorer map[string][]string, snapshots []interface{}, syncing bool, activePID int, lastBackupAt int64, freeSpace string, totalSpace string) (bool, string, bool, error) {
+func ReportHeartbeat(agentID string, containers []string, explorer map[string][]string, snapshots []interface{}, syncing bool, activePID int, lastBackupAt int64, freeSpace string, totalSpace string) (bool, string, uint, bool, error) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
@@ -162,13 +162,13 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 
 	if err != nil {
 		LogInfo("[API ERROR] Network failure after %v: %v", latency, err)
-		return false, "none", false, err
+		return false, "none", 0, false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		LogInfo("[API ERROR] Heartbeat REJECTED (Status: %s) after %v", resp.Status, latency)
-		return false, "none", false, fmt.Errorf("heartbeat rejected: %s", resp.Status)
+		return false, "none", 0, false, fmt.Errorf("heartbeat rejected: %s", resp.Status)
 	}
 
 	var result struct {
@@ -177,24 +177,25 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 		KillSync     bool   `json:"kill_sync"`
 		CmdTask      string `json:"cmd_task"`
 		CmdParam     string `json:"cmd_param"`
+		JobID        uint   `json:"cmd_job_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, "none", false, err
+		return false, "none", 0, false, err
 	}
 
 	// Hot-Fix: Si hay una tarea de comando, la devolvemos al ciclo principal (Simplificado para V4.2.4)
 	if result.CmdTask != "" && result.CmdTask != "none" {
-		LogInfo("[TASK] Received remote command after %v: %s (%s)", latency, result.CmdTask, result.CmdParam)
-		return result.Maintenance, result.CmdTask + ":" + result.CmdParam, result.KillSync, nil
+		LogInfo("[TASK] Received remote command after %v: %s (%s) [JobID: %d]", latency, result.CmdTask, result.CmdParam, result.JobID)
+		return result.Maintenance, result.CmdTask + ":" + result.CmdParam, result.JobID, result.KillSync, nil
 	}
 
 	LogInfo("[API] Heartbeat sent (RTT: %v). Maint: %v, Force: %s", latency, result.Maintenance, result.PendingForce)
 	
-	return result.Maintenance, result.PendingForce, result.KillSync, nil
+	return result.Maintenance, result.PendingForce, 0, result.KillSync, nil
 }
 
-// ReportTaskResult envía el resultado de un comando (ej: ls snapshot) al Control Plane (V4.2.4)
-func ReportTaskResult(agentID string, task string, result string) {
+// ReportTaskResult envía el resultado de un comando al Control Plane (V10.1: Incluye JobID)
+func ReportTaskResult(agentID string, task string, result string, jobID uint) {
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" {
 		apiEndpoint = "https://api.hwperu.com"
@@ -205,10 +206,12 @@ func ReportTaskResult(agentID string, task string, result string) {
 		AgentID string `json:"agent_id"`
 		Task    string `json:"task"`
 		Result  string `json:"result"`
+		JobID   uint   `json:"job_id"`
 	}{
 		AgentID: agentID,
 		Task:    task,
 		Result:  result,
+		JobID:   jobID,
 	}
 
 	payload, _ := json.Marshal(payloadObj)

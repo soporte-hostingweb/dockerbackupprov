@@ -805,18 +805,37 @@ func main() {
 			return
 		}
 
-		// V10: Sistema de Cola de Trabajos (Prioridad)
-		var nextJob Job
-		errJ := DB.Order("priority DESC, created_at ASC").Where("agent_id = ? AND status = ?", payload.AgentID, "pending").First(&nextJob).Error
-		
+		// V10.1: Bloqueo de Concurrencia - Verificar si ya hay un job pesado en ejecución
+		var activeJob Job
+		hasActive := DB.Where("agent_id = ? AND status = ?", payload.AgentID, "running").First(&activeJob).Error == nil
+
 		taskName := "none"
 		taskParam := ""
-		if errJ == nil {
-			taskName = nextJob.Type
-			taskParam = nextJob.Param
-			// Marcar como 'running' para evitar doble entrega
-			now := time.Now().UTC()
-			DB.Model(&nextJob).Updates(map[string]interface{}{"status": "running", "started_at": &now})
+		var taskJobID uint = 0
+
+		if !hasActive && !payload.IsSyncing {
+			// Buscar el siguiente trabajo pendiente por prioridad y fecha de reintento
+			var nextJob Job
+			errJ := DB.Order("priority DESC, created_at ASC").
+				Where("agent_id = ? AND status = ? AND next_run_at <= ?", payload.AgentID, "pending", time.Now().UTC()).
+				First(&nextJob).Error
+			
+			if errJ == nil {
+				taskName = nextJob.Type
+				taskParam = nextJob.Param
+				taskJobID = nextJob.ID
+				
+				// Marcar como 'running' para evitar doble entrega (Idempotencia)
+				now := time.Now().UTC()
+				DB.Model(&nextJob).Updates(map[string]interface{}{
+					"status": "running", 
+					"started_at": &now,
+					"attempts": nextJob.Attempts + 1,
+				})
+			}
+		} else if hasActive {
+			// Si hay un job corriendo, informamos al log pero no enviamos nueva tarea
+			// taskName queda en "none"
 		}
 
 		c.JSON(200, gin.H{
@@ -826,6 +845,7 @@ func main() {
 			"kill_sync":     agent.KillSync,
 			"cmd_task":      taskName,
 			"cmd_param":     taskParam,
+			"cmd_job_id":    taskJobID,
 		})
 
 		// V9.1: Recalcular Score de Salud en cada Heartbeat
@@ -838,20 +858,31 @@ func main() {
 			AgentID string `json:"agent_id"`
 			Task    string `json:"task"`
 			Result  string `json:"result"`
+			JobID   uint   `json:"job_id"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid task result"})
 			return
 		}
 
-		// V10: Actualizar estado del Job correspondiente
+		// V10.1: Actualizar estado del Job correspondiente usando el JobID exacto o fallback
 		var job Job
-		errJ := DB.Order("started_at DESC").Where("agent_id = ? AND type = ? AND status = ?", req.AgentID, req.Task, "running").First(&job).Error
+		var errJ error
+		if req.JobID > 0 {
+			errJ = DB.First(&job, req.JobID).Error
+		} else {
+			errJ = DB.Order("started_at DESC").Where("agent_id = ? AND type = ? AND status = ?", req.AgentID, req.Task, "running").First(&job).Error
+		}
 		
 		finishTime := time.Now().UTC()
 		if errJ == nil {
+			status := "completed"
+			lRes := strings.ToLower(req.Result)
+			if strings.Contains(lRes, "error") || strings.Contains(lRes, "fail") {
+				status = "failed"
+			}
 			DB.Model(&job).Updates(map[string]interface{}{
-				"status":      "completed",
+				"status":      status,
 				"result":      req.Result,
 				"finished_at": &finishTime,
 			})
@@ -1441,5 +1472,53 @@ fi
 	fmt.Printf("==========================================\n")
 	fmt.Printf("🚀 DBP API %s - ONLINE\n", Version)
 	fmt.Printf("==========================================\n")
+
+	// V10.1: Lanzar el Monitor de Orquestación y Reconciliación (Jobs & Zombies)
+	go RunZombieMonitor()
+
 	r.Run(":" + port)
+}
+
+// RunZombieMonitor: Proceso de fondo que reconcilia estados de Jobs colgados (V10.1)
+func RunZombieMonitor() {
+	fmt.Println("[MONITOR] Job Orchestrator Monitor started.")
+	for {
+		time.Sleep(5 * time.Minute)
+		
+		now := time.Now().UTC()
+		var hangingJobs []Job
+		
+		// 1. Detectar Jobs 'running' que excedieron su Timeout
+		// Usamos un query que compare NOW() con started_at + timeout_secs
+		DB.Where("status = ? AND started_at IS NOT NULL", "running").Find(&hangingJobs)
+		
+		for _, job := range hangingJobs {
+			timeout := time.Duration(job.TimeoutSecs) * time.Second
+			if now.Sub(*job.StartedAt) > timeout {
+				fmt.Printf("[MONITOR] Job %d (Agent: %s) timed out. Marking as failed.\n", job.ID, job.AgentID)
+				DB.Model(&job).Updates(map[string]interface{}{
+					"status": "failed",
+					"error_log": job.ErrorLog + fmt.Sprintf("[%s] Timeout detected after %d seconds.\n", now.Format(time.RFC3339), job.TimeoutSecs),
+				})
+			}
+		}
+
+		// 2. Gestionar Reintentos Automáticos (Smart Retry con Backoff)
+		var failedJobs []Job
+		DB.Where("status = ? AND attempts < max_attempts AND next_run_at <= ?", "failed", now).Find(&failedJobs)
+		for _, job := range failedJobs {
+			// Cálculo de Backoff Exponencial (5m, 15m, 30m...)
+			backoffMinutes := 5
+			if job.Attempts == 2 { backoffMinutes = 15 }
+			if job.Attempts >= 3 { backoffMinutes = 45 }
+			
+			nextRun := now.Add(time.Duration(backoffMinutes) * time.Minute)
+			fmt.Printf("[MONITOR] Retrying Job %d in %d min (Attempt %d/%d)\n", job.ID, backoffMinutes, job.Attempts+1, job.MaxAttempts)
+			
+			DB.Model(&job).Updates(map[string]interface{}{
+				"status": "pending",
+				"next_run_at": nextRun,
+			})
+		}
+	}
 }

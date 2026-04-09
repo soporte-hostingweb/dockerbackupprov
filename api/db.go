@@ -83,16 +83,21 @@ type ActivityLog struct {
 // --- MODELO JOB (V10.0: SaaS Pro) ---
 // Job centraliza las tareas pendientes para el agente (ls, restore, verify, etc)
 type Job struct {
-	ID         uint       `gorm:"primaryKey" json:"id"`
-	AgentID    string     `gorm:"index" json:"agent_id"`
-	Type       string     `json:"type"`       // backup, restore, ls_snapshot, check
-	Param      string     `gorm:"type:text" json:"param"`      // Parámetros del comando
-	Priority   int        `json:"priority"`   // 1 (low), 2 (standard), 3 (high)
-	Status     string     `gorm:"index;default:'pending'" json:"status"` // pending, running, completed, failed
-	Result     string     `gorm:"type:text" json:"result"`     // Output final del comando
-	StartedAt  *time.Time `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	AgentID     string     `gorm:"index" json:"agent_id"`
+	Type        string     `json:"type"`       // backup, restore, ls_snapshot, check
+	Param       string     `gorm:"type:text" json:"param"`      // Parámetros del comando
+	Priority    int        `json:"priority"`   // 1 (low), 2 (standard), 3 (high)
+	Status      string     `gorm:"index;default:'pending'" json:"status"` // pending, running, completed, failed
+	Result      string     `gorm:"type:text" json:"result"`     // Output final del comando
+	Attempts    int        `gorm:"default:0" json:"attempts"`
+	MaxAttempts int        `gorm:"default:3" json:"max_attempts"`
+	NextRunAt   time.Time  `json:"next_run_at"`
+	TimeoutSecs int        `gorm:"default:7200" json:"timeout_secs"` // Default 2h (backups)
+	ErrorLog    string     `gorm:"type:text" json:"error_log"`
+	StartedAt   *time.Time `json:"started_at"`
+	FinishedAt  *time.Time `json:"finished_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 

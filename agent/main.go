@@ -39,6 +39,11 @@ func main() {
 	// Loop principal (V4.7.0: Zero-Latency Interactive)
 	var lastRepoCheck time.Time
 	var lastWizardActivity time.Time
+	var currentJobID uint
+	var maint bool
+	var taskInfo string
+	var kill bool
+	var errHeart error
 
 	for {
 		// V9.2.8: El marcapasos se mueve al inicio para asegurar que el agente siempre 
@@ -76,8 +81,8 @@ func main() {
 			}
 		}
 
-		// 3. Reportar Heartbeat de INMEDIATO para recibir tareas (V4.6.8)
-		maint, taskInfo, kill, errHeart := ReportHeartbeat(agentID, nil, nil, nil, IsSyncing, ActivePID, lastBackupUnix, "", "")
+		// 3. Reportar Heartbeat de INMEDIATO para recibir tareas (V10.1: Soporte JobID)
+		maint, taskInfo, currentJobID, kill, errHeart = ReportHeartbeat(agentID, nil, nil, nil, IsSyncing, ActivePID, lastBackupUnix, "", "")
 		if errHeart != nil {
 			LogInfo("[WARNING] Heartbeat failed: %v", errHeart)
 		}
@@ -93,7 +98,7 @@ func main() {
 				if len(parts) > 1 { path = parts[1] }
 				LogInfo("[TASK] Executing remote directory listing for snapshot %s (Path: %s)", snapID, path)
 				lsResult := GetSnapshotContentJSON(snapID, path, repo, pass, key, secret)
-				ReportTaskResult(agentID, "ls_snapshot", string(lsResult))
+				ReportTaskResult(agentID, "ls_snapshot", string(lsResult), currentJobID)
 				LogInfo("[TASK] Snapshot listing completed and reported.")
 			}
 			if strings.HasPrefix(taskInfo, "restore:") {
@@ -111,7 +116,7 @@ func main() {
 
 					resMsg := "Success"
 					if errR != nil { resMsg = "Error: " + errR.Error() }
-					ReportTaskResult(agentID, "restore", resMsg)
+					ReportTaskResult(agentID, "restore", resMsg, currentJobID)
 					lastWizardActivity = time.Time{} // Resetear turbo tras restore
 				}
 			}
@@ -130,7 +135,7 @@ func main() {
 			LogInfo("[TURBO] Skipping heavy discovery (Wizard Active). Using persistent state.")
 			free, total := GetDiskCapacity()
 			// V6.8: Enviamos el último estado conocido en lugar de 'nil' para proteger la vista
-			_, taskInfo, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
+			maint, taskInfo, currentJobID, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
 			if taskInfo != "" && taskInfo != "none" { continue }
 			
 			// V4.7.2: Super Turbo (Reducción de 5s a 2s de espera interactiva)
@@ -182,7 +187,7 @@ func main() {
 		}
 
 		free, total := GetDiskCapacity()
-		_, taskInfo, kill, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
+		maint, taskInfo, currentJobID, kill, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, IsSyncing, ActivePID, lastBackupUnix, free, total)
 
 		// 6. Scheduler (Backup Logic)
 		force := "none"
@@ -284,7 +289,7 @@ func main() {
 				activityID := ReportActivity(0, agentID, "backup", "running", "Scheduled backup started")
 				
 				f, t := GetDiskCapacity()
-				ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, true, ActivePID, lastBackupUnix, f, t)
+				_, _, currentJobID, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, true, ActivePID, lastBackupUnix, f, t)
 				
 				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s, config.Retention)
 				
@@ -336,7 +341,7 @@ func main() {
 				var updatedSnapshots []interface{}
 				json.Unmarshal(rawSnaps, &updatedSnapshots)
 				if len(updatedSnapshots) > 0 { LastKnownSnapshots = updatedSnapshots }
-				ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, false, ActivePID, lastBackupUnix, f, t)
+				_, _, currentJobID, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, false, ActivePID, lastBackupUnix, f, t)
 
 				IsSyncing = false
 			}(currentPaths, repo, pass, key, secret)
@@ -364,7 +369,7 @@ func main() {
 					restorePaths = strings.Split(parts[3], ",")
 				}
 
-				go func() {
+				go func(jobID uint) {
 					duration, errR := RunResticRestore(snapID, target, restorePaths, repo, pass, key, secret)
 					
 					// V9.0: Enviar RTO Telemetry
@@ -381,8 +386,8 @@ func main() {
 					LogInfo("[AUDIT] Reporting restoration final status: %s", status)
 					ReportActivity(activityID, agentID, "restore", status, msg)
 					
-					ReportTaskResult(agentID, taskType, msg)
-				}()
+					ReportTaskResult(agentID, taskType, msg, jobID)
+				}(currentJobID)
 			}
 			continue
 		}
