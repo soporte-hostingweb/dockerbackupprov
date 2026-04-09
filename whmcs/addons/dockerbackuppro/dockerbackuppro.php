@@ -103,34 +103,48 @@ function dockerbackuppro_output($vars) {
     </script>';
 
     // Lógica de Sincronización Forzada (V11.2)
-    if ($_GET['action'] == 'sync_saas') {
-        require_once(ROOTDIR . "/includes/hooks/dbp_provisioning.php");
-        
-        $services = Illuminate\Database\Capsule\Manager::table('tblhosting')
-            ->join('tblproducts', 'tblhosting.packageid', '=', 'tblproducts.id')
-            ->where('tblproducts.servertype', 'dockerbackuppro')
-            ->where('tblhosting.domainstatus', 'Active')
-            ->select('tblhosting.id', 'tblhosting.userid', 'tblproducts.name')
-            ->get();
+    if (isset($_GET['action']) && $_GET['action'] == 'sync_saas') {
+        $hooksPath = ROOTDIR . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'hooks' . DIRECTORY_SEPARATOR . 'dbp_provisioning.php';
+        if (file_exists($hooksPath)) {
+            require_once($hooksPath);
+            
+            $services = Illuminate\Database\Capsule\Manager::table('tblhosting')
+                ->join('tblproducts', 'tblhosting.packageid', '=', 'tblproducts.id')
+                ->where('tblproducts.servertype', 'dockerbackuppro')
+                ->where('tblhosting.domainstatus', 'Active')
+                ->select('tblhosting.id', 'tblhosting.userid', 'tblproducts.name')
+                ->get();
 
-        $count = 0;
-        foreach ($services as $service) {
-            $plan = 'basic';
-            $retention = 2;
-            if (stripos($service->name, 'Enterprise') !== false) { $plan = 'enterprise'; $retention = 30; }
-            elseif (stripos($service->name, 'Standard') !== false) { $plan = 'standard'; $retention = 7; }
+            $count = 0;
+            foreach ($services as $service) {
+                $plan = 'basic';
+                $retention = 2;
+                $name = $service->name;
+                if (stripos($name, 'Enterprise') !== false || stripos($name, 'Premium') !== false) { 
+                    $plan = 'enterprise'; 
+                    $retention = 30; 
+                } elseif (stripos($name, 'Standard') !== false || stripos($name, 'Pro') !== false) { 
+                    $plan = 'standard'; 
+                    $retention = 7; 
+                }
 
-            $client = Illuminate\Database\Capsule\Manager::table('tblclients')->where('id', $service->userid)->first();
+                $client = Illuminate\Database\Capsule\Manager::table('tblclients')->where('id', $service->userid)->first();
 
-            dbp_call_api('/v1/whmcs/provision', [
-                'service_id'     => (string)$service->id,
-                'client_email'   => $client->email,
-                'plan'           => $plan,
-                'retention_days' => (int)$retention
-            ]);
-            $count++;
+                // Llama al hook con la nueva función (definida en el archivo de hooks)
+                if (function_exists('dbp_call_api')) {
+                    dbp_call_api('/v1/whmcs/provision', [
+                        'service_id'     => (string)$service->id,
+                        'client_email'   => $client->email,
+                        'plan'           => $plan,
+                        'retention_days' => (int)$retention
+                    ]);
+                    $count++;
+                }
+            }
+            echo "<div class='alert alert-success'>Sincronización completada: {$count} servicios procesados en el API.</div>";
+        } else {
+            echo "<div class='alert alert-danger'>Error crítico: No se encuentra el motor de API en: {$hooksPath}</div>";
         }
-        echo "<div class='alert alert-success'>Sincronización completada: {$count} servicios actualizados en el API.</div>";
     }
 
     // El iframe carga el dashboard en modo admin con el token maestro y debug si aplica
