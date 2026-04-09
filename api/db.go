@@ -80,6 +80,22 @@ type ActivityLog struct {
 }
 
 
+// --- MODELO JOB (V10.0: SaaS Pro) ---
+// Job centraliza las tareas pendientes para el agente (ls, restore, verify, etc)
+type Job struct {
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	AgentID    string     `gorm:"index" json:"agent_id"`
+	Type       string     `json:"type"`       // backup, restore, ls_snapshot, check
+	Param      string     `gorm:"type:text" json:"param"`      // Parámetros del comando
+	Priority   int        `json:"priority"`   // 1 (low), 2 (standard), 3 (high)
+	Status     string     `gorm:"index;default:'pending'" json:"status"` // pending, running, completed, failed
+	Result     string     `gorm:"type:text" json:"result"`     // Output final del comando
+	StartedAt  *time.Time `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+
 // UserSettings almacena las credenciales de Wasabi por cliente
 type UserSettings struct {
 	ID           uint   `gorm:"primaryKey"`
@@ -161,7 +177,7 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{})
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{})
 	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.2.8)")
 
 

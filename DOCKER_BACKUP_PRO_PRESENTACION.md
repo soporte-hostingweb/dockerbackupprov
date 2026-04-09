@@ -1,52 +1,77 @@
-# 🚀 Informe de Arquitectura y Escalabilidad: Docker Backup Pro SaaS
-**Destinatario:** Senior DevOps / Arquitecto de Software / CTO
-**Estado del Proyecto:** V9.2.8 (Fase de Estabilización SaaS)
-**Finalidad:** Proveer una plataforma "Zero-Knowledge" y Multi-Tenant para el respaldo de infraestructuras críticas en Docker con integración nativa a WHMCS.
+# 🚀 Informe de Arquitectura y Negocio: Backup SaaS Pro (DRaaS V10)
+
+**Destinatario:** CTO / Arquitecto de Software / DevOps Lead  
+**Estado del Proyecto:** V10.0 (SaaS Pro Evolution)  
+**Visión Estratégica:** Transformación de una herramienta de respaldo a una plataforma de **Continuidad Operativa y Recuperación ante Desastres (DRaaS)**.
 
 ---
 
-## 1. Stack Tecnológico y Arquitectura
-El sistema se ha diseñado bajo una arquitectura de **Control Plane vs Data Plane** para maximizar la seguridad y el aislamiento:
+## 1. Resumen Ejecutivo (El Cambio de Enfoque)
+**Backup SaaS Pro** no es solo un sistema de copias; es una plataforma diseñada para garantizar que un negocio pueda volver a estar online en minutos tras una catástrofe. Nuestra propuesta de valor ha evolucionado de "hacer copias" a **"Garantizamos la recuperación y medimos cuánto tardará"**.
 
-*   **Control Plane (Go API):** Desarrollado en Go (Gin Framework). Actúa como orquestador central, gestionando la base de datos (PostgreSQL), la segmentación de clientes (Tenants) y las políticas de retención.
-*   **Data Plane (DBP Agent):** Ejecutable en Go dentro de un contenedor Alpine. Realiza las operaciones pesadas (Restic) de forma local. No almacena credenciales persistentes; las solicita dinámicamente al API.
-*   **Storage Tier (Wasabi/S3):** Implementación de aislamiento por prefijo de Token. Cada cliente tiene su propio bucket/prefijo lógico, cifrado con llaves únicas.
+La infraestructura V10 introduce capas de automatización y orquestación que eliminan la fricción técnica para el cliente final, permitiendo una integración comercial profunda con WHMCS.
 
 ---
 
-## 2. Estado Actual de la Implementación (V9.2.x)
-Nos encontramos en la fase final de estabilización SaaS. Los hitos alcanzados incluyen:
+## 2. Nueva Arquitectura: Capa de Automatización SaaS
+Para escalar a miles de agentes sin intervención manual, hemos formalizado tres pilares críticos:
 
-*   **Scored Health System (KPIs):** Un motor de scoring que evalúa la salud del respaldo basándose en Conectividad, Obsolescencia de Datos e Integridad Estructural (Restic Check).
-*   **Estimación de RTO (Recovery Time Objective):** Rastreador de velocidad real en restauraciones parciales para garantizar que el cliente sepa cuánto tardará su desastre en ser resuelto.
-*   **Gestión de Ciclo de Vida (Lifecycle):** Implementación de políticas de retención (`keep-last`) automatizadas tras cada éxito de respaldo.
-*   **Kill Task & PID Tracking:** Capacidad remota desde el panel para terminar procesos de Restic estancados, evitando saturación de CPU en máquinas de clientes.
+### 2.1 Restore Orchestrator (CORE)
+Ya no es un simple volcado de archivos. El orquestador gestiona el ciclo de vida de la recuperación:
+1.  **Validación de Entorno:** Conexión y chequeo de requisitos (Docker/Espacio).
+2.  **Preparación Asistida:** Instalación automática de dependencias si faltan.
+3.  **Restauración Atómica:** Vuelco de volúmenes y reconstrucción de servicios via `docker-compose`.
+4.  **Validación Post-Restore:** Verificación de que los servicios levantados responden correctamente.
 
----
+### 2.2 Policy Engine (Motor de Reglas)
+Hemos desacoplado la lógica comercial de la técnica. El backend ahora opera bajo un **Policy Engine** centralizado que define el comportamiento según el plan (Basic, Standard, Enterprise):
+*   **Prioridad de Tareas:** Los clientes Enterprise tienen prioridad en la cola de procesamiento asíncrono.
+*   **Niveles de Verificación:** Desde chequeos de integridad (Level 1) hasta restauraciones parciales automáticas (Level 3 - Advanced).
 
-## 3. Retos Técnicos y Optimizaciones Recientes
-Durante las pruebas de estrés en la V9.2.x, identificamos y resolvimos los siguientes puntos críticos:
-
-*   **Overhead de Heartbeat (Resuelto en V9.2.8):** El agente presentaba picos de concurrencia de heartbeats debido a un bypass de latencia en el bucle principal. Se implementó un "Marcapasos" de 10s obligatorio para estabilizar el tráfico de red.
-*   **Saturación de Telemetría (Resuelto en V9.2.6/V9.2.7):** Se optimizó la persistencia de logs de salud para que solo se registren cambios de estado significativos, reduciendo el I/O en la base de datos PostgreSQL en un 85%.
-*   **Entrega de Alertas (Webhook Robustness):** Implementación de un sistema de **Fallback Global**. Si un tenant no define su webhook (n8n/Slack), el sistema escala la notificación al Webhook Maestro del Administrador.
-
----
-
-## 4. Hoja de Ruta para Escalamiento Senior
-Para llevar el proyecto a una escala de miles de agentes, se proponen las siguientes optimizaciones:
-
-*   **Caché de Estado en Memoria (Redis):** Mover el estado de "LastSeen" y "HealthScore" a Redis para evitar escrituras constantes en PostgreSQL cada 10 segundos.
-*   **Websockets / gRPC:** Migrar la comunicación Agente-API de HTTP Polling a un modelo persistente para una respuesta instantánea a comandos remotos (Restore/Kill).
-*   **Automated Bare-Metal Failover:** Integrar con APIs de proveedores (Hetzner/DigitalOcean) para provisionar automáticamente un nuevo VPS y restaurar el backup en caso de caída total.
+### 2.3 Job Queue System (Escalabilidad)
+Implementación de una cola de trabajos distribuida que permite separar los procesos de:
+*   **Backup Workers:** Procesamiento masivo de subidas.
+*   **Restore Workers:** Procesamiento crítico con prioridad máxima.
+*   **Verify Workers:** Tareas de auditoría de fondo que no afectan el rendimiento operativo.
 
 ---
 
-## 5. Estrategia Comercial SaaS
-El backend está listo para manejar planes diferenciados vía WHMCS:
-- **Plan Basic:** Solo respaldos, retención limitada.
-- **Plan Standard:** Validación de integridad incluida + Scoring.
-- **Plan Pro:** Análisis de RTO, prioridad de red y Webhooks ilimitados.
+## 3. Estado Actual y Hitos Alcanzados (V10.0)
 
-**Conclusiones:**  
-Docker Backup Pro ha superado la fase de MVP y se encuentra en un estado de **Estabilización de Producción**. La arquitectura es modular, segura y altamente rentable debido al bajo consumo de recursos del Control Plane y el costo eficiente de Wasabi.
+🔥 **HITOS RECIENTES**:
+*   ✔ **Backup Verification Engine**: Motor que realiza restauraciones parciales ciegos para validar que la data es recuperable (RTO medido).
+*   ✔ **Alert Event System**: Sistema basado en eventos (Event-Driven) que notifica a n8n/WhatsApp instantáneamente ante fallos.
+*   ✔ **Tenant Policy System**: Aislamiento total de configuraciones y límites por cliente.
+*   ✔ **Health Score V3**: Algoritmo que traduce métricas complejas a un puntaje de 0-100 comprensible para el cliente.
+
+---
+
+## 4. Diferenciadores Técnicos para Seniors
+
+*   **Zero-Knowledge Architecture:** El API nunca almacena las llaves maestras de Wasabi de forma persistente; se inyectan en tiempo de ejecución.
+*   **Rate Limiting & Bandwidth Control:** Control de concurrencia por tenant para evitar "vecinos ruidosos" en la infraestructura multi-tenant.
+*   **Observabilidad RTO:** No prometemos disponibilidad; mostramos el **tiempo de recuperación real** basado en el último éxito de restauración parcial.
+
+---
+
+## 5. Estrategia Comercial Basada en Resultados (SaaS)
+
+| Plan | Enfoque de Venta | Funcionalidad Clave |
+| :--- | :--- | :--- |
+| **Basic** | Protección Mínima | Backup básico, sin validación. |
+| **Standard** | Continuidad Estándar | Backup + Validación RTO + Alertas n8n. |
+| **Enterprise** | **DRaaS Completo** | Restore asistido, Prioridad Gold, Clonado VPS. |
+
+---
+
+## 6. Hoja de Ruta de Evolución (Roadmap)
+
+1.  **FASE 1 (Finalizada):** Hardening, RTO, Health Score y Alertas.
+2.  **FASE 2 (En Progreso):** Formalización total del **Restore Orchestrator** y **Job Queue**.
+3.  **FASE 3 (SaaS Pro):** Restore 1-Click con auto-instalación y clonación semi-automática entre proveedores (Hetzner -> AWS).
+4.  **FASE 4 (Enterprise):** Failover automático basado en Health Score y Snapshots híbridos.
+
+---
+
+**Conclusión:**  
+Backup SaaS Pro V10 es ahora una solución de **Continuidad Operativa**. Estamos listos para escalar comercialmente, reduciendo el soporte técnico mediante la automatización total de la recuperación.

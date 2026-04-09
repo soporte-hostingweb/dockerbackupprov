@@ -21,10 +21,49 @@ import (
 )
 
 
-const Version = "V9.2.8"
+const Version = "V10.0.0"
 
 //go:embed install.sh
 var installScript []byte
+
+// --- POLICY ENGINE (V10.0: SaaS Pro) ---
+type PlanPolicy struct {
+	MaxRetentionDays int
+	ValidationLvl    string // none, basic, advanced
+	Priority         int    // 1 (low), 2 (standard), 3 (high)
+	AllowRestoreAuto bool
+}
+
+var PolicyEngine = map[string]PlanPolicy{
+	"basic": {
+		MaxRetentionDays: 2,
+		ValidationLvl:    "none",
+		Priority:         1,
+		AllowRestoreAuto: false,
+	},
+	"standard": {
+		MaxRetentionDays: 7,
+		ValidationLvl:    "basic",
+		Priority:         2,
+		AllowRestoreAuto: true,
+	},
+	"enterprise": {
+		MaxRetentionDays: 30,
+		ValidationLvl:    "advanced",
+		Priority:         3,
+		AllowRestoreAuto: true,
+	},
+}
+
+// GetPolicyForTenant: Obtiene la política técnica según el plan comercial (V10)
+func GetPolicyForTenant(planName string) PlanPolicy {
+	if p, ok := PolicyEngine[strings.ToLower(planName)]; ok {
+		return p
+	}
+	return PolicyEngine["basic"] // Fallback seguro
+}
+
+// --- END POLICY ENGINE ---
 
 // DispatchAlert: Función asíncrona universal (V9.2.7)
 func DispatchAlert(token string, eventType string, details map[string]interface{}) {
@@ -97,9 +136,18 @@ func UpdateHealthScore(agentID string) {
 		score -= 20
 	}
 
-	// 3. Penalización por Integridad (Validación Fallida: -40)
-	if agent.VerificationStatus == "INVALID" {
-		score -= 40
+	// 3. Penalización por Integridad (V10: Dependiente del PlanPolicy)
+	var tPlan TenantPlan
+	DB.Where("token = ?", agent.Token).First(&tPlan)
+	policy := GetPolicyForTenant(tPlan.Plan)
+
+	if policy.ValidationLvl != "none" {
+		if agent.VerificationStatus == "INVALID" {
+			score -= 40
+		} else if agent.VerificationStatus == "PENDING" && !agent.LastBackupAt.IsZero() && time.Since(agent.LastBackupAt) > 48*time.Hour {
+			// Si el plan exige validación y han pasado 48h sin verificar, penalizamos levemente
+			score -= 10
+		}
 	}
 
 	// Capamos el score entre 0 y 100
@@ -248,6 +296,8 @@ func main() {
 		token := "dbp_" + fmt.Sprintf("%x", time.Now().Unix()) + "_" + req.ServiceID
 
 		// 1. Crear/Actualizar TenantPlan (Source of Truth Comercial)
+		policy := GetPolicyForTenant(req.Plan)
+		
 		var plan TenantPlan
 		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
 		plan.Token = token
@@ -255,14 +305,11 @@ func main() {
 		plan.ClientEmail = req.ClientEmail
 		plan.Plan = req.Plan
 		plan.RetentionDays = req.Retention
-		if req.Plan == "enterprise" {
-			plan.Priority = true
-			plan.ValidationLvl = "advanced"
-		} else if req.Plan == "standard" {
-			plan.ValidationLvl = "basic"
-		} else {
-			plan.ValidationLvl = "none"
-		}
+		
+		// V10: Configuración Automática vía Policy Engine
+		plan.Priority = (policy.Priority > 1)
+		plan.ValidationLvl = policy.ValidationLvl
+		
 		DB.Save(&plan)
 
 		// 2. Asegurar que UserSettings exista para Wasabi
@@ -758,13 +805,27 @@ func main() {
 			return
 		}
 
+		// V10: Sistema de Cola de Trabajos (Prioridad)
+		var nextJob Job
+		errJ := DB.Order("priority DESC, created_at ASC").Where("agent_id = ? AND status = ?", payload.AgentID, "pending").First(&nextJob).Error
+		
+		taskName := "none"
+		taskParam := ""
+		if errJ == nil {
+			taskName = nextJob.Type
+			taskParam = nextJob.Param
+			// Marcar como 'running' para evitar doble entrega
+			now := time.Now().UTC()
+			DB.Model(&nextJob).Updates(map[string]interface{}{"status": "running", "started_at": &now})
+		}
+
 		c.JSON(200, gin.H{
 			"status":        "recorded",
 			"maintenance":   agent.Maintenance,
 			"pending_force": agent.PendingForce,
 			"kill_sync":     agent.KillSync,
-			"cmd_task":      agent.CmdTask,
-			"cmd_param":     agent.CmdParam,
+			"cmd_task":      taskName,
+			"cmd_param":     taskParam,
 		})
 
 		// V9.1: Recalcular Score de Salud en cada Heartbeat
@@ -776,23 +837,33 @@ func main() {
 		var req struct {
 			AgentID string `json:"agent_id"`
 			Task    string `json:"task"`
-			Result  string `json:"result"` // JSON string del 'ls'
+			Result  string `json:"result"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid task result"})
 			return
 		}
 
-		// Guardamos el resultado en el estado del agente y limpiamos la tarea pendiente
-		fmt.Printf("[%s] [TASK-RESULT] Agent %s reported result for task: %s (Weight: %d bytes)\n", 
-			time.Now().Format("15:04:05"), req.AgentID, req.Task, len(req.Result))
+		// V10: Actualizar estado del Job correspondiente
+		var job Job
+		errJ := DB.Order("started_at DESC").Where("agent_id = ? AND type = ? AND status = ?", req.AgentID, req.Task, "running").First(&job).Error
+		
+		finishTime := time.Now().UTC()
+		if errJ == nil {
+			DB.Model(&job).Updates(map[string]interface{}{
+				"status":      "completed",
+				"result":      req.Result,
+				"finished_at": &finishTime,
+			})
+		}
 
+		// Compatibilidad V9 (Legacy): Limpiar slots de AgentStatus para UI antigua
 		DB.Model(&AgentStatus{}).Where("id = ?", req.AgentID).Updates(map[string]interface{}{
 			"cmd_result": req.Result,
 			"cmd_task":   "none",
 		})
 
-		c.JSON(200, gin.H{"status": "Result saved"})
+		c.JSON(200, gin.H{"status": "Job result saved", "job_id": job.ID})
 	})
 
 
@@ -1119,41 +1190,49 @@ fi
 			return
 		}
 
+		// V10: Obtener Política para determinar prioridad
+		var tPlan TenantPlan
+		DB.Where("token = ?", agent.Token).First(&tPlan)
+		policy := GetPolicyForTenant(tPlan.Plan)
+
 		switch req.Action {
 		case "reset":
 			DB.Where("agent_id = ? AND token = ?", id, token).Delete(&BackupConfig{})
-			agent.PendingForce = "none"
+			DB.Model(&agent).Update("pending_force", "none")
 		case "maintenance_on":
-			agent.Maintenance = true
+			DB.Model(&agent).Update("maintenance", true)
 		case "maintenance_off":
-			agent.Maintenance = false
-		case "force_selected":
-			agent.PendingForce = "selected"
-		case "force_full":
-			agent.PendingForce = "full"
+			DB.Model(&agent).Update("maintenance", false)
 		case "kill_sync":
-			agent.KillSync = true
+			DB.Model(&agent).Update("kill_sync", true)
+		case "force_selected", "force_full":
+			// V10: Los disparos manuales ahora son Jobs de alta prioridad
+			forceType := "selected"
+			if req.Action == "force_full" { forceType = "full" }
+			DB.Create(&Job{
+				AgentID:  id,
+				Type:     "backup",
+				Param:    forceType,
+				Priority: policy.Priority + 1, // Prioridad extra por ser manual
+			})
 		case "ls_snapshot":
-			// V4.5.9: Concatenamos ID|PATH para listado granular
 			param := req.SnapshotID
-			if req.Path != "" {
-				param = req.SnapshotID + "|" + req.Path
-			}
-			DB.Model(&agent).Updates(map[string]interface{}{
-				"cmd_task":   "ls_snapshot",
-				"cmd_param":  param,
-				"cmd_result": "loading",
+			if req.Path != "" { param = req.SnapshotID + "|" + req.Path }
+			DB.Create(&Job{
+				AgentID:  id,
+				Type:     "ls_snapshot",
+				Param:    param,
+				Priority: policy.Priority,
 			})
 		case "restore":
-			// Formato: snapshot_id|destination|path1,path2,... (V4.5.6)
 			pathsStr := strings.Join(req.Paths, ",")
 			param := fmt.Sprintf("%s|%s|%s", req.SnapshotID, req.Destination, pathsStr)
-			DB.Model(&agent).Updates(map[string]interface{}{
-				"cmd_task":   "restore",
-				"cmd_param":  param,
-				"cmd_result": "pending",
+			DB.Create(&Job{
+				AgentID:  id,
+				Type:     "restore",
+				Param:    param,
+				Priority: policy.Priority + 1, // Restauración es crítica
 			})
-			// V9.1: Evento Inicio Restauración
 			DispatchAlert(agent.Token, "restore_started", map[string]interface{}{
 				"agent_id":    id,
 				"snapshot_id": req.SnapshotID,
