@@ -165,11 +165,15 @@ func UpdateHealthScore(agentID string) {
 		DB.Model(&agent).Update("health_score", score)
 	}
 
-	// 3. Evaluar si emitir log (Anti-Saturación V9.2.7)
-	if oldScore != score || oldHStatus != agent.HealthStatus || oldVStatus != agent.VerificationStatus {
-		vStatus := agent.VerificationStatus
-		if vStatus == "" { vStatus = "PENDING" }
+	// 3. Evaluar si emitir log (Anti-Saturación V9.2.7 Mejorado)
+	vStatus := agent.VerificationStatus
+	if vStatus == "" { vStatus = "PENDING" }
+	
+	scoreChanged := oldScore != score
+	statusChanged := oldHStatus != agent.HealthStatus
+	verificationChanged := (oldVStatus != vStatus) && vStatus != "PENDING" // No loguear redundancia de PENDING
 
+	if scoreChanged || statusChanged || verificationChanged {
 		// V9.2.7: Usamos tipo SYSTEM y status completed para evitar ruidos
 		DB.Create(&ActivityLog{
 			Token:      agent.Token,

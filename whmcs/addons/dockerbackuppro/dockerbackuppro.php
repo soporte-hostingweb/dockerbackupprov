@@ -60,13 +60,27 @@ function dockerbackuppro_output($vars) {
             <div class="alert alert-info" style="margin: 0; flex-grow: 1; margin-right: 20px;">
                 <i class="fas fa-shield-alt"></i> Actualmente estás visualizando el <b>Panel Maestro</b> de HWPeru.
             </div>
-            <button onclick="testWasabi()" class="btn btn-primary">
-                <i class="fas fa-network-wired"></i> Test Wasabi Link
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="syncSaaSPlan()" class="btn btn-warning">
+                    <i class="fas fa-sync"></i> Forzar Sincronización SaaS
+                </button>
+                <button onclick="testWasabi()" class="btn btn-primary">
+                    <i class="fas fa-network-wired"></i> Test Wasabi Link
+                </button>
+            </div>
           </div>';
 
-    // Script para el test de Wasabi
+    // Script para la sincronización y el test
     echo '<script>
+        function syncSaaSPlan() {
+            if(!confirm("¿Estás seguro de forzar la sincronización de todos los servicios activos con el API? Esto reparará los planes Manual Only.")) return;
+            
+            const btn = event.target.closest("button");
+            btn.disabled = true;
+            btn.innerHTML = "<i class=\"fas fa-spinner fa-spin\"></i> Sincronizando...";
+
+            window.location.href = window.location.href + "&action=sync_saas";
+        }
         function testWasabi() {
             const token = "' . $masterToken . '";
             const url = "' . $apiUrl . '/v1/admin/wasabi/ping";
@@ -87,6 +101,37 @@ function dockerbackuppro_output($vars) {
             .catch(e => alert("❌ [API DOWN] No se pudo contactar con la API Central."));
         }
     </script>';
+
+    // Lógica de Sincronización Forzada (V11.2)
+    if ($_GET['action'] == 'sync_saas') {
+        require_once(ROOTDIR . "/includes/hooks/dbp_provisioning.php");
+        
+        $services = Illuminate\Database\Capsule\Manager::table('tblhosting')
+            ->join('tblproducts', 'tblhosting.packageid', '=', 'tblproducts.id')
+            ->where('tblproducts.servertype', 'dockerbackuppro')
+            ->where('tblhosting.domainstatus', 'Active')
+            ->select('tblhosting.id', 'tblhosting.userid', 'tblproducts.name')
+            ->get();
+
+        $count = 0;
+        foreach ($services as $service) {
+            $plan = 'basic';
+            $retention = 2;
+            if (stripos($service->name, 'Enterprise') !== false) { $plan = 'enterprise'; $retention = 30; }
+            elseif (stripos($service->name, 'Standard') !== false) { $plan = 'standard'; $retention = 7; }
+
+            $client = Illuminate\Database\Capsule\Manager::table('tblclients')->where('id', $service->userid)->first();
+
+            dbp_call_api('/v1/whmcs/provision', [
+                'service_id'     => (string)$service->id,
+                'client_email'   => $client->email,
+                'plan'           => $plan,
+                'retention_days' => (int)$retention
+            ]);
+            $count++;
+        }
+        echo "<div class='alert alert-success'>Sincronización completada: {$count} servicios actualizados en el API.</div>";
+    }
 
     // El iframe carga el dashboard en modo admin con el token maestro y debug si aplica
     echo '<iframe src="' . $portalUrl . '?admin=1&sso=' . $masterToken . $debug . '" 
