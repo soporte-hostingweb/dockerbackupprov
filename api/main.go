@@ -587,9 +587,18 @@ func main() {
 		c.JSON(200, activities)
 	})
 
-	// V9.2.1: Alias para compatibilidad con el UI
+	// V9.2.1: Alias para compatibilidad con el UI (Devuelve BackupActivity real)
 	r.GET("/v1/history", AuthMiddleware(), func(c *gin.Context) {
-		c.Redirect(http.StatusPermanentRedirect, "/v1/activities")
+		token := c.GetString("token")
+		isAdmin := c.GetBool("is_admin")
+
+		var history []BackupActivity
+		if isAdmin {
+			DB.Order("started_at desc").Limit(50).Find(&history)
+		} else {
+			DB.Where("token = ?", token).Order("started_at desc").Limit(50).Find(&history)
+		}
+		c.JSON(200, history)
 	})
 
 	// Endpoint para que el AGENTE reporte su estado en tiempo real (V6.3)

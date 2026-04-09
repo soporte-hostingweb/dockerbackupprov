@@ -116,7 +116,11 @@ function dockerbackuppro_output($vars) {
             
             $services = Illuminate\Database\Capsule\Manager::table('tblhosting')
                 ->join('tblproducts', 'tblhosting.packageid', '=', 'tblproducts.id')
-                ->where('tblproducts.servertype', 'dockerbackuppro')
+                ->where(function($query) {
+                    $query->where('tblproducts.servertype', 'dockerbackuppro')
+                          ->orWhere('tblproducts.name', 'like', '%Docker%Backup%')
+                          ->orWhere('tblproducts.name', 'like', '%DBP%');
+                })
                 ->where('tblhosting.domainstatus', 'Active')
                 ->select('tblhosting.id', 'tblhosting.userid', 'tblproducts.name')
                 ->get();
