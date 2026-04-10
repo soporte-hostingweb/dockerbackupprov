@@ -1,3 +1,4 @@
+<?php
 /**
  * DBP Lifecycle Management Hooks (v11.0)
  * Triggers API actions based on WHMCS Service Events
