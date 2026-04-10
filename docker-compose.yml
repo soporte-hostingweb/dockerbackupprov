@@ -34,19 +34,20 @@ services:
     # Evitamos publicar el puerto 5432 externamente por seguridad (la API se conecta internamente)
 
   # --- AGENTE DE BACKUP (V2.9.7: Build local activado) ---
-  dbp-agent:
-    build:
-      context: ./agent
-      dockerfile: Dockerfile
-    container_name: dbp-client-agent
-    restart: always
-    environment:
-      - DBP_API_TOKEN=dbp_tenant_5b08dec59ab3172afae6bfa48245fc23
-      - DBP_API_ENDPOINT=https://api.hwperu.com
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/host_root:ro
-      - dbp-agent-data:/app/data
+  # Comentado por defecto (Caso 3) ya que este servidor es nativamente el API principal.
+  # dbp-agent:
+  #   build:
+  #     context: ./agent
+  #     dockerfile: Dockerfile
+  #   container_name: dbp-client-agent
+  #   restart: always
+  #   environment:
+  #     - DBP_API_TOKEN=dbp_tenant_5b08dec59ab3172afae6bfa48245fc23
+  #     - DBP_API_ENDPOINT=https://api.hwperu.com
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - /:/host_root:ro
+  #     - dbp-agent-data:/app/data
 
 
 volumes:

@@ -8,6 +8,7 @@ import FileExplorer from "./FileExplorer";
 
 interface AgentStatus {
   agent_id: string;
+  ip_address?: string;
   status: string;
   last_sync: string;
   last_seen_unix?: number;
@@ -230,6 +231,11 @@ export default function ServerList({ onRestore }: ServerListProps) {
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-wide">
                       {data.agent_id}
+                      {data.ip_address && (
+                        <span className="text-[10px] text-blue-400 border border-blue-400 bg-blue-900/20 px-2 py-0.5 rounded-full lowercase tracking-normal">
+                          {data.ip_address}
+                        </span>
+                      )}
                       <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
                         {data.os || 'Linux'}
                       </span>
@@ -349,10 +355,10 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       }}
                     >
 
-                       <option value="manual">Manual Only (Free - 1 Copy)</option>
-                       <option value="daily_2am_basic">Daily Basic (Pro - 2 Copies)</option>
-                       <option value="weekly_2am">Weekly (Standard - 2 Copies)</option>
-                       <option value="custom">Custom (Enterprise - 7 Copies)</option>
+                       <option value="manual">Básico / Manual (Pausado)</option>
+                       <option value="daily_2am_basic">Estándar (Backup Diario)</option>
+                       <option value="weekly_2am">Pro (Backup Semanal)</option>
+                       <option value="custom">Enterprise / Premium (Personalizado)</option>
                     </select>
                     
                     <button 
