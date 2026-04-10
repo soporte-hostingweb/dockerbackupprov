@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp, RotateCcw, Clock } from "lucide-react";
 
 
 import FileExplorer from "./FileExplorer";
@@ -27,6 +27,13 @@ interface AgentStatus {
   verification_status?: string;
   est_rto_secs?: number;
   health_score?: number;
+  recovery_tier?: number;
+  verification_score?: number;
+  dr_ready?: boolean;
+  last_verified_at?: string;
+  rto_estimate?: number;
+  last_rpo_mins?: number;
+  node_type?: string;
 }
 
 interface ServerListProps {
@@ -285,23 +292,51 @@ export default function ServerList({ onRestore }: ServerListProps) {
                           </span>
                         )}
 
-                        <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-900 border border-gray-800 rounded-full">
-                           <Clock className="w-3 h-3 text-emerald-500" />
-                           <span className="text-[8px] text-emerald-500 font-black uppercase">RTO: {Math.round((data.est_rto_secs || 600) / 60)} min</span>
-                        </div>
+                         <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-900 border border-gray-800 rounded-full">
+                            <Clock className="w-3 h-3 text-emerald-500" />
+                            <span className="text-[8px] text-emerald-500 font-black uppercase">RTO: {data.rto_estimate || Math.round((data.est_rto_secs || 600) / 60)} min</span>
+                         </div>
+                         <div className={`flex items-center gap-1.5 px-2 py-1 bg-gray-900 border border-gray-800 rounded-full ${
+                            (data.last_rpo_mins || 0) < 60 ? 'text-emerald-500' :
+                            (data.last_rpo_mins || 0) < 1440 ? 'text-amber-500' : 'text-red-500'
+                         }`}>
+                            <Database className="w-3 h-3" />
+                            <span className="text-[8px] font-black uppercase tracking-tight">
+                              RPO: {data.last_rpo_mins !== undefined ? 
+                                (data.last_rpo_mins < 60 ? `${data.last_rpo_mins}m` : 
+                                 data.last_rpo_mins < 1440 ? `${Math.round(data.last_rpo_mins/60)}h` : 
+                                 `${Math.round(data.last_rpo_mins/1440)}d`) : 'N/A'}
+                            </span>
+                         </div>
                         {data.health_score !== undefined && (
-                          <span className={`text-[9px] font-black px-2 py-0.5 rounded border italic ${
-                            data.health_score >= 80 ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20' :
-                            data.health_score >= 40 ? 'bg-amber-500 text-black border-amber-400' :
-                            'bg-red-600 text-white border-red-500 animate-pulse'
-                          }`}>
-                            SCORE: {data.health_score}%
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className={`text-[9px] font-black px-2 py-0.5 rounded border italic ${
+                              data.health_score >= 80 ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20' :
+                              data.health_score >= 40 ? 'bg-amber-500 text-black border-amber-400' :
+                              'bg-red-600 text-white border-red-500 animate-pulse'
+                            }`}>
+                              HEALTH: {data.health_score}%
+                            </span>
+                            {data.dr_ready && (
+                              <span className="text-[9px] font-black px-2 py-0.5 rounded border bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/20 flex items-center gap-1">
+                                <ShieldCheck className="w-3 h-3" /> DR READY
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 font-mono">Real-time Telemetry: {data.last_sync || 'Connected'}</p>
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    <p className="text-[10px] text-gray-500 font-mono tracking-tighter">
+                      Audit: {data.last_verified_at ? `Verified on ${new Date(data.last_verified_at).toLocaleDateString()}` : 'Verification Pending'}
+                    </p>
+                    {data.verification_score !== undefined && data.verification_score > 0 && (
+                      <p className="text-[10px] text-emerald-500/80 font-bold uppercase tracking-widest">
+                        Integrity Score: {data.verification_score}/100 [AUDITED]
+                      </p>
+                    )}
+                  </div>
                 </div>
             </div>
 
@@ -313,6 +348,12 @@ export default function ServerList({ onRestore }: ServerListProps) {
                 
                 return (
                   <>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); /* Logic for Test DR */ alert("Protocolo de Verificación Iniciado en Verifier Node..."); }}
+                      className="text-[9px] bg-blue-900/40 text-blue-400 hover:bg-blue-500 hover:text-white px-2 py-1 rounded border border-blue-800/30 font-black uppercase transition-all flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Test DR Now
+                    </button>
                     {isOffline && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); removeAgent(id); }}

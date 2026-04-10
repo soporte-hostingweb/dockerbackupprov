@@ -46,9 +46,16 @@ type AgentStatus struct {
 	EstRtoSecs         int    `json:"est_rto_secs"`        // V9.0: Recovery Time Objective estimado
 	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
 	IpAddress          string `json:"ip_address"`                  // V11.2.1: Trackear IP del nodo anfitrión
+	NodeType           string `json:"node_type" gorm:"default:'agent'"` // V11.5.0: "agent" o "verifier"
 	RecoveryTier       int    `json:"recovery_tier" gorm:"default:0"`      // V11.4.0: 0:Normal, 1:Detection, 2:Restarting, 3:Escalated
 	RecoveryAttempts   int    `json:"recovery_attempts" gorm:"default:0"`  // V11.4.0: Cantidad de intentos de reinicio local
 	LastRecoveryAt     time.Time `json:"last_recovery_at"`                 // V11.4.0: Marca de tiempo del último intento
+	LastVerifiedAt     time.Time `json:"last_verified_at"`                 // V11.5.0: Fecha de integridad auditada
+	LastRestoreTest    time.Time `json:"last_restore_test"`                // V11.5.0: Fecha de última prueba real en sandbox
+	VerificationScore  int       `json:"verification_score" gorm:"default:0"` // V11.5.0: Score de confianza real
+	DRReady            bool      `json:"dr_ready" gorm:"default:false"`       // V11.5.0: Sello de "Listo para Recuperación"
+	RTOEstimate        int       `json:"rto_estimate" gorm:"default:0"`       // V11.5.0: RTO en minutos estimado
+	LastRpoMins        int       `json:"last_rpo_mins" gorm:"default:0"`      // V11.6.0: RPO real en minutos (Audit Ready)
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -152,6 +159,7 @@ type TenantPlan struct {
 	SecStorageURL  string    `json:"secondary_storage_url"`    // V11.4.0: Endpoint OVHcloud
 	SecStorageKey  string    `json:"secondary_storage_key"`    // V11.4.0: Access Key OVH
 	SecStorageSecret string   `json:"secondary_storage_secret"` // V11.4.0: Secret Key OVH (Cifrado)
+	VpsTemplate    string    `json:"vps_template" gorm:"type:text"` // V11.5.0: JSON de OS, RAM, CPU, Región
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -215,7 +223,7 @@ func InitDB() {
 		fmt.Println("[DB] Seeding SYSTEM_GLOBAL AlertConfig...")
 		DB.Create(&AlertConfig{
 			Token:  "SYSTEM_GLOBAL",
-			Events: "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered",
+			Events: "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed,provision_success,agent_disaster,replication_success",
 		})
 	}
 }

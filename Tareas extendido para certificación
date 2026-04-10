@@ -1,0 +1,105 @@
+🔧 Backend / Infraestructura
+ [x] Todas las credenciales se almacenan cifradas (NO en texto plano)
+ [x] Uso de variables de entorno para secretos (nunca hardcode)
+ [ ] Rotación de credenciales (S3, API keys) definida
+ [x] Acceso a base de datos restringido por IP / red privada
+ [x] Uso obligatorio de HTTPS (TLS 1.2+)
+ [x] Firewall activo en servidores
+🔐 Control de Acceso
+ [x] Sistema de roles (admin / cliente)
+ [x] Separación multi-tenant validada (no fuga de datos)
+ [x] Tokens con expiración
+ [x] Protección contra fuerza bruta (Rate Limit / Redis Logout) ✔
+ [x] 2FA activo en operaciones críticas (ya implementado ✔)
+🧾 Auditoría
+ [x] Registro de logs de:
+ [x] Login y accesos
+ [x] Restauraciones y clones
+ [x] Cambios de configuración (UserSettings)
+ [x] Eventos DR (DRaaS logs)
+ [x] Logs NO modificables por usuario
+ [x] Retención mínima de logs ( configurable 30–90 días) automática ✔
+🔵 2. DISPONIBILIDAD Y CONTINUIDAD (CLAVE PARA VENDER DRaaS)
+⚙️ Sistema
+ [x] Health checks automáticos de API
+ [x] Monitoreo uptime (API y agentes)
+ [x] Sistema de alertas (email / webhook / WhatsApp)
+🔄 Continuidad del servicio
+ [ ] Backup del propio sistema (Control Plane)
+ [x] Estrategia de recuperación interna documentada
+ [x] Pruebas periódicas de recuperación (DR drills - Integrity Orchestrator)
+📊 Métricas (CRÍTICO)
+ [x] Definición de:
+ [x] RTO (tiempo de recuperación estimado)
+ [x] RPO (pérdida máxima de datos - historial de snapshots real) ✔
+ [x] Métricas visibles en dashboard o internas
+ [x] Registro histórico de tiempos de recuperación
+🟣 3. INTEGRIDAD DE DATOS
+🔧 Backend / Agent
+ [x] Uso de checksums (restic check)
+ [x] Validación periódica automática de backups
+ [x] Detección de corrupción de datos
+🧪 Validación real
+ [x] Sandbox restore funcional
+ [x] Pruebas automatizadas de restauración (Verification Nodes)
+ [x] Registro de éxito/fallo (VerificationScore)
+
+👉 Esto es CLAVE para vender Enterprise
+
+🟠 4. GESTIÓN DE INCIDENTES
+🚨 Proceso
+ [x] Definición de “incidente” (caída, fallo backup, etc.)
+ [x] Sistema de detección automática (Continuity Orchestrator)
+ [x] Notificación al cliente (WhatsApp / Webhook)
+🛠️ Respuesta
+ [x] Procedimiento documentado de resolución
+ [x] Logs de incidentes registrados (ActivityLog)
+ [ ] Tiempo de respuesta medido (SLA de atención)
+
+👉 Esto es base tipo SOC2
+
+🔴 5. CUMPLIMIENTO DE DATOS (PRIVACIDAD BÁSICA)
+📜 Legal mínimo
+ [ ] Política de privacidad publicada en UI
+ [ ] Términos de servicio publicados en UI
+ [x] Explicación de uso de datos (backup cifrado Zero-Knowledge)
+🔐 Datos del cliente
+ [x] Datos cifrados en tránsito y reposo
+ [x] No acceso del proveedor a datos (Zero-Knowledge ✔)
+ [x] Eliminación segura de datos al cancelar servicio (WHMCS Hook)
+🟡 6. OPERACIÓN SaaS (LO QUE TE PIDEN EMPRESAS)
+⚙️ Procesos internos
+ [x] Control de cambios (walkthrough.md documentado)
+ [x] Versionado del sistema (ej: V11.5.0 ✔)
+ [x] Registro de cambios (changelog manual)
+🧪 Testing
+ [x] Tests básicos funcionales:
+ [x] Backup exitoso
+ [x] Restore bare-metal
+ [x] Replicación multi-cloud (Rclone)
+ [ ] Entorno de staging separado (actualmente solo dev/prod)
+ [ ] Pruebas antes de producción automatizadas
+🔵 7. OBSERVABILIDAD Y MONITOREO
+ [x] Métricas expuestas a Prometheus (Endpoint /metrics) ✔
+ [x] Dashboards en Grafana (Operational & Executive) ✔
+ [x] Alertas configuradas:
+ [x] Fallo backup
+ [x] Fallo replicación
+ [x] Agente offline
+🟣 8. SLA (LO QUE CIERRA VENTAS)
+📄 Definición clara
+ [ ] % uptime definido en ToS (ej: 99.9%)
+ [ ] Tiempo de respuesta soporte
+ [x] Tiempo máximo de recuperación (RTO calculado)
+📊 Validación
+ [x] Métricas que respalden SLA (SLA Compliance %)
+ [x] Logs verificables (Auditable Backup Log)
+🧠 9. CHECK FINAL DE “CERTIFICABLE”
+
+Si cumples esto:
+
+ Seguridad básica ✔ [x]
+ Auditoría ✔ [x]
+ DR probado ✔ [x]
+ Validación de backups ✔ [x]
+ SLA definido ✔ [/] (Datos listos, falta contrato legal)
