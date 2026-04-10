@@ -22,7 +22,7 @@ import (
 )
 
 
-const Version = "V11.2.8"
+const Version = "V11.3.0"
 
 //go:embed install.sh
 var installScript []byte
@@ -178,16 +178,7 @@ func UpdateHealthScore(agentID string) {
 	verificationChanged := (oldVStatus != vStatus) && vStatus != "PENDING" // No loguear redundancia de PENDING
 
 	if scoreChanged || statusChanged || verificationChanged {
-		// V9.2.7: Usamos tipo SYSTEM y status completed para evitar ruidos
-		DB.Create(&ActivityLog{
-			Token:      agent.Token,
-			AgentID:    agent.ID,
-			Type:       "SYSTEM",
-			Status:     "completed",
-			Message:    fmt.Sprintf("[SCORE] Puntaje actualizado a %d%%. [S:%s|V:%s]", score, agent.HealthStatus, vStatus),
-			StartedAt:  time.Now().UTC(),
-			FinishedAt: time.Now().UTC(),
-		})
+		// V11.3.0: Solo registramos el score en el status, eliminamos el log de actividad SYSTEM redundante
 	}
 }
 
@@ -238,8 +229,8 @@ func main() {
 					var lastLog ActivityLog
 					DB.Where("agent_id = ? AND type = 'OFFLINE'", a.ID).Order("started_at desc").First(&lastLog)
 					
-					// Solo logueamos si la última actividad OFFLINE fue hace más de 1 hora para no saturar
-					if lastLog.ID == 0 || time.Since(lastLog.StartedAt) > 1*time.Hour {
+					// Solo logueamos si la última actividad OFFLINE fue hace más de 12 horas para no saturar
+					if lastLog.ID == 0 || time.Since(lastLog.StartedAt) > 12*time.Hour {
 						DB.Create(&ActivityLog{
 							Token:      a.Token,
 							AgentID:    a.ID,
@@ -257,8 +248,6 @@ func main() {
 							"agent_id": a.ID,
 							"time_since_last_seen": time.Since(a.UpdatedAt).String(),
 						})
-						// V9.2.7: Desactivamos score desde monitor para evitar competencia con Heartbeat
-						// UpdateHealthScore(a.ID)
 					}
 				} else if a.HealthStatus == "OFFLINE" {
 					// Auto-curación HealthCheck si está vivo (V9.1)
@@ -267,12 +256,17 @@ func main() {
 						"agent_id": a.ID,
 						"status":   "Connection restored",
 					})
-					// UpdateHealthScore(a.ID)
 					if a.HealthStatus == "OFFLINE" {
 						DB.Model(&a).Update("health_status", "ONLINE")
 					}
 				}
 			}
+			
+			// V11.3.0 Cleanup: Eliminar Agentes "Fantasmas" o Inactivos (No vistos en 15 días)
+			// Y borrar logs antiguos de más de 30 días para mantener la DB ligera.
+			DB.Unscoped().Where("last_seen < ?", time.Now().AddDate(0, 0, -15)).Delete(&AgentStatus{})
+			DB.Unscoped().Where("started_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&ActivityLog{})
+			DB.Unscoped().Where("started_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&BackupActivity{})
 		}
 	}()
 
@@ -301,8 +295,8 @@ func main() {
 			return
 		}
 
-		// Generar Token Único para el Cliente (SSO)
-		token := "dbp_" + fmt.Sprintf("%x", time.Now().Unix()) + "_" + req.ServiceID
+		// V11.3.0: Token Determinístico Basado en ID de Servicio para Estabilidad SaaS
+		token := "dbp_saas_" + req.ServiceID
 
 		// 1. Crear/Actualizar TenantPlan (Source of Truth Comercial)
 		policy := GetPolicyForTenant(req.Plan)
