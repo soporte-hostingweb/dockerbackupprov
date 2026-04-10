@@ -107,11 +107,13 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("[WEBHOOK ERROR] Delivery failed for %s: %v\n", eventType, err)
+			fmt.Printf("[WEBHOOK ERROR] Delivery failed for %s to %s: %v\n", eventType, config.WebhookURL, err)
 			return
 		}
 		defer resp.Body.Close()
-		fmt.Printf("[WEBHOOK SUCCESS] Delivered %s to %s (Status: %s)\n", eventType, config.WebhookURL, resp.Status)
+
+		respBody, _ := io.ReadAll(resp.Body)
+		fmt.Printf("[WEBHOOK SUCCESS] Delivered %s to %s (Status: %s). Response: %s\n", eventType, config.WebhookURL, resp.Status, string(respBody))
 	}()
 }
 
@@ -316,6 +318,35 @@ func main() {
 		plan.ValidationLvl = policy.ValidationLvl
 		
 		DB.Save(&plan)
+		
+		// V11.2.5: Crear Configuración Técnica Automática (BackupConfig) para que el Dashboard no salga "Manual"
+		// Mapeamos el plan comercial a un schedule técnico
+		defaultSchedule := "manual"
+		defaultRetention := 2
+		if req.Plan == "enterprise" || req.Plan == "premium" {
+			defaultSchedule = "custom"
+			defaultRetention = 30
+		} else if req.Plan == "standard" || req.Plan == "pro" {
+			defaultSchedule = "weekly_2am"
+			defaultRetention = 7
+		} else if req.Plan == "basic" || req.Plan == "free" {
+			defaultSchedule = "daily_2am_basic"
+			defaultRetention = 2
+		}
+
+		var bConfig BackupConfig
+		resB := DB.Where("token = ?", token).First(&bConfig)
+		bConfig.Token = token
+		bConfig.Schedule = defaultSchedule
+		bConfig.Retention = defaultRetention
+		if bConfig.TimeZone == "" { bConfig.TimeZone = "America/Lima" }
+		if bConfig.CustomSchedule == "" { bConfig.CustomSchedule = "1,2,3,4,5,6,7|02" }
+		
+		if resB.Error != nil {
+			DB.Create(&bConfig)
+		} else {
+			DB.Save(&bConfig)
+		}
 
 		// 2. Asegurar que UserSettings exista para Wasabi
 		var settings UserSettings

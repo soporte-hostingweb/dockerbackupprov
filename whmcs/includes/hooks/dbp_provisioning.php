@@ -39,8 +39,16 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
     $services = Illuminate\Database\Capsule\Manager::table('tblhosting')->where('orderid', $orderId)->get();
     
     foreach ($services as $service) {
-        $product = Illuminate\Database\Capsule\Manager::table('tblproducts')->where('id', $service->packageid)->where('servertype', 'dockerbackuppro')->first();
+        $product = Illuminate\Database\Capsule\Manager::table('tblproducts')->where('id', $service->packageid)->first();
         if (!$product) continue;
+
+        // Validar si es un producto DBP (por ServerType o por Nombre)
+        $isDBP = ($product->servertype == 'dockerbackuppro' || 
+                  stripos($product->name, 'Docker') !== false || 
+                  stripos($product->name, 'DBP') !== false || 
+                  stripos($product->name, 'Backup') !== false);
+        
+        if (!$isDBP) continue;
 
         $plan = 'basic';
         $retention = 2;
@@ -80,6 +88,9 @@ add_hook('AfterProductUpgrade', 1, function($vars) {
     $service = Illuminate\Database\Capsule\Manager::table('tblhosting')->where('id', $upgrade->relid)->first();
     $product = Illuminate\Database\Capsule\Manager::table('tblproducts')->where('id', $service->packageid)->first();
 
+    // Validar si es DBP
+    if (stripos($product->name, 'Docker') === false && stripos($product->name, 'DBP') === false && stripos($product->name, 'Backup') === false) return;
+
     $plan = 'basic';
     $retention = 2;
     $name = $product->name;
@@ -91,13 +102,14 @@ add_hook('AfterProductUpgrade', 1, function($vars) {
         $retention = 7; 
     }
 
-    dbp_call_api('/v1/tenant/update-plan', [
+    dbp_call_api('/v1/whmcs/provision', [
         'service_id'     => (string)$service->id,
+        'client_email'   => Illuminate\Database\Capsule\Manager::table('tblclients')->where('id', $service->userid)->value('email'),
         'plan'           => $plan,
         'retention_days' => (int)$retention
     ]);
     
-    logActivity("[DBP] Plan actualizado por Upgrade para Servicio #{$service->id} -> {$plan}");
+    logActivity("[DBP] Plan actualizado por Upgrade/Sincronización Automática para Servicio #{$service->id} -> {$plan}");
 });
 
 // 3. SUSPENSIÓN
