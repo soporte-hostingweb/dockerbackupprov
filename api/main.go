@@ -22,7 +22,7 @@ import (
 )
 
 
-const Version = "V11.2.7"
+const Version = "V11.2.8"
 
 //go:embed install.sh
 var installScript []byte
@@ -77,7 +77,8 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 		}
 
 		if !found {
-			// V9.2.7/V11.2.7 Fallback: Si no existe o está vacía, usar la GLOBAL (SYSTEM_GLOBAL)
+			// V9.2.7/V11.2.8 Fallback: Si no existe o está vacía, usar la GLOBAL (SYSTEM_GLOBAL)
+			config = AlertConfig{} // RESET: Evitar que GORM herede el ID del intento anterior
 			if errG := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&config).Error; errG != nil || config.WebhookURL == "" {
 				fmt.Printf("[WEBHOOK] Skipped: No valid Webhook URL found for %s or SYSTEM_GLOBAL.\n", token)
 				return
