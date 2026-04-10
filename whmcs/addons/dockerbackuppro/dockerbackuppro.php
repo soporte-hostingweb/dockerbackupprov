@@ -114,6 +114,7 @@ function dockerbackuppro_output($vars) {
         $hooksPath = ROOTDIR . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'hooks' . DIRECTORY_SEPARATOR . 'dbp_provisioning.php';
         if (file_exists($hooksPath)) {
             require_once($hooksPath);
+            logActivity("[DBP] Iniciando Sincronización SaaS Manual desde el panel Administrativo...");
             
             $services = Illuminate\Database\Capsule\Manager::table('tblhosting')
                 ->join('tblproducts', 'tblhosting.packageid', '=', 'tblproducts.id')
@@ -129,6 +130,9 @@ function dockerbackuppro_output($vars) {
                 ->get();
 
             $count = 0;
+            $totalFound = count($services);
+            logActivity("[DBP] Servicios encontrados para sincronizar: " . $totalFound);
+
             foreach ($services as $service) {
                 $plan = 'basic';
                 $retention = 2;
@@ -145,13 +149,17 @@ function dockerbackuppro_output($vars) {
 
                 // Llama al hook con la nueva función (definida en el archivo de hooks)
                 if (function_exists('dbp_call_api')) {
-                    dbp_call_api('/v1/whmcs/provision', [
+                    logActivity("[DBP] Procesando servicio ID {$service->id} | Cliente {$client->email} | Plan Asignado: {$plan}");
+                    $apiResult = dbp_call_api('/v1/whmcs/provision', [
                         'service_id'     => (string)$service->id,
                         'client_email'   => $client->email,
                         'plan'           => $plan,
                         'retention_days' => (int)$retention
                     ]);
+                    logActivity("[DBP] Respuesta API para {$service->id}: HTTP " . ($apiResult['code'] ?? 'N/A') . " - " . ($apiResult['response'] ?? 'N/A'));
                     $count++;
+                } else {
+                    logActivity("[DBP] Error crítico: dbp_call_api no existe (no se cargó el archivo de hooks).");
                 }
             }
 
