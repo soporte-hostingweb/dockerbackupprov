@@ -27,6 +27,9 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const [targetIP, setTargetIP] = useState("");
   const [targetPort, setTargetPort] = useState("22");
   const [targetPass, setTargetPass] = useState("");
+  const [authCode, setAuthCode] = useState("");
+  const [phone, setPhone] = useState("");
+  const [requestingCode, setRequestingCode] = useState(false);
 
   useEffect(() => {
     if (isOpen && agentId) {
@@ -108,7 +111,8 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                 snapshot_id: selectedSnapshot.id || selectedSnapshot.short_id,
                 ip: targetIP,
                 port: targetPort,
-                pass: targetPass
+                pass: targetPass,
+                auth_code: authCode
             })
           });
           if (resp.ok) setStep(4);
@@ -291,6 +295,40 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                                 <label className="text-[9px] text-emerald-600 font-black uppercase ml-1 tracking-widest">Root Password</label>
                                 <input type="password" value={targetPass} onChange={(e) => setTargetPass(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none font-mono" placeholder="••••••••••••" />
                             </div>
+
+                            <div className="pt-4 border-t border-emerald-900/30 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                    <h5 className="text-[10px] text-white font-black uppercase italic">Doble Factor de Seguridad (WhatsApp)</h5>
+                                </div>
+                                <div className="flex gap-2">
+                                    <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none font-mono" placeholder="51987654321" />
+                                    <button 
+                                        type="button"
+                                        onClick={async () => {
+                                            setRequestingCode(true);
+                                            try {
+                                                const r = await fetch('https://api.hwperu.com/v1/auth/request-code', {
+                                                    method: 'POST',
+                                                    headers: { "Authorization": token, "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ action: "clone_authorize", phone: phone })
+                                                });
+                                                if(r.ok) alert("Código enviado a WhatsApp");
+                                                else alert("Error al solicitar código");
+                                            } catch(e) { alert("Error de conexión"); }
+                                            finally { setRequestingCode(false); }
+                                        }}
+                                        disabled={!phone || requestingCode}
+                                        className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-[10px] font-black uppercase px-4 rounded-xl border border-emerald-500/20 disabled:opacity-30"
+                                    >
+                                        {requestingCode ? '...' : 'Solicitar Código'}
+                                    </button>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] text-emerald-600 font-black uppercase ml-1 tracking-widest">Código de Verificación (6 dígitos)</label>
+                                    <input type="text" value={authCode} onChange={(e) => setAuthCode(e.target.value)} className="w-full bg-emerald-500/5 border border-emerald-500/30 rounded-xl px-4 py-4 text-sm text-center text-white tracking-[0.5em] font-black focus:border-emerald-500 outline-none" placeholder="000000" maxLength={6} />
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -302,7 +340,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                     </div>
                 )}
 
-                <button onClick={handleRestore} disabled={loading || (isCloneMode && (!targetIP || !targetPass))} className={`w-full font-black uppercase text-xs py-6 rounded-3xl transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed ${isCloneMode ? 'bg-emerald-600 hover:bg-emerald-500' : (isOverwriteMode ? 'bg-orange-600 hover:bg-orange-500' : 'bg-blue-600 hover:bg-blue-500')}`}>
+                <button onClick={handleRestore} disabled={loading || (isCloneMode && (!targetIP || !targetPass || !authCode))} className={`w-full font-black uppercase text-xs py-6 rounded-3xl transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed ${isCloneMode ? 'bg-emerald-600 hover:bg-emerald-500' : (isOverwriteMode ? 'bg-orange-600 hover:bg-orange-500' : 'bg-blue-600 hover:bg-blue-500')}`}>
                     {loading ? <Activity className="animate-spin" size={18} /> : (isCloneMode ? <Server size={18} /> : (isOverwriteMode ? <Database size={18} /> : <ShieldCheck size={18} />))}
                     {loading ? 'SYNCING...' : (isCloneMode ? 'ORCHESTRATE BARE-METAL CLONE' : (isOverwriteMode ? 'CONFIRM HOST OVERWRITE' : 'START SAFE RESTORATION'))}
                 </button>

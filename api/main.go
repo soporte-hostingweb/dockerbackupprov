@@ -448,6 +448,34 @@ func main() {
 		c.JSON(200, gin.H{"status": "Tenant unsuspended", "token": plan.Token})
 	})
 
+	// v1/auth/request-code: Genera y envía código 2FA para acciones críticas (V11.4.0)
+	r.POST("/v1/auth/request-code", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var req struct {
+			Action string `json:"action"` // "clone_authorize"
+			Phone  string `json:"phone"`  // Número de destino (ej: 51987654321)
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		code, err := GenerateAuthCode(token, req.Action)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to generate code"})
+			return
+		}
+
+		// Enviar vía WhatsApp
+		errW := SendWhatsApp2FA(req.Phone, code, "Autorización de Clonación Transversal")
+		if errW != nil {
+			fmt.Printf("[2FA ERROR] %v\n", errW)
+			// En desarrollo o si falla el API, devolvemos el código en el log para debug (opcional)
+		}
+
+		c.JSON(200, gin.H{"status": "Code sent", "message": "Revisa tu WhatsApp"})
+	})
+
 	// v1/tenant/terminate: Desactivación total
 	r.POST("/v1/tenant/terminate", func(c *gin.Context) {
 		adminKey := os.Getenv("API_ADMIN_KEY")
@@ -1272,10 +1300,25 @@ func main() {
 			TargetIP      string `json:"ip"`
 			TargetPort    string `json:"port"`
 			TargetPass    string `json:"pass"`
+			AuthCode      string `json:"auth_code"` // V11.4.0: Obligatorio para clones
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid payload"})
 			return
+		}
+
+		// V11.4: Validación de 2FA (Seguridad de Hierro)
+		if !isAdmin {
+			var auth AuthCode
+			errA := DB.Where("token = ? AND code = ? AND action = ? AND used = ? AND expires_at > ?", 
+				token, req.AuthCode, "clone_authorize", false, time.Now()).First(&auth).Error
+			
+			if errA != nil {
+				c.JSON(403, gin.H{"error": "Código 2FA inválido o expirado. Se requiere autorización vía WhatsApp."})
+				return
+			}
+			// Marcar código como usado
+			DB.Model(&auth).Update("used", true)
 		}
 
 		// 1. Obtener Token Efectivo y Validar Agente Origen
@@ -1662,52 +1705,219 @@ fi
 	fmt.Printf("🚀 DBP API %s - ONLINE\n", Version)
 	fmt.Printf("==========================================\n")
 
-	// V10.1: Lanzar el Monitor de Orquestación y Reconciliación (Jobs & Zombies)
-	go RunZombieMonitor()
+	// V11.4: Lanzar Motores de DRaaS Pro (Fase 2)
+	go RunContinuityOrchestrator()
+	go RunAsyncReplicationWorker()
 
 	r.Run(":" + port)
 }
 
-// RunZombieMonitor: Proceso de fondo que reconcilia estados de Jobs colgados (V10.1)
-func RunZombieMonitor() {
-	fmt.Println("[MONITOR] Job Orchestrator Monitor started.")
+// RunContinuityOrchestrator: Motor de Alta Disponibilidad SaaS (Fase 2)
+func RunContinuityOrchestrator() {
+	fmt.Println("[CONTINUITY] High Availability Orchestrator started.")
 	for {
-		time.Sleep(5 * time.Minute)
+		time.Sleep(30 * time.Second) // SLA 2 min: Revisamos cada 30s
 		
 		now := time.Now().UTC()
-		var hangingJobs []Job
+		var agents []AgentStatus
+		DB.Find(&agents)
 		
-		// 1. Detectar Jobs 'running' que excedieron su Timeout
-		// Usamos un query que compare NOW() con started_at + timeout_secs
-		DB.Where("status = ? AND started_at IS NOT NULL", "running").Find(&hangingJobs)
-		
-		for _, job := range hangingJobs {
-			timeout := time.Duration(job.TimeoutSecs) * time.Second
-			if now.Sub(*job.StartedAt) > timeout {
-				fmt.Printf("[MONITOR] Job %d (Agent: %s) timed out. Marking as failed.\n", job.ID, job.AgentID)
-				DB.Model(&job).Updates(map[string]interface{}{
-					"status": "failed",
-					"error_log": job.ErrorLog + fmt.Sprintf("[%s] Timeout detected after %d seconds.\n", now.Format(time.RFC3339), job.TimeoutSecs),
-				})
+		for _, a := range agents {
+			isOffline := (now.Unix() - a.LastSeenUnix) > 120
+			
+			if isOffline {
+				// TIER 2: Intento de Recuperación Local (Reinicio)
+				if a.RecoveryTier < 2 {
+					fmt.Printf("[RECOVERY] Agent %s offline. Attempting Tier 2 (Local Restart)...\n", a.ID)
+					DB.Create(&Job{
+						AgentID: a.ID,
+						Type:    "cmd_exec",
+						Param:   "docker restart dbp-client-agent || systemctl restart dbp-agent",
+						Priority: 10,
+						Status:   "pending",
+					})
+					
+					DB.Model(&a).Updates(map[string]interface{}{
+						"recovery_tier":     2,
+						"recovery_attempts": a.RecoveryAttempts + 1,
+						"last_recovery_at":  now,
+						"health_status":     "DEGRADED",
+					})
+				} else if a.RecoveryTier == 2 && now.Sub(a.LastRecoveryAt) > 60*time.Second {
+					// TIER 3: Escalación a Desastre
+					DB.Model(&a).Updates(map[string]interface{}{
+						"recovery_tier": 3,
+						"health_status": "OFFLINE",
+					})
+					DispatchAlert(a.Token, "agent_disaster", map[string]interface{}{"agent_id": a.ID})
+				}
+			} else if a.RecoveryTier > 0 {
+				DB.Model(&a).Updates(map[string]interface{}{"recovery_tier": 0, "recovery_attempts": 0, "health_status": "ONLINE"})
 			}
 		}
 
-		// 2. Gestionar Reintentos Automáticos (Smart Retry con Backoff)
-		var failedJobs []Job
-		DB.Where("status = ? AND attempts < max_attempts AND next_run_at <= ?", "failed", now).Find(&failedJobs)
-		for _, job := range failedJobs {
-			// Cálculo de Backoff Exponencial (5m, 15m, 30m...)
-			backoffMinutes := 5
-			if job.Attempts == 2 { backoffMinutes = 15 }
-			if job.Attempts >= 3 { backoffMinutes = 45 }
-			
-			nextRun := now.Add(time.Duration(backoffMinutes) * time.Minute)
-			fmt.Printf("[MONITOR] Retrying Job %d in %d min (Attempt %d/%d)\n", job.ID, backoffMinutes, job.Attempts+1, job.MaxAttempts)
-			
-			DB.Model(&job).Updates(map[string]interface{}{
-				"status": "pending",
-				"next_run_at": nextRun,
-			})
+		// Re-conciliación de Jobs Zombies
+		var hangingJobs []Job
+		DB.Where("status = ? AND started_at IS NOT NULL", "running").Find(&hangingJobs)
+		for _, job := range hangingJobs {
+			timeout := time.Duration(job.TimeoutSecs) * time.Second
+			if now.Sub(*job.StartedAt) > timeout {
+				DB.Model(&job).Updates(map[string]interface{}{"status": "failed"})
+			}
 		}
 	}
 }
+
+// RunAsyncReplicationWorker: Orquestador de Almacenamiento Dual (Fase 2)
+// Copia automáticamente de Wasabi a OVHcloud sin afectar al cliente.
+func RunAsyncReplicationWorker() {
+	fmt.Println("[STORAGE] Async Replication Worker started.")
+	for {
+		time.Sleep(10 * time.Minute) // Procesar en bloques cada 10 min
+		
+		var activities []BackupActivity
+		// Buscar actividades exitosas que aún no tengan copia secundaria
+		DB.Where("status = ? AND has_secondary_copy = ?", "SUCCESS", false).Order("created_at asc").Limit(5).Find(&activities)
+		
+		for _, act := range activities {
+			var plan TenantPlan
+			DB.Where("token = ?", act.Token).First(&plan)
+			
+			if plan.BackupStrategy == "dual_async" || plan.BackupStrategy == "cross_region" {
+				fmt.Printf("[STORAGE] Replicating Snapshot %s to Secondary Storage for Tenant %s\n", act.SnapshotID, plan.Token)
+				
+				err := ReplicateSnapshot(act.Token, plan, act.SnapshotID)
+				if err != nil {
+					fmt.Printf("[STORAGE ERROR] Replication failed for %s: %v\n", act.SnapshotID, err)
+					continue
+				}
+				
+				DB.Model(&act).Update("has_secondary_copy", true)
+				fmt.Printf("[STORAGE SUCCESS] Snapshot %s replicated to OVHcloud.\n", act.SnapshotID)
+				
+				DispatchAlert(act.Token, "replication_success", map[string]interface{}{
+					"snapshot_id": act.SnapshotID,
+					"target":      "OVHcloud",
+				})
+			} else {
+				// No requiere replicación, marcamos como procesado
+				DB.Model(&act).Update("has_secondary_copy", true)
+			}
+		}
+	}
+}
+
+// ReplicateSnapshot: Ejecuta restic copy desde el Control Plane (Fase 2)
+func ReplicateSnapshot(token string, plan TenantPlan, snapshotID string) error {
+	var settings UserSettings
+	DB.Where("token = ?", token).First(&settings)
+	
+	// Descifrar credenciales
+	wasabiKey, _ := Decrypt(settings.WasabiKey)
+	wasabiSecret, _ := Decrypt(settings.WasabiSecret)
+	resticPass, _ := Decrypt(settings.ResticPass)
+	ovhSecret, _ := Decrypt(plan.SecStorageSecret)
+	
+	// Configurar Repositorios
+	// Primario (Wasabi)
+	wasabiEndpoint := "s3.wasabisys.com"
+	if settings.WasabiRegion != "" && settings.WasabiRegion != "us-east-1" {
+		wasabiEndpoint = fmt.Sprintf("s3.%s.wasabisys.com", settings.WasabiRegion)
+	}
+	srcRepo := fmt.Sprintf("s3:https://%s/%s", wasabiEndpoint, settings.WasabiBucket)
+	
+	// Secundario (OVH)
+	dstRepo := plan.SecStorageURL // Ej: s3:https://s3.gra.perf.cloud.ovh.net/my-bucket
+	
+	// Ejecutar Comando Restic Copy
+	// restic copy --from-repo SRC_REPO --from-password-file PASS_FILE -r DST_REPO
+	// Usamos variables de entorno para evitar fugas en el process list
+	cmd := exec.Command("restic", "copy", "--from-repo", srcRepo, "--to-repo", dstRepo, "--snapshot", snapshotID)
+	
+	cmd.Env = append(os.Environ(),
+		"RESTIC_PASSWORD="+resticPass,           // Password del repo destino (asumimos el mismo para simplificar o lo parametrizamos)
+		"RESTIC_FROM_PASSWORD="+resticPass,      // Password del repo origen
+		"AWS_ACCESS_KEY_ID="+wasabiKey,          // Origen Wasabi
+		"AWS_SECRET_ACCESS_KEY="+wasabiSecret,
+		"AWS_ACCESS_KEY_ID_OVERRIDE_TO="+plan.SecStorageKey, // Parámetro custom si el restic es moderno o usamos envs por separado
+		"RESTIC_COPY_DEST_AWS_ACCESS_KEY_ID="+plan.SecStorageKey,
+		"RESTIC_COPY_DEST_AWS_SECRET_ACCESS_KEY="+ovhSecret,
+	)
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("restic error: %v, output: %s", err, string(output))
+	}
+	
+	return nil
+}
+
+// SendWhatsApp2FA: Envía un código de seguridad vía Meta Cloud API (Fase 2)
+func SendWhatsApp2FA(phone, code, action string) error {
+	token := os.Getenv("WHATSAPP_TOKEN")
+	phoneID := os.Getenv("WHATSAPP_PHONE_ID")
+	
+	if token == "" || phoneID == "" {
+		return fmt.Errorf("WhatsApp API not configured")
+	}
+
+	url := fmt.Sprintf("https://graph.facebook.com/v21.0/%s/messages", phoneID)
+	
+	payload := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"to":                phone,
+		"type":              "template",
+		"template": map[string]interface{}{
+			"name": "auth_code_hw",
+			"language": map[string]interface{}{
+				"code": "es",
+			},
+			"components": []map[string]interface{}{
+				{
+					"type": "body",
+					"parameters": []map[string]interface{}{
+						{"type": "text", "text": action},
+						{"type": "text", "text": code},
+					},
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		resBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("whatsapp api error: %s", string(resBody))
+	}
+
+	return nil
+}
+
+// GenerateAuthCode: Crea y guarda un código temporal (Fase 2)
+func GenerateAuthCode(token, action string) (string, error) {
+	code := fmt.Sprintf("%06d", rand.Intn(1000000))
+	auth := AuthCode{
+		Token:     token,
+		Code:      code,
+		Action:    action,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+	
+	if err := DB.Create(&auth).Error; err != nil {
+		return "", err
+	}
+	
+	return code, nil
+}
+

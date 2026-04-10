@@ -275,9 +275,16 @@ export default function ServerList({ onRestore }: ServerListProps) {
                           'bg-red-500/10 text-red-500 border-red-500/20 animate-pulse'
                         }`}>
                           {data.health_status === 'ONLINE' ? 'OPERATIVO' :
-                           data.health_status === 'DEGRADED' ? 'RIESGO DETECTADO' :
-                           'SISTEMA CAÍDO / DESASTRE'}
+                           data.health_status === 'DEGRADED' ? (data.recovery_tier === 2 ? 'RECUPERANDO...' : 'RIESGO DETECTADO') :
+                           (data.recovery_tier === 3 ? 'DESASTRE CONFIRMADO' : 'SISTEMA CAÍDO')}
                         </span>
+                        
+                        {data.recovery_tier === 2 && (
+                          <span className="flex items-center gap-1 text-[8px] text-amber-400 font-bold bg-amber-400/10 px-2 py-1 rounded-full animate-pulse border border-amber-400/20">
+                            <Activity className="w-3 h-3" /> INTENTO DE REINICIO ACTIVO
+                          </span>
+                        )}
+
                         <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-900 border border-gray-800 rounded-full">
                            <Clock className="w-3 h-3 text-emerald-500" />
                            <span className="text-[8px] text-emerald-500 font-black uppercase">RTO: {Math.round((data.est_rto_secs || 600) / 60)} min</span>

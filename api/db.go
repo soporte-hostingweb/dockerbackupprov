@@ -46,6 +46,9 @@ type AgentStatus struct {
 	EstRtoSecs         int    `json:"est_rto_secs"`        // V9.0: Recovery Time Objective estimado
 	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
 	IpAddress          string `json:"ip_address"`                  // V11.2.1: Trackear IP del nodo anfitrión
+	RecoveryTier       int    `json:"recovery_tier" gorm:"default:0"`      // V11.4.0: 0:Normal, 1:Detection, 2:Restarting, 3:Escalated
+	RecoveryAttempts   int    `json:"recovery_attempts" gorm:"default:0"`  // V11.4.0: Cantidad de intentos de reinicio local
+	LastRecoveryAt     time.Time `json:"last_recovery_at"`                 // V11.4.0: Marca de tiempo del último intento
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -131,6 +134,7 @@ type BackupActivity struct {
 	RestoreDurationSecs int `json:"restore_duration_secs"` // V9.0: Tracker de velocidad real
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
+	HasSecondaryCopy bool    `json:"has_secondary_copy" gorm:"default:false"` // V11.4.0: Replicado a OVH
 	CreatedAt    time.Time `json:"timestamp"`
 }
 
@@ -144,6 +148,10 @@ type TenantPlan struct {
 	ValidationLvl  string    `json:"validation_lvl"` // none, basic, advanced
 	WhmcsServiceID string    `json:"whmcs_service_id" gorm:"index"` // V9.1: Vínculo con WHMCS Billing
 	ClientEmail    string    `json:"client_email"`                  // V9.1: Trazabilidad comercial
+	BackupStrategy string    `json:"backup_strategy" gorm:"default:'single'"` // V11.4.0: single, dual_async, cross_region
+	SecStorageURL  string    `json:"secondary_storage_url"`    // V11.4.0: Endpoint OVHcloud
+	SecStorageKey  string    `json:"secondary_storage_key"`    // V11.4.0: Access Key OVH
+	SecStorageSecret string   `json:"secondary_storage_secret"` // V11.4.0: Secret Key OVH (Cifrado)
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -155,6 +163,17 @@ type AlertConfig struct {
 	WebhookURL string    `json:"webhook_url"`
 	Events     string    `json:"events"` // JSON string de eventos suscritos: "backup_failed", "agent_offline"
 	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// AuthCode: Códigos de autorización temporal (2FA) para acciones críticas (V11.4.0)
+type AuthCode struct {
+	ID        uint      `gorm:"primaryKey"`
+	Token     string    `gorm:"index"`
+	Code      string    `json:"code"`
+	Action    string    `json:"action"` // "clone_authorize"
+	ExpiresAt time.Time `json:"expires_at"`
+	Used      bool      `gorm:"default:false"`
+	CreatedAt time.Time
 }
 
 // InitDB inicializa la conexión a PostgreSQL y realiza las migraciones
@@ -183,8 +202,8 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{})
-	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V9.2.8)")
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{}, &AuthCode{})
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V11.4.0)")
 
 
 	DB = db
