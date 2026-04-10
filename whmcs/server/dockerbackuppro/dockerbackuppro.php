@@ -48,8 +48,8 @@ function dockerbackuppro_ClientArea(array $params)
     $config = _dockerbackuppro_GetGlobalConfig();
     $endpoint = rtrim($config['api_endpoint'] ?? 'https://api.hwperu.com', '/');
     
-    // Recuperamos el token almacenado (Simulation)
-    $token = "dbp_tenant_" . md5($params['userid'] . $params['serviceid']); 
+    // V11.3.0: Formato de Token Determinístico (SaaS Estable)
+    $token = "dbp_saas_" . $params['serviceid']; 
     
     // Inyectamos las variables al TPL
     $debug = ($params['configoption2'] == 'on') ? '&debug=1' : ''; // configoption2 es ahora Debug Mode
