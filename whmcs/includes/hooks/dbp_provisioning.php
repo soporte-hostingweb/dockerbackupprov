@@ -4,7 +4,7 @@
  */
 
 function dbp_call_api($endpoint_path, $payload) {
-    $addonSettings = Capsule::table('tbladdonmodules')
+    $addonSettings = Illuminate\Database\Capsule\Manager::table('tbladdonmodules')
         ->where('module', 'dockerbackuppro')
         ->pluck('value', 'setting');
 
@@ -35,10 +35,10 @@ function dbp_call_api($endpoint_path, $payload) {
 // 1. PROVISIÓN INICIAL
 add_hook('AfterAcceptOrder', 1, function($vars) {
     $orderId = (int)$vars['orderid'];
-    $services = Capsule::table('tblhosting')->where('orderid', $orderId)->get();
+    $services = Illuminate\Database\Capsule\Manager::table('tblhosting')->where('orderid', $orderId)->get();
     
     foreach ($services as $service) {
-        $product = Capsule::table('tblproducts')->where('id', $service->packageid)->where('servertype', 'dockerbackuppro')->first();
+        $product = Illuminate\Database\Capsule\Manager::table('tblproducts')->where('id', $service->packageid)->where('servertype', 'dockerbackuppro')->first();
         if (!$product) continue;
 
         $plan = 'basic';
@@ -52,7 +52,7 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
             $retention = 7; 
         }
 
-        $client = Capsule::table('tblclients')->where('id', $service->userid)->first();
+        $client = Illuminate\Database\Capsule\Manager::table('tblclients')->where('id', $service->userid)->first();
 
         $res = dbp_call_api('/v1/whmcs/provision', [
             'service_id'     => (string)$service->id,
@@ -67,7 +67,7 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
             logActivity("[DBP] Provisión exitosa para Servicio #{$service->id}. Token: {$token}");
             
             // Guardar token en Custom Field (Asumimos ID 1 para 'Token')
-            // Capsule::table('tblcustomfieldsvalues')->updateOrInsert(...)
+            // Illuminate\Database\Capsule\Manager::table('tblcustomfieldsvalues')->updateOrInsert(...)
         }
     }
 });
@@ -75,9 +75,9 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
 // 2. CAMBIO DE PLAN (Upgrade/Downgrade)
 add_hook('AfterProductUpgrade', 1, function($vars) {
     $upgradeId = $vars['upgradeid'];
-    $upgrade = Capsule::table('tblupgrades')->where('id', $upgradeId)->first();
-    $service = Capsule::table('tblhosting')->where('id', $upgrade->relid)->first();
-    $product = Capsule::table('tblproducts')->where('id', $service->packageid)->first();
+    $upgrade = Illuminate\Database\Capsule\Manager::table('tblupgrades')->where('id', $upgradeId)->first();
+    $service = Illuminate\Database\Capsule\Manager::table('tblhosting')->where('id', $upgrade->relid)->first();
+    $product = Illuminate\Database\Capsule\Manager::table('tblproducts')->where('id', $service->packageid)->first();
 
     $plan = 'basic';
     $retention = 2;
