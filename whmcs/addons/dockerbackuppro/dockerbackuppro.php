@@ -85,7 +85,8 @@ function dockerbackuppro_output($vars) {
             btn.disabled = true;
             btn.innerHTML = "<i class=\"fas fa-spinner fa-spin\"></i> Sincronizando...";
 
-            window.location.href = window.location.href + "&action=sync_saas";
+            const currentUrl = window.location.href.split("&action=sync_saas")[0];
+            window.location.href = currentUrl + "&action=sync_saas";
         }
         function testWasabi() {
             const token = "' . $masterToken . '";
