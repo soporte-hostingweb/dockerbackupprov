@@ -324,45 +324,52 @@ func main() {
 		// Mapeamos el plan comercial a un schedule técnico
 		defaultSchedule := "manual"
 		defaultRetention := 2
-		if req.Plan == "enterprise" || req.Plan == "premium" {
+		switch req.Plan {
+		case "enterprise", "premium":
 			defaultSchedule = "custom"
 			defaultRetention = 30
-		} else if req.Plan == "standard" || req.Plan == "pro" {
+		case "standard", "pro":
 			defaultSchedule = "weekly_2am"
 			defaultRetention = 7
-		} else if req.Plan == "basic" || req.Plan == "free" {
+		case "basic", "free":
 			defaultSchedule = "daily_2am_basic"
 			defaultRetention = 2
 		}
 
 		var bConfig BackupConfig
-		resB := DB.Where("token = ?", token).First(&bConfig)
-		bConfig.Token = token
+		DB.Where("token = ?", token).Limit(1).Find(&bConfig)
+		if bConfig.ID == 0 { bConfig.Token = token } 
+
 		bConfig.Schedule = defaultSchedule
 		bConfig.Retention = defaultRetention
 		if bConfig.TimeZone == "" { bConfig.TimeZone = "America/Lima" }
 		if bConfig.CustomSchedule == "" { bConfig.CustomSchedule = "1,2,3,4,5,6,7|02" }
 		
-		if resB.Error != nil {
-			DB.Create(&bConfig)
-		} else {
-			DB.Save(&bConfig)
-		}
+		DB.Save(&bConfig)
 
 		// 2. Asegurar que UserSettings exista para Wasabi
 		var settings UserSettings
-		if err := DB.Where("token = ?", token).First(&settings).Error; err != nil {
+		DB.Where("token = ?", token).Limit(1).Find(&settings)
+		if settings.ID == 0 {
 			DB.Create(&UserSettings{Token: token})
 		}
 
 		// 3. Configurar Alertas por Defecto (Habilitar todos por ser SaaS)
 		var alerts AlertConfig
-		if err := DB.Where("token = ?", token).First(&alerts).Error; err != nil {
+		DB.Where("token = ?", token).Limit(1).Find(&alerts)
+		if alerts.ID == 0 {
 			DB.Create(&AlertConfig{
 				Token:  token,
-				Events: "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed",
+				Events: "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed,provision_success",
 			})
 		}
+
+		// V11.2.6: Disparar alerta de prueba inmediata para n8n
+		DispatchAlert(token, "provision_success", map[string]interface{}{
+			"message": "SaaS Provisioning Successful",
+			"plan": req.Plan,
+			"service_id": req.ServiceID,
+		})
 
 		c.JSON(200, gin.H{
 			"status":        "success",
