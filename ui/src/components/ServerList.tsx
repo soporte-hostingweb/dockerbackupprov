@@ -215,8 +215,35 @@ export default function ServerList({ onRestore }: ServerListProps) {
   }
 
 
+  const globalScore = agentEntries.length > 0 
+    ? Math.round(agentEntries.reduce((acc, [_, a]) => acc + (a.health_score || 0), 0) / agentEntries.length)
+    : 100;
+
   return (
     <div className="grid grid-cols-1 gap-6 pb-20">
+      {/* HW CLOUD RECOVERY: INDICADOR DE CONTINUIDAD GLOBAL */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="md:col-span-2 bg-gradient-to-r from-emerald-900/20 to-transparent border border-emerald-500/20 rounded-2xl p-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Puntaje de Continuidad</h2>
+            <p className="text-gray-400 text-xs mt-1 font-medium uppercase tracking-widest">Si tu servidor muere hoy, lo levantamos en minutos</p>
+          </div>
+          <div className="text-center">
+            <span className="text-5xl font-black text-emerald-500 leading-none">{globalScore}%</span>
+            <p className="text-[10px] text-emerald-600 font-bold uppercase mt-1">SLA Operativo</p>
+          </div>
+        </div>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 flex flex-col justify-center">
+           <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck className="w-4 h-4 text-blue-500" />
+              <span className="text-xs font-bold text-gray-300 uppercase tracking-widest">Estado Garantizado</span>
+           </div>
+           <p className="text-[10px] text-gray-500 uppercase leading-relaxed font-black italic">
+             Tu infraestructura cuenta con protección Zero-Knowledge y replicación geográfica activa.
+           </p>
+        </div>
+      </div>
+
       {agentEntries.map(([id, data]) => (
         <div key={id} className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden hover:border-emerald-900/40 transition-all duration-300 shadow-2xl">
           <div 
@@ -242,13 +269,19 @@ export default function ServerList({ onRestore }: ServerListProps) {
                     </h3>
                     {data.health_status && (
                       <div className="flex items-center gap-2">
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full border ${
+                        <span className={`text-[8px] font-black px-2 py-1 rounded-full border shadow-sm ${
                           data.health_status === 'ONLINE' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
                           data.health_status === 'DEGRADED' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                          'bg-red-500/10 text-red-500 border-red-500/20'
+                          'bg-red-500/10 text-red-500 border-red-500/20 animate-pulse'
                         }`}>
-                          {data.health_status}
+                          {data.health_status === 'ONLINE' ? 'OPERATIVO' :
+                           data.health_status === 'DEGRADED' ? 'RIESGO DETECTADO' :
+                           'SISTEMA CAÍDO / DESASTRE'}
                         </span>
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-900 border border-gray-800 rounded-full">
+                           <Clock className="w-3 h-3 text-emerald-500" />
+                           <span className="text-[8px] text-emerald-500 font-black uppercase">RTO: {Math.round((data.est_rto_secs || 600) / 60)} min</span>
+                        </div>
                         {data.health_score !== undefined && (
                           <span className={`text-[9px] font-black px-2 py-0.5 rounded border italic ${
                             data.health_score >= 80 ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20' :

@@ -16,8 +16,8 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-black border-r border-gray-800 flex flex-col">
       <div className="h-16 flex items-center px-6 border-b border-gray-800 font-bold tracking-wider text-xl mt-4 mb-4 uppercase italic">
-        <DatabaseBackup className="w-6 h-6 text-emerald-500 mr-2" />
-        DBP <span className="font-light text-gray-500 ml-1 tracking-tighter">Control</span>
+        <Shield className="w-6 h-6 text-emerald-500 mr-2" />
+        HW <span className="font-light text-gray-500 ml-1 tracking-tighter">Cloud Recovery</span>
       </div>
       
       <nav className="flex-1 py-6 px-3 space-y-1">

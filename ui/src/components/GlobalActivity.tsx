@@ -43,12 +43,9 @@ export default function GlobalActivity({ token }: { token: string }) {
     <div className="bg-gray-950/50 border border-gray-900 rounded-[2rem] overflow-hidden flex flex-col h-full shadow-2xl">
       <div className="p-6 border-b border-gray-900 bg-gray-900/20 flex items-center justify-between">
         <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-                <Activity size={18} className="animate-pulse" />
-            </div>
-            <h3 className="text-xs font-black text-white uppercase italic tracking-widest">Global Activity Monitor</h3>
+            <h3 className="text-xs font-black text-white uppercase italic tracking-widest">Monitor de Continuidad Operativa</h3>
         </div>
-        <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest bg-black/40 px-2 py-1 rounded-lg border border-white/5">Real-Time</span>
+        <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest bg-black/40 px-2 py-1 rounded-lg border border-white/5">Alta Disponibilidad</span>
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">

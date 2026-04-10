@@ -11,7 +11,7 @@ if (!defined("WHMCS")) {
 function dockerbackuppro_MetaData()
 {
     return array(
-        'DisplayName' => 'Docker Backup Pro',
+        'DisplayName' => 'HW Cloud Recovery',
         'APIVersion' => '1.1',
         'RequiresServer' => false, 
     );

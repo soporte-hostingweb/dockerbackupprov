@@ -1,9 +1,9 @@
 <div class="panel panel-default">
     <div class="panel-heading">
-        <h3 class="panel-title">Docker Backup Pro - Agent Installation</h3>
+        <h3 class="panel-title">HW Cloud Recovery - Continuidad Operativa</h3>
     </div>
     <div class="panel-body">
-        <p>To protect your VPS environment, please login as <b>root</b> into your server and run the following automated installation command:</p>
+        <p>Asegura la supervivencia de tu infraestructura. Ante cualquier desastre, tu servidor puede ser restaurado en minutos utilizando el siguiente comando de activación:</p>
         
         <div class="alert alert-info" style="font-family: monospace; user-select: all; padding: 15px; margin: 15px 0;">
             {$installCommand}
