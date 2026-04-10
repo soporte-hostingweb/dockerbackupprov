@@ -22,7 +22,7 @@ import (
 )
 
 
-const Version = "V11.2.1"
+const Version = "V11.2.7"
 
 //go:embed install.sh
 var installScript []byte
@@ -71,17 +71,17 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 	go func() {
 		var config AlertConfig
 		// 1. Intentar buscar config específica para el inquilino
-		if err := DB.Where("token = ?", token).First(&config).Error; err != nil {
-			// V9.2.7 Fallback: Si no tiene config propia, usar la GLOBAL (SYSTEM_GLOBAL)
-			if errG := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&config).Error; errG != nil {
-				fmt.Printf("[WEBHOOK] Skipped: No AlertConfig found for %s or GLOBAL.\n", token)
+		found := false
+		if err := DB.Where("token = ?", token).First(&config).Error; err == nil && config.WebhookURL != "" {
+			found = true
+		}
+
+		if !found {
+			// V9.2.7/V11.2.7 Fallback: Si no existe o está vacía, usar la GLOBAL (SYSTEM_GLOBAL)
+			if errG := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&config).Error; errG != nil || config.WebhookURL == "" {
+				fmt.Printf("[WEBHOOK] Skipped: No valid Webhook URL found for %s or SYSTEM_GLOBAL.\n", token)
 				return
 			}
-		}
-		
-		if config.WebhookURL == "" {
-			fmt.Printf("[WEBHOOK] Skipped: Webhook URL is empty for token %s\n", config.Token)
-			return
 		}
 
 		// Filtrar eventos (V9.0)
@@ -491,14 +491,15 @@ func main() {
 		if err := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&alertConfig).Error; err != nil {
 			alertConfig = AlertConfig{
 				Token:      "SYSTEM_GLOBAL",
-				Events:     "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed",
+				Events:     "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed,provision_success",
 				WebhookURL: req.WebhookURL,
 			}
 			DB.Create(&alertConfig)
 		} else {
 			alertConfig.WebhookURL = req.WebhookURL
-			if alertConfig.Events == "" {
-				alertConfig.Events = "backup_success,backup_failed,backup_validation_failed,agent_offline,agent_recovered,restore_started,restore_completed"
+			// Asegurar que provision_success esté en la global si se acaba de añadir la URL
+			if !strings.Contains(alertConfig.Events, "provision_success") {
+				alertConfig.Events += ",provision_success"
 			}
 			DB.Save(&alertConfig)
 		}
