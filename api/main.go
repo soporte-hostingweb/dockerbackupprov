@@ -294,13 +294,13 @@ func StartRedisHealthWorker() {
 }
 
 // CircuitBreakerRateLimit: Middleware inteligente que alterna entre Redis y Memoria
-func CircuitBreakerRateLimit() gin.HandlerFunc {
+func CircuitBreakerRateLimit(limitNormal int, limitDegraded int) gin.HandlerFunc {
 	// 1. Preparar Stores e instancias de Limiter persistentes
 	redisStore, _ := redis.NewStore(RedisClient)
 	memoryStore := memory.NewStore()
 
-	rateNormal := limiter.Rate{Period: 1 * time.Minute, Limit: 60}
-	rateDegraded := limiter.Rate{Period: 1 * time.Minute, Limit: 20}
+	rateNormal := limiter.Rate{Period: 1 * time.Minute, Limit: int64(limitNormal)}
+	rateDegraded := limiter.Rate{Period: 1 * time.Minute, Limit: int64(limitDegraded)}
 
 	limitRedis := ginlimiter.NewMiddleware(limiter.New(redisStore, rateNormal))
 	limitMemory := ginlimiter.NewMiddleware(limiter.New(memoryStore, rateDegraded))
@@ -361,7 +361,7 @@ func main() {
 	})
 
 	// --- MIDDLEWARES GLOBALES CON CIRCUIT BREAKER (V11.6.0) ---
-	r.Use(CircuitBreakerRateLimit())
+	r.Use(CircuitBreakerRateLimit(60, 20))
 
 	// --- MONITORING ENDPOINTS ---
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -486,11 +486,8 @@ func main() {
 		})
 	})
 
-	// v1/auth/login: Autenticación con Rate Limit Estricto (5 req/min) (Fase 4)
-	loginRate := limiter.Rate{Period: 1 * time.Minute, Limit: 5}
-	loginLimiter := ginlimiter.NewMiddleware(limiter.New(store, loginRate))
-
-	r.POST("/v1/auth/login", loginLimiter, func(c *gin.Context) {
+	// v1/auth/login: Autenticación con Rate Limit Estricto y Circuit Breaker (10 -> 5 req/min)
+	r.POST("/v1/auth/login", CircuitBreakerRateLimit(10, 5), func(c *gin.Context) {
 		// Log fallos auditables
 		if c.Writer.Status() == 429 {
 			fmt.Printf("[AUDIT] RATE LIMIT BLOCKED - IP: %s (Endpoint: /login)\n", c.ClientIP())
