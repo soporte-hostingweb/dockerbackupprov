@@ -350,8 +350,10 @@ export default function DashboardPage() {
       
       <div className="flex flex-col md:flex-row justify-between items-center bg-gray-950/50 p-8 rounded-[2.5rem] border border-gray-900 shadow-2xl gap-8 shadow-emerald-950/5">
         <div className="flex flex-col">
-          <h1 className="text-3xl font-black italic tracking-tighter text-white uppercase">Docker Backup <span className="text-emerald-500">Pro</span></h1>
-          <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em] mt-1 font-black leading-none">Enterprise Infrastructure Protection Layer</p>
+          <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-white uppercase italic">
+            HW CLOUD <span className="text-blue-500">RECOVERY</span>
+          </h1>
+          <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em] mt-1 font-black leading-none">Enterprise Disaster Recovery as a Service (DRaaS)</p>
         </div>
 
         <div className="flex bg-black/40 p-2 rounded-2xl border border-gray-800">

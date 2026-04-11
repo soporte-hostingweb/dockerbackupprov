@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import "./globals.css";
 import ClientLayoutWrapper from "@/components/ClientLayoutWrapper";
+import { Metadata } from "next";
 
-export const metadata = {
-  title: "DBP | Dashboard",
-  description: "Docker Backup Pro Control Plane",
+export const metadata: Metadata = {
+  title: "HW Cloud Recovery | Orchestrator",
+  description: "HW Cloud Recovery Control Plane",
 };
 
 export default function RootLayout({

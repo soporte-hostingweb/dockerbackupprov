@@ -326,7 +326,7 @@ func main() {
 	// 0. Cargar variables de entorno
 	_ = godotenv.Load()
 
-	fmt.Println("[BOOT] Starting Docker Backup Pro Control Plane API...")
+	fmt.Println("[BOOT] Starting HW Cloud Recovery Control Plane API...")
 
 	// 1. Inicializar Base de Datos (PostgreSQL)
 	InitDB()
@@ -368,7 +368,7 @@ func main() {
 
 	// Health Check
 	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "Active", "service": "Docker Backup Pro API"})
+		c.JSON(200, gin.H{"status": "Active", "service": "HW Cloud Recovery API"})
 	})
 
 	r.GET("/install.sh", func(c *gin.Context) {
