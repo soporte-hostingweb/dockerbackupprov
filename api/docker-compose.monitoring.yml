@@ -15,13 +15,14 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
+    ports:
+      - "9095:9090" # Mapeado a 9095 para evitar conflicto con Minio (9090)
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    ports:
-      - "9095:9090" # Mapeado a 9095 para evitar conflicto con Minio (9090)
+      - '--web.external-url=https://prom.hwperu.com/'
     networks:
       - monitor-net
 
@@ -33,6 +34,9 @@ services:
       - "3010:3000" # Mapeado a 3010 para evitar conflicto con Chatwoot y otros locales
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin # Cambiar en producción
+      - GF_SERVER_DOMAIN=grafana.hwperu.com
+      - GF_SERVER_ROOT_URL=https://grafana.hwperu.com/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
