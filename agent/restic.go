@@ -52,7 +52,8 @@ func EnsureResticRepo(repo string, password string, s3Key string, s3Secret strin
 		initCmd.Env = env
 		output, initErr := initCmd.CombinedOutput()
 		if initErr != nil {
-			return fmt.Errorf("restic init failed: %v - Output: %s", initErr, string(output))
+			fmt.Printf("[RESTIC ERROR] Init failed: %v\n[OS OUTPUT] %s\n", initErr, string(output))
+			return fmt.Errorf("restic init failed: %v", initErr)
 		}
 		fmt.Println("[RESTIC] Repository successfully initialized on Wasabi S3.")
 	} else {

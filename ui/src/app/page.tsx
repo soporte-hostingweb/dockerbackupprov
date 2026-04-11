@@ -36,6 +36,7 @@ export default function DashboardPage() {
     wasabi_secret: '',
     wasabi_bucket: '',
     wasabi_region: 'us-east-1',
+    s3_endpoint: '',
     restic_password: '',
     webhook_url: '',
     webhook_events: 'backup_failed,agent_offline,restore_completed,verification_failed'
@@ -73,6 +74,7 @@ export default function DashboardPage() {
               wasabi_secret: sData.wasabi_secret || '',
               wasabi_bucket: sData.wasabi_bucket || '',
               wasabi_region: sData.wasabi_region || 'us-east-1',
+              s3_endpoint: sData.s3_endpoint || '',
               restic_password: sData.restic_password || '',
               webhook_url: sData.webhook_url || '',
               webhook_events: sData.webhook_events || 'backup_failed,agent_offline,restore_completed,verification_failed'
@@ -274,6 +276,19 @@ export default function DashboardPage() {
                       <label className="text-[10px] text-gray-500 font-black uppercase">Restic Password</label>
                       <input type="password" value={settings.restic_password} onChange={(e) => setSettings({...settings, restic_password: e.target.value})} className="w-full bg-emerald-950/10 border border-emerald-900/30 rounded-xl px-4 py-3 text-sm text-emerald-200 outline-none font-mono" />
                    </div>
+                </div>
+                <div className="space-y-2">
+                   <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-gray-500 font-black uppercase">S3 Custom Endpoint (Optional)</label>
+                      <span className="text-[9px] text-emerald-500/80 font-bold uppercase italic">No insertar s3:https://</span>
+                   </div>
+                   <input 
+                     type="text" 
+                     placeholder="s3.ca-central-1.wasabisys.com (Leave empty for Default Wasabi)" 
+                     value={settings.s3_endpoint} 
+                     onChange={(e) => setSettings({...settings, s3_endpoint: e.target.value})} 
+                     className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" 
+                   />
                 </div>
                 <button type="button" onClick={(e) => saveSettings(e, false)} disabled={savingSettings} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl transition-all shadow-xl shadow-emerald-950/40">
                     {savingSettings ? 'SYNCING...' : 'SAVE CONFIGURATION'}

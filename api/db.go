@@ -120,6 +120,7 @@ type UserSettings struct {
 	WasabiSecret string `json:"wasabi_secret"`
 	WasabiBucket string `json:"wasabi_bucket"`
 	WasabiRegion string `json:"wasabi_region"`
+	S3Endpoint   string `json:"s3_endpoint"` // V11.6.1: Soporte Universal S3
 	ResticPass   string `json:"restic_password"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -211,7 +212,7 @@ func InitDB() {
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
 	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{}, &AuthCode{})
-	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V11.4.0)")
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V11.7.0)")
 
 
 	DB = db

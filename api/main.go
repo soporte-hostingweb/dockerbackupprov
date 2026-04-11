@@ -32,7 +32,7 @@ import (
 	"github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-const Version = "V11.6.0"
+const Version = "V11.7.0"
 
 //go:embed install.sh
 var installScript []byte
@@ -95,19 +95,23 @@ var VirtualizorPlanMap = map[string]int{
 func DispatchAlert(token string, eventType string, details map[string]interface{}) {
 	go func() {
 		var config AlertConfig
-		// 1. Intentar buscar config específica para el inquilino
-		found := false
-		if err := DB.Where("token = ?", token).First(&config).Error; err == nil && config.WebhookURL != "" {
-			found = true
-		}
-
-		if !found {
-			// V9.2.7/V11.2.8 Fallback: Si no existe o está vacía, usar la GLOBAL (SYSTEM_GLOBAL)
-			config = AlertConfig{} // RESET: Evitar que GORM herede el ID del intento anterior
-			if errG := DB.Where("token = ?", "SYSTEM_GLOBAL").First(&config).Error; errG != nil || config.WebhookURL == "" {
-				fmt.Printf("[WEBHOOK] Skipped: No valid Webhook URL found for %s or SYSTEM_GLOBAL.\n", token)
+		// 1. Intentar buscar config específica para el inquilino (V11.7.0: Búsqueda Silenciosa)
+		DB.Where("token = ?", token).Limit(1).Find(&config)
+		
+		isGlobal := false
+		if config.WebhookURL == "" {
+			// 2. Fallback: Usar la GLOBAL (SYSTEM_GLOBAL)
+			DB.Where("token = ?", "SYSTEM_GLOBAL").Limit(1).Find(&config)
+			isGlobal = true
+			if config.WebhookURL == "" {
+				// Solo loggear si realmente no hay nada configurado en el sistema
+				fmt.Printf("[WEBHOOK] Critical: No Webhook URL found (Tenant: %s, Global: Missing)\n", token)
 				return
 			}
+		}
+
+		if isGlobal {
+			fmt.Printf("[TELEMETRY] Dispatching alert for %s via Master Webhook (Fallback Active)\n", token)
 		}
 
 		// Filtrar eventos (V9.0)
@@ -477,6 +481,22 @@ func main() {
 		DB.Where("token = ?", token).Limit(1).Find(&settings)
 		if settings.ID == 0 {
 			DB.Create(&UserSettings{Token: token})
+		}
+
+		// 3. V11.7.0: AUTO-PROVISIONING DE ALERTAS (Día 0 Observability)
+		var alertConfig AlertConfig
+		DB.Where("token = ?", token).Limit(1).Find(&alertConfig)
+		if alertConfig.ID == 0 {
+			// Obtener Webhook del Maestro para herencia
+			var masterConfig AlertConfig
+			DB.Where("token = ?", "SYSTEM_GLOBAL").Limit(1).Find(&masterConfig)
+			
+			DB.Create(&AlertConfig{
+				Token:      token,
+				WebhookURL: masterConfig.WebhookURL,
+				Events:     "backup_failed,agent_offline,restore_completed,verification_failed,agent_disaster",
+			})
+			fmt.Printf("[PROVISION] Auto-enabled monitoring for %s (Defaulting to Master Webhook)\n", token)
 		}
 
 		c.JSON(200, gin.H{
@@ -998,14 +1018,25 @@ func main() {
 		wasabiRegion := settings.WasabiRegion
 		if wasabiRegion == "" { wasabiRegion = "us-east-1" }
 
-		// V7.0: Aislamiento Multi-Tenant Profesional
-		endpoint := "s3.wasabisys.com"
-		if wasabiRegion != "us-east-1" {
-			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", wasabiRegion)
+		// V11.6.1: Soporte Universal S3 (Preferencia de Endpoint Personalizado)
+		endpoint := settings.S3Endpoint
+		if endpoint == "" {
+			endpoint = "s3.wasabisys.com"
+			if wasabiRegion != "us-east-1" && wasabiRegion != "" {
+				endpoint = fmt.Sprintf("s3.%s.wasabisys.com", wasabiRegion)
+			}
 		}
-		
+
 		// Estructura: BUCKET / TOKEN_CLIENTE / AGENT_ID
-		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s/%s", endpoint, wasabiBucket, effectiveToken, agentID)
+		// Aseguramos el prefijo s3:https:// para compatibilidad con Restic
+		repoPrefix := "s3:https://"
+		if strings.HasPrefix(endpoint, "http") { repoPrefix = "s3:" }
+		
+		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, endpoint, wasabiBucket, effectiveToken, agentID)
+		
+		fmt.Printf("[CONFIG] Serving Universal S3 URL to Agent %s: %s (Endpoint Source: %s)\n", agentID, fullRepo, endpoint)
+		
+		fmt.Printf("[CONFIG] Serving repo URL to Agent %s: %s (Region: %s)\n", agentID, fullRepo, wasabiRegion)
 
 		var config BackupConfig
 		if len(configs) > 0 { config = configs[0] }
@@ -1565,9 +1596,16 @@ func main() {
 		bucket := settings.WasabiBucket
 		region := settings.WasabiRegion
 		if region == "" { region = "us-east-1" }
-		endpoint := "s3.wasabisys.com"
-		if region != "us-east-1" { endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region) }
-		fullRepo := fmt.Sprintf("s3:https://%s/%s/%s/%s", endpoint, bucket, effectiveToken, req.SourceAgentID)
+		// V11.6.1: Soporte Universal S3 en Clonación
+		endpoint := settings.S3Endpoint
+		if endpoint == "" {
+			endpoint = "s3.wasabisys.com"
+			if region != "us-east-1" && region != "" { endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region) }
+		}
+		
+		repoPrefix := "s3:https://"
+		if strings.HasPrefix(endpoint, "http") { repoPrefix = "s3:" }
+		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, endpoint, bucket, effectiveToken, req.SourceAgentID)
 
 		// 4. Inyección Asíncrona (Conexión SSH y Restauración)
 		go func() {
@@ -1767,6 +1805,7 @@ fi
 		settings.Token = saveToken
 		settings.WasabiBucket = input.WasabiBucket
 		settings.WasabiRegion = input.WasabiRegion
+		settings.S3Endpoint = input.S3Endpoint // V11.6.1
 		
 		// Solo ciframos y actualizamos las llaves si no vienen vacías (V2.9.1)
 		if input.WasabiKey != "" {
@@ -1789,7 +1828,7 @@ fi
 
 		// V9.0: Guardar/Actualizar AlertConfig (Webhooks n8n)
 		var alertConfig AlertConfig
-		DB.Where("token = ?", saveToken).First(&alertConfig)
+		DB.Where("token = ?", saveToken).Limit(1).Find(&alertConfig)
 		alertConfig.Token = saveToken
 		alertConfig.WebhookURL = input.WebhookURL
 		alertConfig.Events = input.WebhookEvents
@@ -1818,6 +1857,7 @@ fi
 				"wasabi_secret": "",
 				"wasabi_bucket": "",
 				"wasabi_region": "us-east-1",
+				"s3_endpoint": "",
 				"restic_password": "",
 			})
 			return
@@ -1830,13 +1870,14 @@ fi
 
 		// V9.0: Incluir Configuración de Alertas
 		var alertConfig AlertConfig
-		_ = DB.Where("token = ?", searchToken).First(&alertConfig).Error
+		DB.Where("token = ?", searchToken).Limit(1).Find(&alertConfig)
 
 		response := UserSettingsPayload{
 			WasabiKey:     settings.WasabiKey,
 			WasabiSecret:  settings.WasabiSecret,
 			WasabiBucket:  settings.WasabiBucket,
 			WasabiRegion:  settings.WasabiRegion,
+			S3Endpoint:    settings.S3Endpoint,
 			ResticPass:    settings.ResticPass,
 			WebhookURL:    alertConfig.WebhookURL,
 			WebhookEvents: alertConfig.Events,
@@ -1863,15 +1904,24 @@ fi
 		region := input.WasabiRegion
 		if region == "" { region = "us-east-1" }
 		
-		endpoint := "s3.wasabisys.com"
-		if region != "us-east-1" {
-			endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
+		endpoint := input.S3Endpoint
+		if endpoint == "" {
+			endpoint = "s3.wasabisys.com"
+			if region != "us-east-1" {
+				endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
+			}
 		}
 
-		// Configurar Sesión S3 para Wasabi (V2.8)
+		// Compatibilidad: Asegurar https para AWS SDK
+		finalEndpoint := endpoint
+		if !strings.HasPrefix(finalEndpoint, "http") {
+			finalEndpoint = "https://" + finalEndpoint
+		}
+
+		// Configurar Sesión S3 para Universal Storage (V11.6.1)
 		s3Config := &aws.Config{
 			Credentials:      credentials.NewStaticCredentials(input.WasabiKey, input.WasabiSecret, ""),
-			Endpoint:         aws.String(fmt.Sprintf("https://%s", endpoint)),
+			Endpoint:         aws.String(finalEndpoint),
 			Region:           aws.String(region),
 			S3ForcePathStyle: aws.Bool(true), // Wasabi prefiere Path Style
 		}
@@ -1903,7 +1953,7 @@ fi
 
 		c.JSON(200, gin.H{
 			"success": true, 
-			"message": "Connection Successful! API can communicate with this Wasabi bucket.",
+			"message": "Connection Successful! API can communicate with this S3 target.",
 		})
 	})
 

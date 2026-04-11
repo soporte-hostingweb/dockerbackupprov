@@ -28,6 +28,7 @@ type UserSettingsPayload struct {
 	WasabiSecret   string `json:"wasabi_secret"`
 	WasabiBucket   string `json:"wasabi_bucket"`
 	WasabiRegion   string `json:"wasabi_region"`
+	S3Endpoint     string `json:"s3_endpoint"`
 	ResticPass     string `json:"restic_password"`
 	WebhookURL     string `json:"webhook_url"`
 	WebhookEvents  string `json:"webhook_events"` // Formato: "backup_failed,agent_offline"
