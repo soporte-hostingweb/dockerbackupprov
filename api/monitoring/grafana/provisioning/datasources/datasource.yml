@@ -1,0 +1,11 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://dbp-prometheus:9090 # Nombre del contenedor en la red monitor-net
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s

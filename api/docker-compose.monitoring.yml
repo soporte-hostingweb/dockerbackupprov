@@ -35,6 +35,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin # Cambiar en producción
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/dashboards:/var/lib/grafana/dashboards
     networks:
       - monitor-net
 

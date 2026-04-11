@@ -16,7 +16,7 @@ function dockerbackuppro_config() {
         "description" => "Portal Administrativo central para monitoreo de Agentes y Backups en Wasabi S3.",
         "author" => "HWPeru / Docker Backup Pro",
         "language" => "spanish",
-        "version" => "11.2",
+        "version" => "11.6.0",
         "fields" => [
             "master_token" => [
                 "FriendlyName" => "Master Admin Token",
