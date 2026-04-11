@@ -28,6 +28,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/ulule/limiter/v3"
 	ginlimiter "github.com/ulule/limiter/v3/drivers/middleware/gin"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 	"github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
@@ -230,10 +231,96 @@ var (
 		Help:    "Distribución de tiempos de recuperación reales",
 		Buckets: []float64{5, 10, 30, 60, 120},
 	}, []string{"tenant_id"})
+
+	// --- MÉTRICAS DE RESILIENCIA (Expert Hardening) ---
+	M_RedisUp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "dbp_redis_up",
+		Help: "Estado de salud de Redis (1: UP, 0: DOWN)",
+	})
+	M_DegradedMode = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "dbp_degraded_mode",
+		Help: "Modo degradado activo (1: ON, 0: OFF)",
+	})
+	M_RateLimitCurrent = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "dbp_rate_limit_current",
+		Help: "Valor actual del Rate Limit (60 o 20)",
+	})
+	M_FallbackTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dbp_rate_limit_fallback_total",
+		Help: "Total de veces que se usó memoria local por fallo de Redis",
+	})
+	M_BlockedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dbp_rate_limit_blocked_total",
+		Help: "Total de peticiones bloqueadas por exceso de tráfico",
+	})
+	M_RequestsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dbp_requests_total",
+		Help: "Total de peticiones procesadas por el API",
+	})
 )
 
-// --- GLOBAL STATE ---
+// --- GLOBAL STATE & CIRCUIT BREAKER ---
 var RedisClient *goredis.Client
+var RedisIsHealthy = false
+
+// StartRedisHealthWorker: Monitoriza Redis asíncronamente (Hardening)
+func StartRedisHealthWorker() {
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			err := RedisClient.Ping(ctx).Err()
+			cancel()
+
+			if err != nil {
+				if RedisIsHealthy {
+					fmt.Printf("[CIRCUIT BREAKER] Redis Connection LOST: %v. Switching to DEGRADED MODE.\n", err)
+				}
+				RedisIsHealthy = false
+				M_RedisUp.Set(0)
+				M_DegradedMode.Set(1)
+				M_RateLimitCurrent.Set(20)
+			} else {
+				if !RedisIsHealthy {
+					fmt.Println("[CIRCUIT BREAKER] Redis Connection RESTORED. Switching to NORMAL MODE.")
+				}
+				RedisIsHealthy = true
+				M_RedisUp.Set(1)
+				M_DegradedMode.Set(0)
+				M_RateLimitCurrent.Set(60)
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
+}
+
+// CircuitBreakerRateLimit: Middleware inteligente que alterna entre Redis y Memoria
+func CircuitBreakerRateLimit() gin.HandlerFunc {
+	// 1. Preparar Stores e instancias de Limiter persistentes
+	redisStore, _ := redis.NewStore(RedisClient)
+	memoryStore := memory.NewStore()
+
+	rateNormal := limiter.Rate{Period: 1 * time.Minute, Limit: 60}
+	rateDegraded := limiter.Rate{Period: 1 * time.Minute, Limit: 20}
+
+	limitRedis := ginlimiter.NewMiddleware(limiter.New(redisStore, rateNormal))
+	limitMemory := ginlimiter.NewMiddleware(limiter.New(memoryStore, rateDegraded))
+
+	return func(c *gin.Context) {
+		M_RequestsTotal.Inc()
+
+		if RedisIsHealthy {
+			limitRedis(c)
+		} else {
+			M_FallbackTotal.Inc()
+			limitMemory(c)
+		}
+		
+		// Verificar si el middleware de ulule bloqueó la petición
+		if c.IsAborted() {
+			M_BlockedTotal.Inc()
+		}
+	}
+}
 
 func main() {
 	// 0. Cargar variables de entorno
@@ -249,9 +336,9 @@ func main() {
 	RedisClient = goredis.NewClient(&goredis.Options{
 		Addr: os.Getenv("REDIS_URL"), // ej: localhost:6379 o redis:6379
 	})
-	if err := RedisClient.Ping(context.Background()).Err(); err != nil {
-		fmt.Printf("[REDIS WARNING] Could not connect: %v. Rate limiting will fallback or fail.\n", err)
-	}
+	
+	// Iniciar monitoreo asíncrono de salud (Hardening)
+	StartRedisHealthWorker()
 
 	// 1.2 Registro de Métricas Prometheus
 	// (Ya registradas globalmente vía promauto)
@@ -273,11 +360,8 @@ func main() {
 		c.Next()
 	})
 
-	// Rate Limit Global (60 req/min por IP)
-	store, _ := redis.NewStore(RedisClient)
-	globalRate := limiter.Rate{Period: 1 * time.Minute, Limit: 60}
-	globalLimiter := ginlimiter.NewMiddleware(limiter.New(store, globalRate))
-	r.Use(globalLimiter)
+	// --- MIDDLEWARES GLOBALES CON CIRCUIT BREAKER (V11.6.0) ---
+	r.Use(CircuitBreakerRateLimit())
 
 	// --- MONITORING ENDPOINTS ---
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))

@@ -13,8 +13,11 @@ services:
     env_file:
       - .env
     environment:
-      # Sobrecargamos el host apuntando al nombre del contenedor BD en la red interna de docker
       - DB_HOST=dbp-postgres
+      - REDIS_URL=dbp-redis:6379
+    networks:
+      - backend-net
+      - monitor-net
     depends_on:
       - dbp-postgres
 
@@ -31,6 +34,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-dbp_data}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend-net
     # Evitamos publicar el puerto 5432 externamente por seguridad (la API se conecta internamente)
 
   # --- AGENTE DE BACKUP (V2.9.7: Build local activado) ---
@@ -53,4 +58,12 @@ services:
 volumes:
   pgdata:
   dbp-agent-data: # Persistencia de ID para el agente (V2.4.3)
+
+networks:
+  backend-net:
+    driver: bridge
+    internal: true # Aislamiento total: Solo API <-> DB comunicados internamente
+  monitor-net:
+    external: true
+    name: api_monitor-net # Enlazamos con la red del otro stack (docker-compose.monitoring.yml)
 

@@ -3,8 +3,7 @@ services:
     image: redis:7-alpine
     container_name: dbp-redis
     restart: always
-    ports:
-      - "6390:6379" # Mapeado a 6390 para evitar conflicto con el otro Redis del sistema
+    # Puertos eliminados por seguridad (Hardening): Ahora solo accesible vía monitor-net
     networks:
       - monitor-net
 
@@ -15,8 +14,7 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
-    ports:
-      - "9095:9090" # Mapeado a 9095 para evitar conflicto con Minio (9090)
+    # Puertos eliminados por seguridad (Hardening): Ahora solo accesible vía monitor-net
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -47,6 +45,7 @@ services:
 networks:
   monitor-net:
     driver: bridge
+    internal: true
 
 volumes:
   prometheus-data:
