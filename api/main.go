@@ -1056,11 +1056,11 @@ func main() {
 		}
 		
 		var config BackupConfig
-		res := DB.Where("token = ? AND agent_id = ?", effectiveToken, req.AgentID).First(&config)
+		errFind := DB.Limit(1).Where("token = ? AND agent_id = ?", effectiveToken, req.AgentID).Find(&config).Error
 		
 		pathsJSON, _ := json.Marshal(req.Paths)
 		
-		if res.Error != nil {
+		if errFind != nil || config.ID == 0 {
 			config = BackupConfig{
 				Token:          effectiveToken,
 				AgentID:        req.AgentID,
