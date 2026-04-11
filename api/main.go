@@ -32,7 +32,7 @@ import (
 	"github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-const Version = "V11.7.0"
+const Version = "V12.0.0"
 
 //go:embed install.sh
 var installScript []byte
@@ -41,6 +41,7 @@ var installScript []byte
 type PlanPolicy struct {
 	MaxRetentionDays int
 	ValidationLvl    string // none, basic, advanced
+	IntegrityLvl     string // none, light, medium, full (V12)
 	Priority         int    // 1 (low), 2 (standard), 3 (high)
 	AllowRestoreAuto bool
 }
@@ -55,12 +56,14 @@ var PolicyEngine = map[string]PlanPolicy{
 	"standard": {
 		MaxRetentionDays: 7,
 		ValidationLvl:    "basic",
+		IntegrityLvl:     "light",
 		Priority:         2,
 		AllowRestoreAuto: true,
 	},
 	"enterprise": {
 		MaxRetentionDays: 30,
 		ValidationLvl:    "advanced",
+		IntegrityLvl:     "medium",
 		Priority:         3,
 		AllowRestoreAuto: true,
 	},
@@ -1333,6 +1336,52 @@ func main() {
 				"result":      req.Result,
 				"finished_at": &finishTime,
 			})
+
+			// V12: LÓGICA DE ENCADENAMIENTO (El Guardián Callback)
+			if job.Type == "verify_snapshot" {
+				parts := strings.Split(job.Param, "|")
+				if len(parts) >= 2 {
+					snapID := parts[0]
+					originalParam := strings.Join(parts[1:], "|")
+					
+					auditStatus := "HEALTHY"
+					if status == "failed" { auditStatus = "CORRUPTED" }
+
+					// 1. Registrar Audit Trail Persistente (V12)
+					DB.Create(&SnapshotAudit{
+						Token:      job.Token, // Necesitamos heredar el token del job
+						AgentID:    job.AgentID,
+						SnapshotID: snapID,
+						Type:       "light",
+						Status:     auditStatus,
+						Result:     req.Result,
+						CreatedAt:  time.Now().UTC(),
+					})
+
+					if status == "completed" {
+						fmt.Printf("[GUARDÍAN] Validación exitosa para %s. Lanzando restauración real...\n", snapID)
+						DB.Create(&Job{
+							AgentID:  job.AgentID,
+							Token:    job.Token,
+							Type:     "restore",
+							Param:    originalParam,
+							Priority: 10, // Máxima prioridad para el restore final
+						})
+						
+						DispatchAlert(job.Token, "restore_started", map[string]interface{}{
+							"agent_id":    job.AgentID,
+							"snapshot_id": snapID,
+						})
+					} else {
+						fmt.Printf("[GUARDÍAN] BLOQUEO: Snapshot %s corrupto. Restauración abortada.\n", snapID)
+						DispatchAlert(job.Token, "verification_failed", map[string]interface{}{
+							"agent_id":    job.AgentID,
+							"snapshot_id": snapID,
+							"error":       req.Result,
+						})
+					}
+				}
+			}
 		}
 
 		// Compatibilidad V9 (Legacy): Limpiar slots de AgentStatus para UI antigua
@@ -1730,6 +1779,7 @@ fi
 			if req.Action == "force_full" { forceType = "full" }
 			DB.Create(&Job{
 				AgentID:  id,
+				Token:    agent.Token,
 				Type:     "backup",
 				Param:    forceType,
 				Priority: policy.Priority + 1, // Prioridad extra por ser manual
@@ -1739,6 +1789,7 @@ fi
 			if req.Path != "" { param = req.SnapshotID + "|" + req.Path }
 			DB.Create(&Job{
 				AgentID:  id,
+				Token:    agent.Token,
 				Type:     "ls_snapshot",
 				Param:    param,
 				Priority: policy.Priority,
@@ -1753,27 +1804,75 @@ fi
 			// Formato Param: snapID | target | paths | autoUp | installDocker
 			param := fmt.Sprintf("%s|%s|%s|%s|%s", req.SnapshotID, req.Destination, pathsStr, autoUpStr, installDockerStr)
 			
+			// V12: COMPUERTA DE SEGURIDAD (El Guardián)
+			// No lanzamos Restore directo, lanzamos primero una Verificación
 			DB.Create(&Job{
 				AgentID:  id,
-				Type:     "restore",
-				Param:    param,
-				Priority: policy.Priority + 1, // Restauración es crítica
+				Token:    agent.Token,
+				Type:     "verify_snapshot",
+				Param:    req.SnapshotID + "|" + param, // Guardamos el param original para el callback
+				Priority: 10,                           // Prioridad Máxima (DR en progreso)
 			})
-			DispatchAlert(agent.Token, "restore_started", map[string]interface{}{
-				"agent_id":    id,
-				"snapshot_id": req.SnapshotID,
-				"target":      req.Destination,
+			
+			DB.Create(&ActivityLog{
+				Token:     agent.Token,
+				AgentID:   id,
+				Type:      "restore_init",
+				Status:    "pending",
+				Message:   fmt.Sprintf("[GUARDÍAN] Iniciando validación pre-restore para snapshot %s...", req.SnapshotID),
+				StartedAt: time.Now().UTC(),
 			})
-		}
-
-		// V4.5.8: PERSISTIR CAMBIOS (Crítico para que el heartbeat los detecte)
-		if err := DB.Save(&agent).Error; err != nil {
-			c.JSON(500, gin.H{"error": "Failed to persist action"})
-			return
 		}
 
 		c.JSON(200, gin.H{"status": "Action queued", "action": req.Action})
 	})
+
+	// V12: MODO OVERRIDE (FORCE RESTORE) CON 2FA
+		v1Agent.POST("/action/force_restore/:id", AuthMiddleware(), func(c *gin.Context) {
+			id := c.Param("id")
+			token := c.GetString("token")
+			var req struct {
+				SnapshotID  string   `json:"snapshot_id"`
+				Destination string   `json:"destination"`
+				Paths       []string `json:"paths"`
+				AuthCode    string   `json:"auth_code"`
+			}
+			c.ShouldBindJSON(&req)
+
+			// 1. Validar 2FA (Seguridad de Hierro V12)
+			var auth AuthCode
+			errA := DB.Where("token = ? AND code = ? AND action = ? AND used = ? AND expires_at > ?", 
+				token, req.AuthCode, "force_restore", false, time.Now().UTC()).First(&auth).Error
+			
+			if errA != nil {
+				c.JSON(403, gin.H{"error": "Código 2FA inválido para Bypass de Seguridad. Contacte soporte."})
+				return
+			}
+			DB.Model(&auth).Update("used", true)
+
+			// 2. Encolar Restore Directo (Sin validación)
+			pathsStr := strings.Join(req.Paths, ",")
+			param := fmt.Sprintf("%s|%s|%s|false|false", req.SnapshotID, req.Destination, pathsStr)
+			
+			DB.Create(&Job{
+				AgentID:  id,
+				Token:    token,
+				Type:     "restore",
+				Param:    param,
+				Priority: 10,
+			})
+
+			DB.Create(&ActivityLog{
+				Token:     token,
+				AgentID:   id,
+				Type:      "RECOVERY_WITH_RISK",
+				Status:    "warning",
+				Message:   fmt.Sprintf("[OVERRIDE] Usuario forzó restauración de snapshot %s (Bypass de Integridad)", req.SnapshotID),
+				StartedAt: time.Now().UTC(),
+			})
+
+			c.JSON(200, gin.H{"status": "Override Successful", "message": "Restauración forzada en curso"})
+		})
 
 
 
@@ -1975,6 +2074,7 @@ fi
 	go RunIntegrityOrchestrator()
 	go RunContinuityOrchestrator()
 	go RunAsyncReplicationWorker()
+	go RunJobWatchdog() // V12: El Verdugo (Watchdog de jobs colgados)
 
 	// Main Server
 	port := os.Getenv("PORT")
@@ -2016,6 +2116,7 @@ func RunContinuityOrchestrator() {
 					fmt.Printf("[RECOVERY] Agent %s offline. Attempting Tier 2 (Local Restart)...\n", a.ID)
 					DB.Create(&Job{
 						AgentID: a.ID,
+						Token:   a.Token,
 						Type:    "cmd_exec",
 						Param:   "docker restart dbp-client-agent || systemctl restart dbp-agent",
 						Priority: 10,
@@ -2154,36 +2255,52 @@ func RunIntegrityOrchestrator() {
 		DB.Where("node_type = 'agent'").Find(&agents)
 
 		for _, a := range agents {
-			// Calcular prioridad de chequeo según el plan (Fase 3)
+			// Calcular prioridad de chequeo según el plan (V12 SaaS Quotas)
 			var tPlan TenantPlan
 			DB.Where("token = ?", a.Token).First(&tPlan)
 			
-			interval := 30 * 24 * time.Hour // 30 días default (Basic)
-			switch tPlan.Plan {
-			case "enterprise":
-				interval = 24 * time.Hour // Diario
-			case "standard", "premium":
-				interval = 7 * 24 * time.Hour // Semanal
+			// Si el nivel de integridad es 'none', omitimos
+			if tPlan.IntegrityLvl == "none" || tPlan.IntegrityLvl == "" {
+				continue
+			}
+
+			interval := 7 * 24 * time.Hour // Semanal por defecto (Standard)
+			if tPlan.IntegrityLvl == "medium" || tPlan.IntegrityLvl == "full" {
+				interval = 24 * time.Hour // Diario (Premium/Enterprise)
 			}
 
 			if time.Since(a.LastVerifiedAt) > interval {
-				// Buscar un nodo verificador disponible
+				// Buscar un nodo verificador disponible o usar el propio agente si es light (V12 logic)
+				// Para este Release, seguiremos usando nodos verificadores para no cargar el host de producción
 				var verifier AgentStatus
 				errV := DB.Where("node_type = 'verifier' AND status = 'ONLINE'").First(&verifier).Error
 				if errV != nil {
-					fmt.Printf("[INTEGRITY] Skipping %s: No Verifier Nodes available.\n", a.ID)
+					// Fallback: Si no hay verifiers, y el plan es crítico, lo encolamos al propio agente con baja prioridad
+					if tPlan.IntegrityLvl == "medium" {
+						DB.Create(&Job{
+							AgentID:  a.ID,
+							Token:    a.Token,
+							Type:     "verify_snapshot",
+							Param:    "AUTO_INTEGRITY_CHECK", 
+							Priority: 1, // Prioridad mínima para no molestar
+						})
+					}
 					continue
 				}
 
-				// Encolar Job de Verificación
+				// Encolar Job de Verificación al Verificador
 				DB.Create(&Job{
-					AgentID:  verifier.ID, // Se asigna al verificador
+					AgentID:  verifier.ID,
+					Token:    a.Token, // Se asocia al token del cliente origen
 					Type:     "verify_integrity",
-					Param:    fmt.Sprintf("%s|%s", a.Token, a.ID), // Token y Agente a verificar
-					Priority: 5, // Alta prioridad
+					Param:    fmt.Sprintf("%s|%s|%s", a.Token, a.ID, tPlan.IntegrityLvl),
+					Priority: 5,
 				})
 				
-				fmt.Printf("[INTEGRITY] Dispatched verification for agent %s to verifier %s\n", a.ID, verifier.ID)
+				fmt.Printf("[INTEGRITY] Dispatched V12 %s check for agent %s to verifier %s\n", tPlan.IntegrityLvl, a.ID, verifier.ID)
+				
+				// Actualizar marca de tiempo para no repetir
+				DB.Model(&a).Update("last_verified_at", time.Now().UTC())
 			}
 		}
 	}
@@ -2288,3 +2405,41 @@ func GenerateAuthCode(token, action string) (string, error) {
 	return code, nil
 }
 
+// RunJobWatchdog: El Verdugo (Watchdog SaaS V12)
+// Identifica jobs en estado 'running' que han excedido su TimeoutSecs
+func RunJobWatchdog() {
+	fmt.Println("[WATCHDOG] Job Watchdog Service (El Verdugo) started.")
+	for {
+		time.Sleep(2 * time.Minute) // Revisar cada 2 minutos
+		
+		var hungJobs []Job
+		now := time.Now().UTC()
+		
+		// Buscar jobs que llevan corriendo más de su timeout configurado
+		DB.Where("status = ? AND started_at IS NOT NULL", "running").Find(&hungJobs)
+		
+		for _, job := range hungJobs {
+			if job.StartedAt == nil { continue }
+			timeoutAt := job.StartedAt.Add(time.Duration(job.TimeoutSecs) * time.Second)
+			if now.After(timeoutAt) {
+				fmt.Printf("[WATCHDOG] Job %d (%s) timed out. Marking as FAILED.\n", job.ID, job.Type)
+				
+				DB.Model(&job).Updates(map[string]interface{}{
+					"status":      "failed",
+					"result":      "TIMEOUT: Process exceeded allowed duration",
+					"finished_at": &now,
+					"error_log":   fmt.Sprintf("Watchdog detected hang after %d seconds", job.TimeoutSecs),
+				})
+				
+				// Alertar al administrador
+				var agent AgentStatus
+				DB.First(&agent, "id = ?", job.AgentID)
+				DispatchAlert(agent.Token, "job_timeout", map[string]interface{}{
+					"job_id":   job.ID,
+					"type":     job.Type,
+					"agent_id": job.AgentID,
+				})
+			}
+		}
+	}
+}

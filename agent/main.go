@@ -87,8 +87,8 @@ func main() {
 			LogInfo("[WARNING] Heartbeat failed: %v", errHeart)
 		}
 
-		// 4. PRIORIDAD: Procesar Tareas Remotas (Wizard / Restore)
-		if strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") {
+		// 4. PRIORIDAD: Procesar Tareas Remotas (Wizard / Restore / Verify)
+		if strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") || strings.HasPrefix(taskInfo, "verify_snapshot:") {
 			lastWizardActivity = time.Now() // V4.7.1: Marcar actividad para entrar en Modo Turbo
 			
 			if strings.HasPrefix(taskInfo, "ls_snapshot:") {
@@ -101,6 +101,22 @@ func main() {
 				ReportTaskResult(agentID, "ls_snapshot", string(lsResult), currentJobID)
 				LogInfo("[TASK] Snapshot listing completed and reported.")
 			}
+
+			if strings.HasPrefix(taskInfo, "verify_snapshot:") {
+				params := strings.TrimPrefix(taskInfo, "verify_snapshot:")
+				parts := strings.Split(params, "|")
+				snapID := parts[0]
+				LogInfo("[TASK] [EL GUARDIÁN] Ejecutando validación pre-restore para snapshot: %s", snapID)
+				
+				// V12: Validación rápida de integridad (metadata)
+				errV := RunResticVerify(repo, pass, key, secret)
+				
+				resMsg := "Success"
+				if errV != nil { resMsg = "Error: " + errV.Error() }
+				ReportTaskResult(agentID, "verify_snapshot", resMsg, currentJobID)
+				LogInfo("[TASK] Pre-restore validation finished with status: %s", resMsg)
+			}
+
 			if strings.HasPrefix(taskInfo, "restore:") {
 				params := strings.TrimPrefix(taskInfo, "restore:")
 				parts := strings.Split(params, "|")

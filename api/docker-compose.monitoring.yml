@@ -3,7 +3,9 @@ services:
     image: redis:7-alpine
     container_name: dbp-redis
     restart: always
-    # Puertos eliminados por seguridad (Hardening): Ahora solo accesible vía monitor-net
+    command: redis-server --appendonly yes # V12: Persistencia garantizada para colas
+    volumes:
+      - redis-data:/data
     networks:
       - monitor-net
 
@@ -48,5 +50,6 @@ networks:
     internal: true
 
 volumes:
+  redis-data: # V12: Nuevo volumen persistente
   prometheus-data:
   grafana-data:

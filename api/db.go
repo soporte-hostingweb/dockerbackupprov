@@ -95,6 +95,7 @@ type ActivityLog struct {
 // Job centraliza las tareas pendientes para el agente (ls, restore, verify, etc)
 type Job struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
+	Token       string     `gorm:"index" json:"token"` // V12: Trazabilidad por inquilino
 	AgentID     string     `gorm:"index" json:"agent_id"`
 	Type        string     `json:"type"`       // backup, restore, ls_snapshot, check
 	Param       string     `gorm:"type:text" json:"param"`      // Parámetros del comando
@@ -146,6 +147,19 @@ type BackupActivity struct {
 	CreatedAt    time.Time `json:"timestamp"`
 }
 
+// SnapshotAudit: Historial cronológico de validaciones de integridad (V12)
+type SnapshotAudit struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	Token        string    `gorm:"index" json:"token"`
+	AgentID      string    `gorm:"index" json:"agent_id"`
+	SnapshotID   string    `gorm:"index" json:"snapshot_id"`
+	Type         string    `json:"type"`   // light, full, sandbox
+	Status       string    `json:"status"` // HEALTHY, DEGRADED, CORRUPTED
+	Result       string    `gorm:"type:text" json:"result"`
+	Evidence     string    `gorm:"type:text" json:"evidence"` // logs, puertos encontrados, etc.
+	CreatedAt    time.Time `json:"timestamp"`
+}
+
 // TenantPlan: Centralización Comercial (V9.0) define los atributos del plan. Source of Truth sobre WHMCS.
 type TenantPlan struct {
 	ID             uint      `gorm:"primaryKey"`
@@ -154,6 +168,7 @@ type TenantPlan struct {
 	RetentionDays  int       `json:"retention_days"`
 	Priority       bool      `json:"priority"`
 	ValidationLvl  string    `json:"validation_lvl"` // none, basic, advanced
+	IntegrityLvl   string    `json:"integrity_lvl" gorm:"default:'none'"` // V12: none, light, medium, full
 	WhmcsServiceID string    `json:"whmcs_service_id" gorm:"index"` // V9.1: Vínculo con WHMCS Billing
 	ClientEmail    string    `json:"client_email"`                  // V9.1: Trazabilidad comercial
 	BackupStrategy string    `json:"backup_strategy" gorm:"default:'single'"` // V11.4.0: single, dual_async, cross_region
@@ -211,8 +226,8 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{}, &AuthCode{})
-	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V11.7.0)")
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{}, &AuthCode{}, &SnapshotAudit{})
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V12.0.0)")
 
 
 	DB = db
