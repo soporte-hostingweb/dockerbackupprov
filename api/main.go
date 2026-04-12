@@ -32,7 +32,7 @@ import (
 	"github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-const Version = "V12.0.0"
+const Version = "V14.0.0"
 
 //go:embed install.sh
 var installScript []byte

@@ -62,7 +62,7 @@ func RegisterActivationHandlers(r *gin.Engine) {
 				c.JSON(http.StatusOK, gin.H{
 					"status":   "re-activated",
 					"agent_id": agent.ID,
-					"api_key":  "REDACTED_USE_ORIGINAL", // En una implementación real, aquí se gestionaría la rotación o recuperación
+					"message":  "Hardware already bound. Using existing identity.",
 					"ghcr_pat": os.Getenv("GHCR_READ_PAT"),
 				})
 				return

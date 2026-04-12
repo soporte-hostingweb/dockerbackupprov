@@ -150,6 +150,7 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 		OS           string                 `json:"os"`
 		IsSyncing    bool                   `json:"is_syncing"`
 		ActivePID    int                    `json:"active_pid"`
+		Version      string                 `json:"version"`          // V14
 		LastBackupAt int64                  `json:"last_backup_unix"`
 	}{
 		AgentID:      agentID,
@@ -161,6 +162,7 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 		OS:           runtime.GOOS,
 		IsSyncing:    syncing,
 		ActivePID:    activePID,
+		Version:      Version,
 		LastBackupAt: lastBackupAt,
 	}
 
