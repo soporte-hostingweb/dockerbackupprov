@@ -46,6 +46,9 @@ type AgentStatus struct {
 	EstRtoSecs         int    `json:"est_rto_secs"`        // V9.0: Recovery Time Objective estimado
 	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
 	IpAddress          string `json:"ip_address"`                  // V11.2.1: Trackear IP del nodo anfitrión
+	Fingerprint        string `gorm:"index" json:"fingerprint"`    // V13: Huella digital hardware (SHA256)
+	ApiKey             string `json:"api_key"`                      // V13: Credencial única del agente (Hashed)
+	Version            string `json:"version" gorm:"default:'V12.0.0'"` // V14: Tracker de versión para auto-updates
 	NodeType           string `json:"node_type" gorm:"default:'agent'"` // V11.5.0: "agent" o "verifier"
 	RecoveryTier       int    `json:"recovery_tier" gorm:"default:0"`      // V11.4.0: 0:Normal, 1:Detection, 2:Restarting, 3:Escalated
 	RecoveryAttempts   int    `json:"recovery_attempts" gorm:"default:0"`  // V11.4.0: Cantidad de intentos de reinicio local
@@ -189,6 +192,18 @@ type AlertConfig struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// ActivationToken: Control de activaciones SaaS (V13)
+type ActivationToken struct {
+	ID           uint      `gorm:"primaryKey"`
+	Token        string    `gorm:"uniqueIndex" json:"token"` // dbp_saas_xxxx
+	TenantToken  string    `gorm:"index" json:"tenant_token"`
+	Status       string    `gorm:"index;default:'pending'" json:"status"` // pending, activated, expired, revoked
+	Fingerprint  string    `json:"fingerprint"`
+	AgentID      string    `json:"agent_id"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 // AuthCode: Códigos de autorización temporal (2FA) para acciones críticas (V11.4.0)
 type AuthCode struct {
 	ID        uint      `gorm:"primaryKey"`
@@ -226,8 +241,8 @@ func InitDB() {
 
 	// Auto-Migración de esquemas
 	fmt.Println("[DB] Running automatic migrations...")
-	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{}, &AuthCode{}, &SnapshotAudit{})
-	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V12.0.0)")
+	db.AutoMigrate(&AgentStatus{}, &BackupConfig{}, &UserSettings{}, &BackupActivity{}, &ActivityLog{}, &TenantPlan{}, &AlertConfig{}, &Job{}, &AuthCode{}, &SnapshotAudit{}, &ActivationToken{})
+	fmt.Println("✅ Database Migrated Successfully with SaaS Data Models (V14.0.0)")
 
 
 	DB = db

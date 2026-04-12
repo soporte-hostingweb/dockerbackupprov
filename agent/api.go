@@ -10,6 +10,15 @@ import (
 	"runtime"
 )
 
+// AgentCredentials almacena la identidad persistente (V13)
+type AgentCredentials struct {
+	AgentID     string `json:"agent_id"`
+	ApiKey      string `json:"api_key"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+var CurrentCreds AgentCredentials
+
 
 // BackupMetrics representa el payload de telemetría a enviar al Control Plane
 type BackupMetrics struct {
@@ -59,7 +68,9 @@ func ReportMetrics(metrics BackupMetrics) {
 	}
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 	req.Header.Set("Content-Type", "application/json")
 	
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -86,7 +97,9 @@ func ReportRestoreMetrics(agentID, snapshotID string, durationSecs int) {
 	})
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 	req.Header.Set("Content-Type", "application/json")
 	
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -108,7 +121,9 @@ func ReportVerification(agentID, snapshotID, status string, errors []string) {
 	})
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 	req.Header.Set("Content-Type", "application/json")
 	
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -151,7 +166,9 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 
 	payload, _ := json.Marshal(payloadObj)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 60 * time.Second}
@@ -191,7 +208,9 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 
 	LogInfo("[API] Heartbeat sent (RTT: %v). Maint: %v, Force: %s", latency, result.Maintenance, result.PendingForce)
 	
-	return result.Maintenance, result.PendingForce, 0, result.KillSync, nil
+	// V14: Soporte para actualización de versión forzada (Opcional en esta fase)
+	
+	return result.Maintenance, result.PendingForce, result.JobID, result.KillSync, nil
 }
 
 // ReportTaskResult envía el resultado de un comando al Control Plane (V10.1: Incluye JobID)
@@ -216,10 +235,12 @@ func ReportTaskResult(agentID string, task string, result string, jobID uint) {
 
 	payload, _ := json.Marshal(payloadObj)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 	req.Header.Set("Content-Type", "application/json")
 	
-	client := &http.Client{Timeout: 30 * time.Second} // El 'ls' puede ser lento
+	client := &http.Client{Timeout: 30 * time.Second}
 	_, _ = client.Do(req)
 }
 
@@ -252,7 +273,9 @@ func GetAgentConfig(agentID string) (*AgentConfigV2, error) {
 	url := fmt.Sprintf("%s/v1/agent/config?agent_id=%s", apiEndpoint, agentID)
 
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer " + os.Getenv("DBP_API_TOKEN"))
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -277,7 +300,6 @@ func ReportActivity(activityID uint, agentID string, taskType string, status str
 	apiEndpoint := os.Getenv("DBP_API_ENDPOINT")
 	if apiEndpoint == "" { apiEndpoint = "https://api.hwperu.com" }
 	url := fmt.Sprintf("%s/v1/agent/activity/report", apiEndpoint)
-	token := os.Getenv("DBP_API_TOKEN")
 
 	reqBody, _ := json.Marshal(map[string]interface{}{
 		"activity_id": activityID,
@@ -289,7 +311,9 @@ func ReportActivity(activityID uint, agentID string, taskType string, status str
 
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer " + token)
+	req.Header.Set("X-Agent-ID", CurrentCreds.AgentID)
+	req.Header.Set("X-Agent-Key", CurrentCreds.ApiKey)
+	req.Header.Set("X-Agent-Fingerprint", CurrentCreds.Fingerprint)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"strings"
@@ -107,3 +109,44 @@ func GetContainerMounts(containerName string) []string {
 }
 
 
+// GenerateFingerprint: Crea la huella digital híbrida SHA256 (V13)
+func GenerateFingerprint() string {
+	machineID := getMachineID()
+	diskID := getDiskID()
+	hostname, _ := os.Hostname()
+
+	// Fórmula: SHA256(machine-id + disk-id + hostname)
+	raw := machineID + ":" + diskID + ":" + hostname
+	hash := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(hash[:])
+}
+
+func getMachineID() string {
+	// Intentar leer desde /host_root/etc/machine-id (montaje recomendado en SaaS)
+	data, err := os.ReadFile("/host_root/etc/machine-id")
+	if err != nil {
+		// Fallback local
+		data, err = os.ReadFile("/etc/machine-id")
+	}
+	if err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	return "unknown_machine"
+}
+
+func getDiskID() string {
+	// Prioridad: Serie física del disco sda (vía /sys)
+	data, err := os.ReadFile("/host_root/sys/block/sda/device/serial")
+	if err == nil {
+		return strings.TrimSpace(string(data))
+	}
+
+	// Fallback: UUID de la partición raíz
+	cmd := exec.Command("blkid", "-s", "UUID", "-o", "value", "/dev/sda1")
+	output, err := cmd.Output()
+	if err == nil && len(output) > 0 {
+		return strings.TrimSpace(string(output))
+	}
+
+	return "unknown_disk"
+}

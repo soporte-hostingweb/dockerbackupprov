@@ -761,6 +761,9 @@ func main() {
 		c.JSON(200, gin.H{"status": "Webhook globally synced", "url": req.WebhookURL})
 	})
 
+	// --- MONTAJE DE RUTAS ---
+	RegisterActivationHandlers(r) // V13: Activación SaaS
+
 	v1Agent := r.Group("/v1/agent")
 
 	// --- ENDPOINTS DE TRADUCCIÓN (i18n) ---
@@ -2071,6 +2074,8 @@ fi
 
 	// 1.2 Inicializar Trabajadores de Fondo
 	go RunPruningWorker()
+	go RunJobWatchdog()
+	go RunTokenExpirationWorker() // V13: Auto-Expiración de Tokens
 	go RunIntegrityOrchestrator()
 	go RunContinuityOrchestrator()
 	go RunAsyncReplicationWorker()

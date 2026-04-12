@@ -32,8 +32,24 @@ func main() {
 
 	LogInfo("🚀 Docker Backup Pro Agent %s Starting...", Version)
 	
-	// Cargar persistencia si existe (V2.4)
-	agentID := GetPersistentID()
+	// 1. Cargar Credenciales V13 (Desde JSON persistente)
+	credsPath := "/app/data/agent.json"
+	data, err := os.ReadFile(credsPath)
+	if err == nil {
+		json.Unmarshal(data, &CurrentCreds)
+		LogInfo("[AUTH] Persistence loaded for AgentID: %s", CurrentCreds.AgentID)
+	} else {
+		// Fallback para desarrollo/legacy: Usar env si no existe el JSON
+		CurrentCreds.AgentID = os.Getenv("DBP_AGENT_ID")
+		CurrentCreds.ApiKey = os.Getenv("DBP_API_TOKEN")
+		LogInfo("[AUTH] Using environment fallback (Dev Mode)")
+	}
+
+	// 2. Generar huella digital de hardware actual (V13)
+	CurrentCreds.Fingerprint = GenerateFingerprint()
+	LogInfo("[AUTH] Hardware Fingerprint: %s", CurrentCreds.Fingerprint)
+
+	agentID := CurrentCreds.AgentID
 	var lastBackupUnix int64 = 0
 
 	// Loop principal (V4.7.0: Zero-Latency Interactive)
