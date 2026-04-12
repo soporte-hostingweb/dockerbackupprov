@@ -1186,6 +1186,7 @@ func main() {
 			OS           string              `json:"os"`
 			IsSyncing    bool                `json:"is_syncing"`
 			ActivePID    int                 `json:"active_pid"`
+			Version      string              `json:"version"`          // V14: Reporte de versión del agente
 			LastBackupAt int64               `json:"last_backup_unix"` // Reportado por el agente
 		}
 
@@ -1212,6 +1213,7 @@ func main() {
 			TotalSpace:   payload.TotalSpace,
 			IsSyncing:    payload.IsSyncing,
 			ActivePID:    payload.ActivePID,
+			Version:      payload.Version,
 		}
 
 		// V6.8: Protección de Inventario - Solo actualizamos si el payload no viene vacío
@@ -1237,6 +1239,14 @@ func main() {
 			agent.CmdTask = existing.CmdTask
 			agent.CmdParam = existing.CmdParam
 			agent.CmdResult = existing.CmdResult
+			
+			// --- LÓGICA DE AUTO-UPDATE (V14) ---
+			// Si el agente reporta una versión distinta a la del servidor y no tiene tareas pendientes,
+			// le enviamos un trigger de actualización (futuro)
+			if payload.Version != "" && payload.Version != Version && agent.CmdTask == "none" {
+				fmt.Printf("[SYSTEM] Agent %s is OUTDATED (Server: %s, Agent: %s). Queueing update check.\n", payload.AgentID, Version, payload.Version)
+				// Por ahora solo logueamos o marcamos para futura implementación de descarga automática
+			}
 			
 			// Si el agente reporta que está sincronizando, consumimos la instrucción (V3.4.1)
 			if payload.IsSyncing && agent.PendingForce != "none" {
