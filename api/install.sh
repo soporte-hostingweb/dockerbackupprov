@@ -44,11 +44,21 @@ if ! command -v jq &> /dev/null; then
     fi
 fi
 
-# Verificar que docker esté disponible (requerido, no auto-instalable con seguridad)
+# Verificar e instalar Docker si no está disponible
 if ! command -v docker &> /dev/null; then
-    echo "❌ Error: Docker no está instalado en este servidor."
-    echo "   Instálalo con: curl -fsSL https://get.docker.com | sh"
-    exit 1
+    echo "   ⚙️  Docker no encontrado. Instalando automáticamente..."
+    if ! command -v curl &> /dev/null; then
+        apt-get install -y -qq curl 2>/dev/null || yum install -y curl 2>/dev/null
+    fi
+    curl -fsSL https://get.docker.com | sh
+    if [ $? -ne 0 ]; then
+        echo "❌ Error: No se pudo instalar Docker automáticamente."
+        echo "   Instálalo manualmente: https://docs.docker.com/engine/install/"
+        exit 1
+    fi
+    # Habilitar y arrancar Docker
+    systemctl enable docker --now 2>/dev/null || service docker start 2>/dev/null
+    echo "✅ Docker instalado correctamente"
 fi
 
 echo "✅ Dependencias OK"
