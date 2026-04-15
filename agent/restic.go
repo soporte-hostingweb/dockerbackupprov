@@ -11,15 +11,24 @@ import (
 	"time"
 )
 
+// GlobalExcludes: Exclusiones OBLIGATORIAS para snapshots en producción.
+// Estas rutas NO DEBEN ser respaldadas bajo ningún plan (evitan errores y datos inútiles).
 var GlobalExcludes = []string{
+	// Pseudo-filesystems del kernel (nunca tienen datos reales)
+	"/host_root/proc",
+	"/host_root/sys",
+	"/host_root/dev",
+	"/host_root/run",
+	// Directorios temporales (volátiles, sin valor de recuperación)
+	"/host_root/tmp",
+	"/host_root/var/tmp",
+	// Docker internals montados (evitar recursividad de contenedores)
+	"/host_root/var/lib/docker/overlay2",
+	"/host_root/var/lib/docker/aufs",
+	// Caches genéricas
 	"*/cache/*",
-	"*/logs/*",
-	"*/tmp/*",
-	"/proc/*",
-	"/sys/*",
-	"/dev/*",
-	"/run/*",
-	"/var/lib/docker/overlay2/*",
+	"*/__pycache__/*",
+	"*/node_modules/.cache/*",
 }
 
 
@@ -62,8 +71,8 @@ func EnsureResticRepo(repo string, password string, s3Key string, s3Secret strin
 	return nil
 }
 
-// RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3 (V5.1.1: Agregada Retención)
-func RunResticBackup(paths []string, repo string, password string, s3Key string, s3Secret string, keepLast int) (string, int64, error) {
+// RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3 (V14.1: Snapshot Mode)
+func RunResticBackup(paths []string, repo string, password string, s3Key string, s3Secret string, keepLast int, snapshotMode string) (string, int64, error) {
 	if len(paths) == 0 {
 		return "", 0, fmt.Errorf("no directories selected")
 	}
@@ -77,6 +86,20 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 	}
 	if s3Secret != "" {
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
+	}
+
+	// V14.1: Modo CONSISTENT (Solo Enterprise, Opcional - Pausar servicios antes del backup)
+	// IMPORTANTE: Esto puede causar downtime. Solo se activa si el cliente lo solicita 
+	// explícitamente desde el panel (el default siempre es 'live').
+	if snapshotMode == "consistent" {
+		LogInfo("[BACKUP] Mode: CONSISTENT - Pausing containers for data integrity (Enterprise)")
+		exec.Command("/bin/sh", "-c", "chroot /host_root docker ps -q | xargs -r docker pause").Run()
+		defer func() {
+			exec.Command("/bin/sh", "-c", "chroot /host_root docker ps -q | xargs -r docker unpause").Run()
+			LogInfo("[BACKUP] Containers unpaused after consistent snapshot")
+		}()
+	} else {
+		LogInfo("[BACKUP] Mode: LIVE - Zero-downtime backup (default)")
 	}
 
 	// Limpiar decoraciones (emojis) de los paths antes de enviar a restic

@@ -250,18 +250,53 @@ func ReportTaskResult(agentID string, task string, result string, jobID uint) {
 
 
 
-// AgentConfigV2 contiene la respuesta extendida de la API (V5.1.1)
+// AgentConfigV2 contiene la respuesta extendida de la API (V14.1: Control SaaS Completo)
 type AgentConfigV2 struct {
 	Status          string   `json:"status"`
 	Paths           []string `json:"paths"`
 	Schedule        string   `json:"schedule"`
 	Retention       int      `json:"retention"`
-	TimeZone        string   `json:"timezone"`        // V7.1
-	CustomSchedule  string   `json:"custom_schedule"` // V7.2
+	TimeZone        string   `json:"timezone"`
+	CustomSchedule  string   `json:"custom_schedule"`
 	FullRepoURL     string   `json:"full_repo_url"`
 	ResticPassword  string   `json:"restic_password"`
 	WasabiKey       string   `json:"wasabi_key"`
 	WasabiSecret    string   `json:"wasabi_secret"`
+	// V14.1: Campos de Control SaaS - El Agente Solo Ejecuta, No Decide
+	ProtectionLevel string   `json:"protection_level"` // Basic, Advanced, Total
+	SnapshotMode    string   `json:"snapshot_mode"`    // live | consistent
+	IsAutoManaged   bool     `json:"is_auto_managed"`  // true = API manda, false = usuario configura
+	IsDynamic       bool     `json:"is_dynamic"`       // true = incluir todos los contenedores dinámicamente
+}
+
+// ResolveBackupPaths convierte la configuración del API a paths reales de restic.
+// El agente NUNCA decide las rutas por sí solo. Siempre lee del backend.
+// Si encuentra el sentinel [ALL_SYSTEM_ROOT], expande a la raíz del host con exclusiones de producción.
+func ResolveBackupPaths(config *AgentConfigV2) []string {
+	if config == nil {
+		return []string{}
+	}
+
+	// Buscar el sentinel de Protección Total
+	for _, p := range config.Paths {
+		if p == "[ALL_SYSTEM_ROOT]" {
+			// Snapshot completo: raíz del host montada en /host_root
+			// Las exclusiones se agregan automáticamente en restic.go (GlobalExcludes)
+			// Esto produce: restic backup /host_root --exclude /host_root/proc --exclude ...
+			LogInfo("[CONFIG] Protection Level: TOTAL - Full system snapshot via /host_root")
+			return []string{"/host_root"}
+		}
+	}
+
+	// Si dynamic y sin paths, incluir todos los contenedores detectados como [ALL_TARGETS]
+	if config.IsDynamic && len(config.Paths) == 0 {
+		LogInfo("[CONFIG] Protection Level: ADVANCED - Dynamic tracking, all containers")
+		return []string{"/host_root"}
+	}
+
+	// Paths manuales (Basic o Advanced con selección específica)
+	LogInfo("[CONFIG] Protection Level: %s - %d specific paths", config.ProtectionLevel, len(config.Paths))
+	return config.Paths
 }
 
 

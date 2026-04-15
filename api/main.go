@@ -486,7 +486,31 @@ func main() {
 			DB.Create(&UserSettings{Token: token})
 		}
 
-		// 3. V11.7.0: AUTO-PROVISIONING DE ALERTAS (Día 0 Observability)
+		// 3. V14.1: AUTO-PROVISIÓN DE CONFIGURACIÓN POR PLAN (Zero-Touch Enterprise)
+		// Para Enterprise: Pre-configurar snapshot completo con modo live y tracking dinámico
+		if req.Plan == "enterprise" {
+			enterprisePaths, _ := json.Marshal([]string{"[ALL_SYSTEM_ROOT]"}) // Sentinel que el agente interpreta como /host_root
+			var autoConfig BackupConfig
+			DB.Limit(1).Where("token = ? AND agent_id = ?", token, "__auto__").Find(&autoConfig)
+			if autoConfig.ID == 0 {
+				DB.Create(&BackupConfig{
+					Token:           token,
+					AgentID:         "__auto__", // Placeholder hasta que el agente se registre
+					Schedule:        "custom",
+					CustomSchedule:  "1,2,3,4,5,6,7|02", // Diario a las 2 AM
+					Paths:           string(enterprisePaths),
+					Retention:       30,
+					TimeZone:        "America/Lima",
+					ProtectionLevel: "Total",
+					SnapshotMode:    "live", // SIEMPRE live por defecto (Zero Downtime)
+					IsAutoManaged:   true,
+					IsDynamic:       true,
+				})
+				fmt.Printf("[PROVISION] Enterprise Auto-Config created for token: %s\n", token)
+			}
+		}
+
+		// 4. V11.7.0: AUTO-PROVISIONING DE ALERTAS (Día 0 Observability)
 		var alertConfig AlertConfig
 		DB.Where("token = ?", token).Limit(1).Find(&alertConfig)
 		if alertConfig.ID == 0 {
@@ -1051,16 +1075,21 @@ func main() {
 		if config.Paths != "" { json.Unmarshal([]byte(config.Paths), &paths) }
 
 		c.JSON(200, gin.H{
-			"status":          "success",
-			"paths":           paths,
-			"schedule":        config.Schedule,
-			"retention":       config.Retention,
-			"timezone":        config.TimeZone,
-			"custom_schedule": config.CustomSchedule,
-			"full_repo_url":   fullRepo,
-			"restic_password": resticPass,
-			"wasabi_key":      wasabiKey,
-			"wasabi_secret":   wasabiSecret,
+			"status":           "success",
+			"paths":            paths,
+			"schedule":         config.Schedule,
+			"retention":        config.Retention,
+			"timezone":         config.TimeZone,
+			"custom_schedule":  config.CustomSchedule,
+			"full_repo_url":    fullRepo,
+			"restic_password":  resticPass,
+			"wasabi_key":       wasabiKey,
+			"wasabi_secret":    wasabiSecret,
+			// V14.1: Campos de Control SaaS (El Agente Sólo Ejecuta)
+			"protection_level": config.ProtectionLevel,
+			"snapshot_mode":    config.SnapshotMode,
+			"is_auto_managed":  config.IsAutoManaged,
+			"is_dynamic":       config.IsDynamic,
 		})
 	})
 
@@ -1068,12 +1097,17 @@ func main() {
 	// V5.0/V5.1.2: Endpoint para GUARDAR la configuración (Con impersonación Admin)
 	v1Agent.POST("/config/save", AuthMiddleware(), func(c *gin.Context) {
 		var req struct {
-			AgentID        string   `json:"agent_id"`
-			Schedule       string   `json:"schedule"`
-			Paths          []string `json:"paths"`
-			Retention      int      `json:"retention"`
-			TimeZone       string   `json:"timezone"`
-			CustomSchedule string   `json:"custom_schedule"`
+			AgentID         string   `json:"agent_id"`
+			Schedule        string   `json:"schedule"`
+			Paths           []string `json:"paths"`
+			Retention       int      `json:"retention"`
+			TimeZone        string   `json:"timezone"`
+			CustomSchedule  string   `json:"custom_schedule"`
+			// V14.1: Nuevos campos de Nivel de Protección
+			ProtectionLevel string   `json:"protection_level"` // Basic, Advanced, Total
+			SnapshotMode    string   `json:"snapshot_mode"`    // live, consistent
+			IsAutoManaged   bool     `json:"is_auto_managed"`
+			IsDynamic       bool     `json:"is_dynamic"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
@@ -1098,32 +1132,48 @@ func main() {
 		pathsJSON, _ := json.Marshal(req.Paths)
 		
 		if errFind != nil || config.ID == 0 {
+			snapshotMode := req.SnapshotMode
+			if snapshotMode == "" { snapshotMode = "live" } // Default: siempre Live (Zero Downtime)
+			protLevel := req.ProtectionLevel
+			if protLevel == "" { protLevel = "Basic" }
+
 			config = BackupConfig{
-				Token:          effectiveToken,
-				AgentID:        req.AgentID,
-				Schedule:       req.Schedule,
-				Paths:          string(pathsJSON),
-				Retention:      req.Retention,
-				TimeZone:       req.TimeZone,
-				CustomSchedule: req.CustomSchedule,
+				Token:           effectiveToken,
+				AgentID:         req.AgentID,
+				Schedule:        req.Schedule,
+				Paths:           string(pathsJSON),
+				Retention:       req.Retention,
+				TimeZone:        req.TimeZone,
+				CustomSchedule:  req.CustomSchedule,
+				ProtectionLevel: protLevel,
+				SnapshotMode:    snapshotMode,
+				IsAutoManaged:   req.IsAutoManaged,
+				IsDynamic:       req.IsDynamic,
 			}
 			DB.Create(&config)
 		} else {
-			config.Schedule = req.Schedule
-			config.Paths = string(pathsJSON)
-			config.Retention = req.Retention
-			config.TimeZone = req.TimeZone
-			config.CustomSchedule = req.CustomSchedule
+			snapshotMode := req.SnapshotMode
+			if snapshotMode == "" { snapshotMode = config.SnapshotMode } // Preservar el valor existente
+			if snapshotMode == "" { snapshotMode = "live" }
+
+			protLevel := req.ProtectionLevel
+			if protLevel == "" { protLevel = config.ProtectionLevel }
+			if protLevel == "" { protLevel = "Basic" }
+
 			DB.Model(&config).Updates(BackupConfig{
-				Schedule:       req.Schedule,
-				Paths:          string(pathsJSON),
-				Retention:      req.Retention,
-				TimeZone:       req.TimeZone,
-				CustomSchedule: req.CustomSchedule,
+				Schedule:        req.Schedule,
+				Paths:           string(pathsJSON),
+				Retention:       req.Retention,
+				TimeZone:        req.TimeZone,
+				CustomSchedule:  req.CustomSchedule,
+				ProtectionLevel: protLevel,
+				SnapshotMode:    snapshotMode,
+				IsAutoManaged:   req.IsAutoManaged,
+				IsDynamic:       req.IsDynamic,
 			})
 		}
 
-		c.JSON(200, gin.H{"status": "Configuration Saved", "schedule": req.Schedule, "retention": req.Retention})
+		c.JSON(200, gin.H{"status": "Configuration Saved", "schedule": req.Schedule, "protection_level": config.ProtectionLevel, "snapshot_mode": config.SnapshotMode})
 	})
 
 

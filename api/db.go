@@ -78,6 +78,11 @@ type BackupConfig struct {
 	Retention      int    `json:"retention"` // 1, 2, 7 (V5.1.1)
 	TimeZone       string `json:"timezone" gorm:"default:America/Lima"` // V7.1: Soporte para horario local
 	CustomSchedule string `json:"custom_schedule"` // V7.2: Días y horas personalizados (ej: 1,3,5|14)
+	// --- V14.1: Campos de Nivel de Protección SaaS ---
+	ProtectionLevel string `json:"protection_level" gorm:"default:'Basic'"` // Basic, Advanced, Total
+	SnapshotMode    string `json:"snapshot_mode" gorm:"default:'live'"` // live | consistent (Enterprise only)
+	IsAutoManaged   bool   `json:"is_auto_managed" gorm:"default:false"` // true = API controla, false = usuario configura
+	IsDynamic       bool   `json:"is_dynamic" gorm:"default:false"` // true = Dynamic Tracking activo en todos los contenedores
 	CreatedAt      time.Time
 }
 

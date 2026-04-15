@@ -1,123 +1,149 @@
 #!/bin/bash
 # ==========================================================
-# 🚀 HW Cloud Recovery - SaaS Agent Installer (V14.2.0)
-# Protegido por HWPeru Architecture (ghcr.io/hwperu/dbp-agent)
+# 🚀 HW Cloud Recovery - SaaS Agent Installer (V14.2.1)
+# Distribución: ghcr.io/hwperu/dbp-agent:prod (Privado)
 # ==========================================================
+
+set -e
 
 API_ENDPOINT="https://api.hwperu.com"
 INSTALL_DIR="/opt/docker-backup-pro"
 CONFIG_FILE="$INSTALL_DIR/agent.json"
+GHCR_IMAGE="ghcr.io/hwperu/dbp-agent:prod"
 
 echo "=========================================================="
-echo "      HW CLOUD RECOVERY - SISTEMA DE ACTIVACIÓN SaaS      "
+echo "   🛡️  HW CLOUD RECOVERY - SISTEMA DE ACTIVACIÓN SaaS     "
 echo "=========================================================="
+
+# --- SOPORTE PARA TOKEN VIA PARÁMETRO ---
+# Permite: curl -sSL .../install.sh | bash -s -- --token dbp_saas_XXX
+SAAS_TOKEN=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --token) SAAS_TOKEN="$2"; shift 2;;
+        *) shift;;
+    esac
+done
 
 # 1. Verificar dependencias
+echo "[1/5] Verificando dependencias del sistema..."
 for cmd in docker curl jq sha256sum; do
     if ! command -v $cmd &> /dev/null; then
-        echo "❌ Error: Se requiere $cmd para continuar."
+        echo "❌ Error: Se requiere '$cmd'. Instálalo e intenta de nuevo."
         exit 1
     fi
 done
+echo "✅ Dependencias OK"
 
 # 2. Generación de Huella Híbrida (V14: Anti-Clonado)
-echo "[1/4] Generando Huella de Hardware..."
+echo "[2/5] Generando Huella de Hardware..."
 MACHINE_ID=$(cat /etc/machine-id 2>/dev/null || cat /var/lib/dbus/machine-id 2>/dev/null || echo "unknown")
-DISK_ID=$(lsblk -d -o SERIAL /dev/sda 2>/dev/null | tail -n 1 | xargs || blkid -s UUID -o value /dev/sda1 2>/dev/null || echo "none")
-HOSTNAME=$(hostname)
+DISK_ID=$(lsblk -d -o SERIAL /dev/sda 2>/dev/null | tail -n 1 | xargs 2>/dev/null || \
+          blkid -s UUID -o value /dev/sda1 2>/dev/null || \
+          cat /sys/class/dmi/id/product_uuid 2>/dev/null || echo "none")
+HOSTNAME_VAL=$(hostname)
 
-FINGERPRINT=$(echo -n "$MACHINE_ID:$DISK_ID:$HOSTNAME" | sha256sum | awk '{print $1}')
+FINGERPRINT=$(echo -n "${MACHINE_ID}:${DISK_ID}:${HOSTNAME_VAL}" | sha256sum | awk '{print $1}')
 echo "✅ Huella Generada: ${FINGERPRINT:0:12}..."
 
-# 3. Handshake de Activación
+# 3. Solicitar token si no fue pasado por parámetro
 echo ""
-echo -n "🔑 Ingrese su Activation Token (dbp_saas_xxxx): "
-read -r SAAS_TOKEN
+if [[ -z "$SAAS_TOKEN" ]]; then
+    echo -n "🔑 Ingrese su Activation Token (dbp_saas_xxxx): "
+    read -r SAAS_TOKEN
+fi
 
 if [[ ! $SAAS_TOKEN =~ ^dbp_saas_ ]]; then
-    echo "❌ Error: Formato de token inválido. Debe empezar con dbp_saas_."
+    echo "❌ Error: Formato de token inválido. Debe empezar con 'dbp_saas_'."
     exit 1
 fi
 
-echo "[2/4] Validando licencia con HWPeru Cloud..."
+echo "[3/5] Validando licencia con HWPeru Cloud..."
 RESPONSE=$(curl -s -X POST "$API_ENDPOINT/v1/activate" \
     -H "Content-Type: application/json" \
     -d "{
         \"token\": \"$SAAS_TOKEN\",
         \"fingerprint\": \"$FINGERPRINT\",
-        \"hostname\": \"$HOSTNAME\",
+        \"hostname\": \"$HOSTNAME_VAL\",
         \"os\": \"linux\"
     }")
 
-STATUS=$(echo "$RESPONSE" | jq -r '.status')
+STATUS=$(echo "$RESPONSE" | jq -r '.status // "error"')
 
 if [ "$STATUS" != "activated" ] && [ "$STATUS" != "re-activated" ]; then
-    ERR=$(echo "$RESPONSE" | jq -r '.error')
+    ERR=$(echo "$RESPONSE" | jq -r '.error // "Unknown error"')
     echo "❌ Error de Activación: $ERR"
     exit 1
 fi
 
 AGENT_ID=$(echo "$RESPONSE" | jq -r '.agent_id')
-API_KEY=$(echo "$RESPONSE" | jq -r '.api_key')
+API_KEY=$(echo  "$RESPONSE" | jq -r '.api_key')
 GHCR_PAT=$(echo "$RESPONSE" | jq -r '.ghcr_pat')
 
 echo "✅ Activación Exitosa. AgentID: $AGENT_ID"
 
-# 4. Preparación de Entorno y Pull Seguro (GHCR)
-echo "[3/4] Autenticando con GitHub Container Registry..."
+# 4. Autenticación GHCR y Descarga de Imagen Privada
+echo "[4/5] Autenticando con GitHub Container Registry (GHCR)..."
 mkdir -p "$INSTALL_DIR"
-echo "$GHCR_PAT" | docker login ghcr.io -u hwperu --password-stdin &> /dev/null
 
-if [ $? -ne 0 ]; then
-    echo "❌ Error: Falló la autenticación con GHCR. Contacte soporte."
+if [ -z "$GHCR_PAT" ] || [ "$GHCR_PAT" = "null" ]; then
+    echo "❌ Error: No se recibió el token de acceso a GHCR. Contacte soporte."
     exit 1
 fi
 
-echo "[4/4] Descargando imagen privada (ghcr.io/hwperu/dbp-agent:prod)..."
-docker pull ghcr.io/hwperu/dbp-agent:prod &> /dev/null
+echo "$GHCR_PAT" | docker login ghcr.io -u hwperu --password-stdin
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Falló la autenticación con GHCR."
+    exit 1
+fi
+
+echo "   Descargando imagen: $GHCR_IMAGE ..."
+docker pull "$GHCR_IMAGE"
+
+# 5. Guardar credenciales y desplegar agente
+echo "[5/5] Configurando y desplegando el agente..."
 
 # Guardar credenciales persistentes
-cat <<EOF > "$CONFIG_FILE"
+cat > "$CONFIG_FILE" <<EOF
 {
   "agent_id": "$AGENT_ID",
   "api_key": "$API_KEY",
   "fingerprint": "$FINGERPRINT"
 }
 EOF
+chmod 600 "$CONFIG_FILE"
 
-# Crear docker-compose.yml SaaS Ready
-cat <<EOF > "$INSTALL_DIR/docker-compose.yml"
+# Crear docker-compose.yml (SaaS Ready, GHCR)
+cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
 version: '3.8'
 services:
   agent:
-    image: ghcr.io/hwperu/dbp-agent:prod
+    image: $GHCR_IMAGE
     container_name: dbp-client-agent
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/host_root:rw
-      - dbp-data:/app/data
+      - /:/host_root:ro
+      - $INSTALL_DIR:/app/data
+    environment:
+      - DBP_API_ENDPOINT=$API_ENDPOINT
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  dbp-data:
-    driver: local
 EOF
 
-# Inyectar el agent.json en el volumen (Para que el agente lo lea al iniciar)
-# Como docker v13 no tiene copy a volumenes facilmente, usamos un mount temporal o simplemente lo dejamos en el host y lo montamos
-# Mejoramos el compose para montar el config directamente
-sed -i 's|- dbp-data:/app/data|- '"$INSTALL_DIR"':/app/data|g' "$INSTALL_DIR/docker-compose.yml"
-
-echo "🚀 Iniciando HW Cloud Recovery Agent..."
 cd "$INSTALL_DIR" && docker compose up -d
 
+echo ""
 echo "=========================================================="
-echo "✨ INSTALACIÓN V14 COMPLETADA ✨"
-echo "Estado: PROTEGIDO POR HWPERU SaaS"
-echo "Huella vinculada correctamente."
+echo "✨  INSTALACIÓN V14 COMPLETADA  ✨"
+echo ""
+echo "  🛡️  Agente:     $AGENT_ID"
+echo "  🖥️  Servidor:   $HOSTNAME_VAL"
+echo "  🔒  Huella:     ${FINGERPRINT:0:16}..."
+echo "  🐳  Imagen:     $GHCR_IMAGE"
+echo ""
+echo "  📊  Panel:      https://backup.hwperu.com"
 echo "=========================================================="
