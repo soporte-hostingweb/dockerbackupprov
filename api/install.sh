@@ -25,14 +25,32 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 1. Verificar dependencias
+# 1. Verificar e instalar dependencias automáticamente
 echo "[1/5] Verificando dependencias del sistema..."
-for cmd in docker curl jq sha256sum; do
-    if ! command -v $cmd &> /dev/null; then
-        echo "❌ Error: Se requiere '$cmd'. Instálalo e intenta de nuevo."
+
+# Auto-instalar jq si no está disponible
+if ! command -v jq &> /dev/null; then
+    echo "   ⚙️  Instalando jq automáticamente..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update -qq && apt-get install -y -qq jq
+    elif command -v yum &> /dev/null; then
+        yum install -y -q jq
+    elif command -v dnf &> /dev/null; then
+        dnf install -y -q jq
+    else
+        echo "❌ No se pudo instalar jq automáticamente."
+        echo "   Ejecuta manualmente: apt-get install jq (o yum install jq)"
         exit 1
     fi
-done
+fi
+
+# Verificar que docker esté disponible (requerido, no auto-instalable con seguridad)
+if ! command -v docker &> /dev/null; then
+    echo "❌ Error: Docker no está instalado en este servidor."
+    echo "   Instálalo con: curl -fsSL https://get.docker.com | sh"
+    exit 1
+fi
+
 echo "✅ Dependencias OK"
 
 # 2. Generación de Huella Híbrida (V14: Anti-Clonado)
