@@ -11,7 +11,6 @@ interface FileExplorerProps {
   isSimpleMode?: boolean; // V14.2
   detectedStack?: Record<string, boolean>; // V14.2
 }
-}
 
 export default function FileExplorer({ agentId, containerName, folders, schedule }: FileExplorerProps) {
 
