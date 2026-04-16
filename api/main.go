@@ -885,9 +885,14 @@ func main() {
 				"schedule":       config.Schedule,
 				"timezone":       config.TimeZone,
 				"custom_schedule": config.CustomSchedule,
-				"cmd_task":       a.CmdTask,
-				"cmd_param":      a.CmdParam,
 				"cmd_result":     a.CmdResult,
+				"protection_level": config.ProtectionLevel,
+				"has_docker":     a.HasDocker,
+				"detected_stack": func() map[string]bool {
+					var s map[string]bool
+					json.Unmarshal([]byte(a.DetectedStack), &s)
+					return s
+				}(),
 			}
 		}
 
@@ -1238,6 +1243,8 @@ func main() {
 			ActivePID    int                 `json:"active_pid"`
 			Version      string              `json:"version"`          // V14: Reporte de versión del agente
 			LastBackupAt int64               `json:"last_backup_unix"` // Reportado por el agente
+			HasDocker    bool                `json:"has_docker"`       // V14.2
+			DetectedStack map[string]bool    `json:"detected_stack"`   // V14.2
 		}
 
 		if err := c.ShouldBindJSON(&payload); err != nil {
@@ -1264,12 +1271,19 @@ func main() {
 			IsSyncing:    payload.IsSyncing,
 			ActivePID:    payload.ActivePID,
 			Version:      payload.Version,
+			HasDocker:    payload.HasDocker,
 		}
 
 		// V6.8: Protección de Inventario - Solo actualizamos si el payload no viene vacío
 		if len(payload.Containers) > 0 { agent.Containers = string(contJSON) }
 		if len(payload.ExplorerData) > 0 { agent.Explorer = string(expJSON) }
 		if len(payload.Snapshots) > 0 { agent.Snapshots = string(snapJSON) }
+		
+		// V14.2: Guardar stack detectado como JSON string
+		if len(payload.DetectedStack) > 0 {
+			stackJSON, _ := json.Marshal(payload.DetectedStack)
+			agent.DetectedStack = string(stackJSON)
+		}
 
 
 		if payload.LastBackupAt > 0 {

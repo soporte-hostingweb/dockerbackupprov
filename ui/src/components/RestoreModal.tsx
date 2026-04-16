@@ -173,7 +173,15 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
         <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
           {step === 1 && (
             <div className="space-y-6 animate-in slide-in-from-bottom-4">
-                <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2"><Calendar size={14} className="text-blue-500" /> Puntos de Restauración</h4>
+                <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2"><Calendar size={14} className="text-blue-500" /> Puntos de Restauración</h4>
+                    {agentData?.detected_stack?.wordpress && (
+                        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                            <Zap size={10} className="text-emerald-500" />
+                            <span className="text-[8px] text-emerald-500 font-black uppercase">WordPress Detectado</span>
+                        </div>
+                    )}
+                </div>
                 <div className="grid grid-cols-1 gap-3">
                     {sortedSnapshots.map((s: any) => (
                         <button key={s.id} onClick={() => { setSelectedSnapshot(s); fetchSnapshotContent(s.id, ""); }} className="w-full flex items-center justify-between p-5 bg-gray-900/40 border border-gray-800 rounded-3xl hover:border-blue-500 transition-all group">
@@ -188,6 +196,32 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                         </button>
                     ))}
                 </div>
+
+                {agentData?.detected_stack?.wordpress && (
+                    <div className="mt-8 p-6 bg-blue-500/5 border border-blue-500/20 rounded-[2.5rem] space-y-4 animate-in fade-in duration-700">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-400"><Globe size={20} /></div>
+                            <div>
+                                <h5 className="text-sm font-black text-white italic uppercase">Recuperación Express (1-Click)</h5>
+                                <p className="text-[10px] text-gray-500 font-medium uppercase tracking-widest">Reconstrucción total de WordPress + DB + SSL</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => {
+                                const latest = sortedSnapshots[0];
+                                if (latest) {
+                                    setSelectedSnapshot(latest);
+                                    setSelectedPaths(["[ALL_SYSTEM_ROOT]"]);
+                                    setIsOverwriteMode(true);
+                                    setStep(3);
+                                }
+                            }}
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-emerald-950/20 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Zap size={16} /> RECONSTRUIR ÚLTIMA COPIA (WP)
+                        </button>
+                    </div>
+                )}
             </div>
           )}
 

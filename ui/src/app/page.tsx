@@ -9,6 +9,7 @@ import {
 import ServerList from "@/components/ServerList";
 import RestoreModal from "@/components/RestoreModal";
 import GlobalActivity from "@/components/GlobalActivity"; // V6.3: Telemetría Global
+import Onboarding from "@/components/Onboarding"; // V14.2: Onboarding Inteligente
 
 type TabType = 'servers' | 'history' | 'settings' | 'admin';
 
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   const [agentCount, setAgentCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<any[]>([]);
+  const [onboardingAgent, setOnboardingAgent] = useState<any>(null); // V14.2
   
   // Restore Modal State
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
@@ -61,6 +63,16 @@ export default function DashboardPage() {
         const data = await respStatus.json();
         setAgents(data);
         setAgentCount(Object.keys(data).length);
+
+        // V14.2: Auto-lanzar Onboarding si detectamos un agente nuevo sin config
+        if (!onboardingAgent) {
+          const freshAgentId = Object.keys(data).find(id => {
+            const a = data[id];
+            // Si es default "Basic" y no tiene snapshots ni contenedores reportados (o es WP detectado)
+            return a.protection_level === "Basic" && (!a.paths || a.paths.length === 0);
+          });
+          if (freshAgentId) setOnboardingAgent(data[freshAgentId]);
+        }
       }
 
       if (activeTab === 'settings') {
@@ -397,6 +409,39 @@ export default function DashboardPage() {
         snapshots={restoreSnapshots}
         token={token}
       />
+
+      {onboardingAgent && (
+        <Onboarding 
+          agentId={onboardingAgent.agent_id}
+          detectedStack={onboardingAgent.detected_stack}
+          onCancel={() => setOnboardingAgent(null)}
+          onComplete={async (config) => {
+            try {
+              // Guardar configuración del preset
+              let paths = ["/host_root"]; // Default full
+              if (config.mode === 'wordpress') {
+                paths = ["[ALL_SYSTEM_ROOT]"]; // Alias para WP Preset en el backend
+              }
+              
+              await fetch(`https://api.hwperu.com/v1/agent/config/save`, {
+                method: "POST",
+                headers: { "Authorization": token, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  agent_id: onboardingAgent.agent_id,
+                  protection_level: config.protection_level,
+                  paths: paths,
+                  schedule: "daily_2am_basic",
+                  is_auto_managed: true
+                })
+              });
+              setOnboardingAgent(null);
+              fetchData();
+            } catch (err) {
+              alert("Error al guardar configuración inicial.");
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -59,6 +59,8 @@ type AgentStatus struct {
 	DRReady            bool      `json:"dr_ready" gorm:"default:false"`       // V11.5.0: Sello de "Listo para Recuperación"
 	RTOEstimate        int       `json:"rto_estimate" gorm:"default:0"`       // V11.5.0: RTO en minutos estimado
 	LastRpoMins        int       `json:"last_rpo_mins" gorm:"default:0"`      // V11.6.0: RPO real en minutos (Audit Ready)
+	HasDocker          bool      `json:"has_docker" gorm:"default:true"`      // V14.2: Indica si el host tiene Docker
+	DetectedStack      string    `gorm:"type:text" json:"detected_stack"`     // V14.2: JSON string del stack detectado (WP, MySQL, etc.)
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

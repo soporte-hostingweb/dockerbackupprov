@@ -152,6 +152,8 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 		ActivePID    int                    `json:"active_pid"`
 		Version      string                 `json:"version"`          // V14
 		LastBackupAt int64                  `json:"last_backup_unix"`
+		HasDocker    bool                   `json:"has_docker"`
+		DetectedStack StackInfo             `json:"detected_stack"`
 	}{
 		AgentID:      agentID,
 		Containers:   containers,
@@ -164,6 +166,8 @@ func ReportHeartbeat(agentID string, containers []string, explorer map[string][]
 		ActivePID:    activePID,
 		Version:      Version,
 		LastBackupAt: lastBackupAt,
+		HasDocker:    DetectStack().HasDocker,
+		DetectedStack: DetectStack(),
 	}
 
 	payload, _ := json.Marshal(payloadObj)

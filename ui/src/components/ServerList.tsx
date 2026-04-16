@@ -34,6 +34,9 @@ interface AgentStatus {
   rto_estimate?: number;
   last_rpo_mins?: number;
   node_type?: string;
+  protection_level?: string; // V14.2
+  has_docker?: boolean; // V14.2
+  detected_stack?: Record<string, boolean>; // V14.2
 }
 
 interface ServerListProps {
@@ -273,6 +276,15 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
                         {data.os || 'Linux'}
                       </span>
+                      {data.protection_level && (
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border shadow-sm ${
+                          data.protection_level === 'Advanced' ? 'bg-emerald-600 text-white border-emerald-400' :
+                          data.protection_level === 'Total' ? 'bg-blue-600 text-white border-blue-400' :
+                          'bg-gray-800 text-gray-400 border-gray-700'
+                        }`}>
+                          {data.protection_level.toUpperCase()} PROTECTION
+                        </span>
+                      )}
                     </h3>
                     {data.health_status && (
                       <div className="flex items-center gap-2">
@@ -324,6 +336,14 @@ export default function ServerList({ onRestore }: ServerListProps) {
                             )}
                           </div>
                         )}
+                        
+                        {/* V14.2: Badges de Stack Detectado */}
+                        <div className="flex items-center gap-1.5 ml-2 border-l border-gray-800 pl-3">
+                           {data.detected_stack?.wordpress && <div className="flex items-center gap-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter"><Globe size={10} /> WordPress</div>}
+                           {data.detected_stack?.mysql && <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter"><Database size={10} /> MySQL</div>}
+                           {data.detected_stack?.node && <div className="flex items-center gap-1 bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter">Node.js</div>}
+                           {data.node_type === 'bare-metal' && !data.has_docker && <div className="flex items-center gap-1 bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter">Bare-Metal</div>}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -540,6 +560,8 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       containerName={container} 
                       folders={data.explorer ? data.explorer[container] || [] : []} 
                       schedule={schedules[id] || "manual"}
+                      isSimpleMode={data.protection_level === 'Advanced' || data.protection_level === 'Total'}
+                      detectedStack={data.detected_stack}
                     />
 
 

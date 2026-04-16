@@ -1,13 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronRight, Folder, HardDrive, ShieldCheck, CheckSquare, Square, HelpCircle } from 'lucide-react';
+import { ChevronRight, Folder, HardDrive, ShieldCheck, CheckSquare, Square, HelpCircle, Globe, Database } from 'lucide-react';
 
 interface FileExplorerProps {
   agentId: string;
   containerName: string;
   folders: string[];
   schedule: string; // V2.3
+  isSimpleMode?: boolean; // V14.2
+  detectedStack?: Record<string, boolean>; // V14.2
+}
 }
 
 export default function FileExplorer({ agentId, containerName, folders, schedule }: FileExplorerProps) {
@@ -130,6 +133,24 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
           folders.map((fullPath, idx) => {
             const isAllTargets = selectedFolders.includes(`[ALL_TARGETS]:${containerName}`);
             const isSelected = isAllTargets || selectedFolders.some(f => f === fullPath);
+            
+            // V14.2: Lógica de etiquetado amigable para Modo Simple
+            let displayName = getBasename(fullPath);
+            let icon = <Folder size={18} />;
+            
+            if (isSimpleMode) {
+              if (fullPath.includes('/var/www/html') || fullPath.includes('public_html') || fullPath.includes('www')) {
+                displayName = "Sitio Web (Archivos)";
+                icon = <Globe size={18} />;
+              } else if (fullPath.includes('mysql') || fullPath.includes('db_dump')) {
+                displayName = "Base de Datos (Transaccional)";
+                icon = <Database size={18} />;
+              } else if (fullPath.includes('etc') || fullPath.includes('.conf') || fullPath.includes('nginx')) {
+                displayName = "Configuración y Seguridad";
+                icon = <ShieldCheck size={18} />;
+              }
+            }
+
             return (
               <div 
                 key={idx}
@@ -137,10 +158,12 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
                 className={`flex items-center justify-between p-2 rounded group cursor-pointer transition-colors ${isSelected ? 'bg-emerald-500/10' : 'hover:bg-emerald-500/5'}`}
               >
                 <div className="flex items-center gap-3">
-                  <Folder size={18} className={`${isSelected ? 'text-emerald-400' : 'text-gray-600'} group-hover:text-emerald-300`} />
+                  <div className={`${isSelected ? 'text-emerald-400' : 'text-gray-600'} group-hover:text-emerald-300`}>
+                    {icon}
+                  </div>
                   <div className="flex flex-col">
-                     <span className={`text-sm ${isSelected ? 'text-white font-bold' : 'text-gray-400'}`}>{getBasename(fullPath)}</span>
-                     <span className="text-[8px] text-gray-600 font-mono italic">Host: {fullPath.replace('/host_root', '')}</span>
+                     <span className={`text-sm ${isSelected ? 'text-white font-bold' : 'text-gray-400'} uppercase tracking-tighter italic`}>{displayName}</span>
+                     {!isSimpleMode && <span className="text-[8px] text-gray-600 font-mono italic">Host: {fullPath.replace('/host_root', '')}</span>}
                   </div>
                 </div>
                 <div className={`${isSelected ? 'text-emerald-400' : 'text-gray-700'} group-hover:text-emerald-400`}>
@@ -152,7 +175,7 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
         ) : (
           <div className="p-8 text-center text-gray-500 text-sm">
             <HelpCircle className="mx-auto mb-2 text-gray-700" size={24} />
-            No host volumes detected via /host_root bridge.
+            {isSimpleMode ? "Analizando componentes del stack..." : "No host volumes detected via /host_root bridge."}
           </div>
         )}
       </div>

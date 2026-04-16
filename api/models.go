@@ -20,6 +20,9 @@ type HeartbeatPayload struct {
 	ExplorerData map[string][]string `json:"explorer_data"`
 	FreeSpace    string              `json:"free_space"`
 	TotalSpace   string              `json:"total_space"`
+	Version      string              `json:"version"`
+	HasDocker    bool                `json:"has_docker"`
+	DetectedStack map[string]bool     `json:"detected_stack"`
 }
 
 // UserSettingsPayload mapea el JSON de configuración de Wasabi (V9.0 SaaS Pro)

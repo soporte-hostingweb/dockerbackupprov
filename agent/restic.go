@@ -112,6 +112,14 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 
 	fmt.Printf("[RESTIC] Starting Incremental Backup for %d targets...\n", len(cleanPaths))
 	
+	// V14.2: Pre-hook de respaldo de base de datos (Dump asíncrono)
+	dumpPath, errDump := RunDatabaseDump()
+	if errDump == nil && dumpPath != "" {
+		LogInfo("[BACKUP] Database dump attached to backup set: %s", dumpPath)
+		cleanPaths = append(cleanPaths, dumpPath)
+		defer CleanupDatabaseDump()
+	}
+	
 	finalArgs := []string{"-r", repo, "backup", "--json", "--one-file-system"}
 	for _, ex := range GlobalExcludes {
 		finalArgs = append(finalArgs, "--exclude", ex)
