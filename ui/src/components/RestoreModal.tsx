@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from "react";
-import { Server, X, RotateCcw, FolderInput, ShieldCheck, Database, HardDrive, AlertCircle, ChevronRight, Calendar, Clock, Search, FileText, Folder, Activity, CheckSquare, Square, Zap } from "lucide-react";
+import { Server, X, RotateCcw, FolderInput, ShieldCheck, Database, HardDrive, AlertCircle, ChevronRight, Calendar, Clock, Search, FileText, Folder, Activity, CheckSquare, Square, Zap, Globe } from "lucide-react";
 
 interface RestoreModalProps {
   isOpen: boolean;

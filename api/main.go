@@ -35,6 +35,13 @@ import (
 
 const Version = "V14.2.5"
 
+// V14.2.5: Constantes de Distribución Unificadas
+const (
+	GHCR_IMAGE_API   = "ghcr.io/soporte-hostingweb/dbp-api:prod"
+	GHCR_IMAGE_AGENT = "ghcr.io/soporte-hostingweb/dbp-api:prod"
+	GHCR_USER        = "soporte-hostingweb"
+)
+
 //go:embed install.sh
 var installScript []byte
 
@@ -383,56 +390,32 @@ func main() {
 		c.Data(200, "text/x-shellscript", installScript)
 	})
 
-	// V6.6: Monitor de Salud Proactivo - Detecta agentes caídos cada 60s
+	// V14.2.5: Monitor de Salud Optimizado (Senior Remediation)
 	go func() {
 		for {
-			time.Sleep(60 * time.Second)
-			var agents []AgentStatus
-			DB.Find(&agents)
-			for _, a := range agents {
-				// Si no ha reportado en más de 5 minutos y no estaba ya marcado como error/offline
-				if time.Since(a.UpdatedAt) > 5*time.Minute {
-					var lastLog ActivityLog
-					DB.Where("agent_id = ? AND type = 'OFFLINE'", a.ID).Order("started_at desc").First(&lastLog)
-					
-					// Solo logueamos si la última actividad OFFLINE fue hace más de 12 horas para no saturar
-					if lastLog.ID == 0 || time.Since(lastLog.StartedAt) > 12*time.Hour {
-						DB.Create(&ActivityLog{
-							Token:      a.Token,
-							AgentID:    a.ID,
-							Type:       "OFFLINE",
-							Status:     "error",
-							Message:    fmt.Sprintf("Agent %s lost connection (Heartbeat Timeout)", a.ID),
-							StartedAt:  time.Now(),
-							FinishedAt: time.Now(),
-						})
-						fmt.Printf("[MONITOR] Agent %s marked as OFFLINE\n", a.ID)
-						
-						// V9.0: Guardar en el nuevo HealthStatus y Disparar Alerta Universal
-						DB.Model(&a).Update("health_status", "OFFLINE")
-						DispatchAlert(a.Token, "agent_offline", map[string]interface{}{
-							"agent_id": a.ID,
-							"time_since_last_seen": time.Since(a.UpdatedAt).String(),
-						})
-					}
-				} else if a.HealthStatus == "OFFLINE" {
-					// Auto-curación HealthCheck si está vivo (V9.1)
-					DB.Model(&a).Update("health_status", "ONLINE")
-					DispatchAlert(a.Token, "agent_recovered", map[string]interface{}{
-						"agent_id": a.ID,
-						"status":   "Connection restored",
-					})
-					if a.HealthStatus == "OFFLINE" {
-						DB.Model(&a).Update("health_status", "ONLINE")
-					}
-				}
-			}
+			time.Sleep(2 * time.Minute)
 			
-			// V11.3.0 Cleanup: Eliminar Agentes "Fantasmas" o Inactivos (No vistos en 15 días)
-			// Y borrar logs antiguos de más de 30 días para mantener la DB ligera.
-			DB.Unscoped().Where("last_seen < ?", time.Now().AddDate(0, 0, -15)).Delete(&AgentStatus{})
-			DB.Unscoped().Where("started_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&ActivityLog{})
-			DB.Unscoped().Where("started_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&BackupActivity{})
+			// 1. Marcar agentes OFFLINE de forma masiva (sin loop O(N) en memoria)
+			fiveMinAgo := time.Now().Add(-5 * time.Minute)
+			DB.Model(&AgentStatus{}).
+				Where("updated_at < ? AND health_status != ?", fiveMinAgo, "OFFLINE").
+				Update("health_status", "OFFLINE")
+
+			// 2. Auto-recuperación masiva si volvieron a reportar
+			DB.Model(&AgentStatus{}).
+				Where("updated_at >= ? AND health_status = ?", fiveMinAgo, "OFFLINE").
+				Update("health_status", "ONLINE")
+
+			// 3. Cleanup: Inactividad severa (> 15 días)
+			fifteenDaysAgo := time.Now().AddDate(0, 0, -15)
+			DB.Unscoped().Where("updated_at < ?", fifteenDaysAgo).Delete(&AgentStatus{})
+			
+			// 4. Purga de logs (> 30 días)
+			thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
+			DB.Unscoped().Where("started_at < ?", thirtyDaysAgo).Delete(&ActivityLog{})
+			DB.Unscoped().Where("started_at < ?", thirtyDaysAgo).Delete(&BackupActivity{})
+			
+			fmt.Println("[WORKER] Health & Cleanup Cycle Completed (SQL Optimized)")
 		}
 	}()
 

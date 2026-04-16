@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==========================================================
-# 🚀 HW Cloud Recovery - SaaS Agent Installer (V14.2.1)
-# Distribución: ghcr.io/hwperu/dbp-agent:prod (Privado)
+# 🚀 HW Cloud Recovery - SaaS Agent Installer (V14.2.5)
+# Distribución: ghcr.io/soporte-hostingweb/dbp-api:prod
 # ==========================================================
 
 set -e
@@ -9,26 +9,28 @@ set -e
 API_ENDPOINT="https://api.hwperu.com"
 INSTALL_DIR="/opt/docker-backup-pro"
 CONFIG_FILE="$INSTALL_DIR/agent.json"
-GHCR_IMAGE="ghcr.io/hwperu/dbp-agent:prod"
+GHCR_IMAGE="ghcr.io/soporte-hostingweb/dbp-api:prod"
 
 echo "=========================================================="
 echo "   🛡️  HW CLOUD RECOVERY - SISTEMA DE ACTIVACIÓN SaaS     "
 echo "=========================================================="
 
-# --- SOPORTE PARA TOKEN VIA PARÁMETRO ---
-# Permite: curl -sSL .../install.sh | bash -s -- --token dbp_saas_XXX
+# --- SOPORTE PARA TOKEN (FLAG O POSICIONAL) ---
 SAAS_TOKEN=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --token) SAAS_TOKEN="$2"; shift 2;;
-        *) shift;;
+        *) 
+            if [[ -z "$SAAS_TOKEN" ]] && [[ $1 =~ ^(hw_pk_|dbp_saas_) ]]; then
+                SAAS_TOKEN="$1"
+            fi
+            shift;;
     esac
 done
 
 # 1. Verificar e instalar dependencias automáticamente
 echo "[1/5] Verificando dependencias del sistema..."
 
-# Auto-instalar jq si no está disponible
 if ! command -v jq &> /dev/null; then
     echo "   ⚙️  Instalando jq automáticamente..."
     if command -v apt-get &> /dev/null; then
@@ -39,24 +41,13 @@ if ! command -v jq &> /dev/null; then
         dnf install -y -q jq
     else
         echo "❌ No se pudo instalar jq automáticamente."
-        echo "   Ejecuta manualmente: apt-get install jq (o yum install jq)"
         exit 1
     fi
 fi
 
-# Verificar e instalar Docker si no está disponible
 if ! command -v docker &> /dev/null; then
     echo "   ⚙️  Docker no encontrado. Instalando automáticamente..."
-    if ! command -v curl &> /dev/null; then
-        apt-get install -y -qq curl 2>/dev/null || yum install -y curl 2>/dev/null
-    fi
     curl -fsSL https://get.docker.com | sh
-    if [ $? -ne 0 ]; then
-        echo "❌ Error: No se pudo instalar Docker automáticamente."
-        echo "   Instálalo manualmente: https://docs.docker.com/engine/install/"
-        exit 1
-    fi
-    # Habilitar y arrancar Docker
     systemctl enable docker --now 2>/dev/null || service docker start 2>/dev/null
     echo "✅ Docker instalado correctamente"
 fi
@@ -77,12 +68,13 @@ echo "✅ Huella Generada: ${FINGERPRINT:0:12}..."
 # 3. Solicitar token si no fue pasado por parámetro
 echo ""
 if [[ -z "$SAAS_TOKEN" ]]; then
-    echo -n "🔑 Ingrese su Activation Token (dbp_saas_xxxx): "
+    echo -n "🔑 Ingrese su Activation Token (hw_pk_xxxx): "
     read -r SAAS_TOKEN
 fi
 
-if [[ ! $SAAS_TOKEN =~ ^dbp_saas_ ]]; then
-    echo "❌ Error: Formato de token inválido. Debe empezar con 'dbp_saas_'."
+# V14.2.5: Regex flexible para tokens legacy y modernos
+if [[ ! $SAAS_TOKEN =~ ^hw_pk_ ]] && [[ ! $SAAS_TOKEN =~ ^dbp_saas_ ]]; then
+    echo "❌ Error: Formato de token inválido. Debe empezar con 'hw_pk_' o 'dbp_saas_'."
     exit 1
 fi
 
@@ -115,11 +107,11 @@ echo "[4/5] Autenticando con GitHub Container Registry (GHCR)..."
 mkdir -p "$INSTALL_DIR"
 
 if [ -z "$GHCR_PAT" ] || [ "$GHCR_PAT" = "null" ]; then
-    echo "❌ Error: No se recibió el token de acceso a GHCR. Contacte soporte."
+    echo "❌ Error: No se recibió credencial de acceso a GHCR."
     exit 1
 fi
 
-echo "$GHCR_PAT" | docker login ghcr.io -u hwperu --password-stdin
+echo "$GHCR_PAT" | docker login ghcr.io -u soporte-hostingweb --password-stdin
 if [ $? -ne 0 ]; then
     echo "❌ Error: Falló la autenticación con GHCR."
     exit 1
@@ -131,7 +123,6 @@ docker pull "$GHCR_IMAGE"
 # 5. Guardar credenciales y desplegar agente
 echo "[5/5] Configurando y desplegando el agente..."
 
-# Guardar credenciales persistentes
 cat > "$CONFIG_FILE" <<EOF
 {
   "agent_id": "$AGENT_ID",
@@ -141,10 +132,24 @@ cat > "$CONFIG_FILE" <<EOF
 EOF
 chmod 600 "$CONFIG_FILE"
 
-# Crear docker-compose.yml (SaaS Ready, GHCR)
+# Generar Docker Compose Completo (Agent + Watchtower)
 cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
-  # Watchtower: Sistema de Actualización Automática (V14.2+)
-  # Monitorea cambios en GHCR y actualiza el agente sin intervención
+version: '3.8'
+
+services:
+  agent:
+    image: ${GHCR_IMAGE}
+    container_name: dbp-client-agent
+    restart: always
+    network_mode: "host"
+    volumes:
+      - /:/host_root:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CONFIG_FILE}:/app/agent.json:ro
+    environment:
+      - DBP_MODE=agent
+      - DBP_API_URL=${API_ENDPOINT}
+
   watchtower:
     image: containrrr/watchtower
     container_name: dbp-watchtower
@@ -155,18 +160,13 @@ cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
     command: --interval 86400 --cleanup --include-stopped --include-restarting --revive-stopped dbp-client-agent
     depends_on:
       - agent
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
 EOF
 
 cd "$INSTALL_DIR" && docker compose up -d
 
 echo ""
 echo "=========================================================="
-echo "✨  INSTALACIÓN V14 COMPLETADA  ✨"
+echo "✨  INSTALACIÓN V14.2.5 COMPLETADA  ✨"
 echo ""
 echo "  🛡️  Agente:     $AGENT_ID"
 echo "  🖥️  Servidor:   $HOSTNAME_VAL"

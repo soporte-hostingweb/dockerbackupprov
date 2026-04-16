@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp, RotateCcw, Clock } from "lucide-react";
+import { Server, Activity, ShieldCheck, Settings, HardDrive, Database, ChevronDown, ChevronUp, RotateCcw, Clock, Globe } from "lucide-react";
 
 
 import FileExplorer from "./FileExplorer";
