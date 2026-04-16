@@ -67,7 +67,9 @@ func DetectStack() StackInfo {
 	if _, err := os.Stat("/host_root/etc/nginx"); err == nil {
 		info.Nginx = true
 	}
-	if _, err := os.Stat("/host_root/etc/apache2"); err == nil || os.Stat("/host_root/etc/httpd") == nil {
+	if _, err := os.Stat("/host_root/etc/apache2"); err == nil {
+		info.Apache = true
+	} else if _, err := os.Stat("/host_root/etc/httpd"); err == nil {
 		info.Apache = true
 	}
 

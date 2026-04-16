@@ -75,8 +75,18 @@ add_hook('AfterAcceptOrder', 1, function($vars) {
             $token = $data['token'] ?? '';
             logActivity("[DBP] Provisión exitosa para Servicio #{$service->id}. Token: {$token}");
             
-            // Guardar token en Custom Field (Asumimos ID 1 para 'Token')
-            // Illuminate\Database\Capsule\Manager::table('tblcustomfieldsvalues')->updateOrInsert(...)
+            // Persistir Token en WHMCS Custom Fields
+            $fieldId = Illuminate\Database\Capsule\Manager::table('tblcustomfields')
+                ->where('relid', $service->packageid)
+                ->where('fieldname', 'like', 'Token%')
+                ->value('id');
+
+            if ($fieldId) {
+                Illuminate\Database\Capsule\Manager::table('tblcustomfieldsvalues')->updateOrInsert(
+                    ['fieldid' => $fieldId, 'relid' => $service->id],
+                    ['value' => $token]
+                );
+            }
         }
     }
 });

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,7 +33,7 @@ import (
 	"github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-const Version = "V14.0.0"
+const Version = "V14.2.5"
 
 //go:embed install.sh
 var installScript []byte
@@ -459,8 +460,8 @@ func main() {
 			return
 		}
 
-		// V11.3.0: Token Determinístico Basado en ID de Servicio para Estabilidad SaaS
-		token := "dbp_saas_" + req.ServiceID
+		// V14.2.5: Generación de Opaque Token (Hash Seguro) para evitar predicción
+		token := fmt.Sprintf("hw_pk_%s", hex.EncodeToString(generateRandomBytes(12)))
 
 		// 1. Crear/Actualizar TenantPlan (Source of Truth Comercial)
 		policy := GetPolicyForTenant(req.Plan)
@@ -526,10 +527,20 @@ func main() {
 			fmt.Printf("[PROVISION] Auto-enabled monitoring for %s (Defaulting to Master Webhook)\n", token)
 		}
 
+		// 5. V14.2.5: AUTO-PROVISIÓN DE ACTIVACIÓN (SaaS Security)
+		DB.Create(&ActivationToken{
+			Token:       token,
+			TenantToken: token,
+			Status:      "pending",
+			ExpiresAt:   time.Now().Add(720 * time.Hour), // 30 días para provisión inicial WHMCS
+		})
+
+		fmt.Printf("[PROVISION] Provisioned Service %s with Security Token %s\n", req.ServiceID, token)
+
 		c.JSON(200, gin.H{
-			"status":        "success",
-			"token":         token,
-			"dashboard_url": "https://backup.hwperu.com/?sso=" + token,
+			"status": "success",
+			"token":  token,
+			"plan":   req.Plan,
 		})
 	})
 

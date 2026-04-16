@@ -143,23 +143,23 @@ chmod 600 "$CONFIG_FILE"
 
 # Crear docker-compose.yml (SaaS Ready, GHCR)
 cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
-version: '3.8'
-services:
-  agent:
-    image: $GHCR_IMAGE
-    container_name: dbp-client-agent
+  # Watchtower: Sistema de Actualización Automática (V14.2+)
+  # Monitorea cambios en GHCR y actualiza el agente sin intervención
+  watchtower:
+    image: containrrr/watchtower
+    container_name: dbp-watchtower
     restart: always
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/host_root:ro
-      - $INSTALL_DIR:/app/data
-    environment:
-      - DBP_API_ENDPOINT=$API_ENDPOINT
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    command: --interval 86400 --cleanup --include-stopped --include-restarting --revive-stopped dbp-client-agent
+    depends_on:
+      - agent
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
 EOF
 
 cd "$INSTALL_DIR" && docker compose up -d
