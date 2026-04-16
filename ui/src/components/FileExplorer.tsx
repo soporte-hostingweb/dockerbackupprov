@@ -12,7 +12,7 @@ interface FileExplorerProps {
   detectedStack?: Record<string, boolean>; // V14.2
 }
 
-export default function FileExplorer({ agentId, containerName, folders, schedule }: FileExplorerProps) {
+export default function FileExplorer({ agentId, containerName, folders, schedule, isSimpleMode, detectedStack }: FileExplorerProps) {
 
   const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
