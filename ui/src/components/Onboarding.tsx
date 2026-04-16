@@ -9,7 +9,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   ArrowRight,
-  Zap
+  Zap,
+  Settings
 } from "lucide-react";
 
 interface DetectedStack {
