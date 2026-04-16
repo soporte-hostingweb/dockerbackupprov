@@ -35,7 +35,7 @@ version: '3.3'
 services:
   agent:
     # La próxima vez que subas esto a la nube pública usa josebenites21/dbp-agent
-    image: josebenites21/dbp-agent:latest
+    image: ghcr.io/soporte-hostingweb/dbp-agent:prod
     container_name: dbp-client-agent
     restart: always
     environment:
