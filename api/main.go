@@ -887,6 +887,12 @@ func main() {
 					json.Unmarshal([]byte(a.DetectedStack), &s)
 					return s
 				}(),
+				// V14.2.5: Datos DB
+				"db_enabled": config.DbEnabled,
+				"db_host":    config.DbHost,
+				"db_user":    config.DbUser,
+				"db_pass":    "********", // Ocultar por seguridad en el listado masivo
+				"db_names":   config.DbNames,
 			}
 		}
 
@@ -1089,6 +1095,20 @@ func main() {
 			"snapshot_mode":    config.SnapshotMode,
 			"is_auto_managed":  config.IsAutoManaged,
 			"is_dynamic":       config.IsDynamic,
+			// V14.2.5: Credenciales DB (Descifradas para el agente)
+			"db_enabled":       config.DbEnabled,
+			"db_type":          config.DbType,
+			"db_host":          config.DbHost,
+			"db_user":          config.DbUser,
+			"db_pass": func() string {
+				pass, _ := Decrypt(config.DbPass)
+				return pass
+			}(),
+			"db_names": func() []string {
+				var names []string
+				json.Unmarshal([]byte(config.DbNames), &names)
+				return names
+			}(),
 		})
 	})
 
@@ -1107,6 +1127,13 @@ func main() {
 			SnapshotMode    string   `json:"snapshot_mode"`    // live, consistent
 			IsAutoManaged   bool     `json:"is_auto_managed"`
 			IsDynamic       bool     `json:"is_dynamic"`
+			// V14.2.5: Datos DB
+			DbEnabled bool     `json:"db_enabled"`
+			DbType    string   `json:"db_type"`
+			DbHost    string   `json:"db_host"`
+			DbUser    string   `json:"db_user"`
+			DbPass    string   `json:"db_pass"`
+			DbNames   []string `json:"db_names"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
@@ -1129,7 +1156,9 @@ func main() {
 		errFind := DB.Limit(1).Where("token = ? AND agent_id = ?", effectiveToken, req.AgentID).Find(&config).Error
 		
 		pathsJSON, _ := json.Marshal(req.Paths)
-		
+		dbNamesJSON, _ := json.Marshal(req.DbNames)
+		dbPassEnc, _ := Encrypt(req.DbPass)
+
 		if errFind != nil || config.ID == 0 {
 			snapshotMode := req.SnapshotMode
 			if snapshotMode == "" { snapshotMode = "live" } // Default: siempre Live (Zero Downtime)
@@ -1148,6 +1177,12 @@ func main() {
 				SnapshotMode:    snapshotMode,
 				IsAutoManaged:   req.IsAutoManaged,
 				IsDynamic:       req.IsDynamic,
+				DbEnabled:       req.DbEnabled,
+				DbType:          req.DbType,
+				DbHost:          req.DbHost,
+				DbUser:          req.DbUser,
+				DbPass:          dbPassEnc,
+				DbNames:         string(dbNamesJSON),
 			}
 			DB.Create(&config)
 		} else {
@@ -1169,6 +1204,17 @@ func main() {
 				SnapshotMode:    snapshotMode,
 				IsAutoManaged:   req.IsAutoManaged,
 				IsDynamic:       req.IsDynamic,
+				DbEnabled:       req.DbEnabled,
+				DbType:          req.DbType,
+				DbHost:          req.DbHost,
+				DbUser:          req.DbUser,
+				DbPass: func() string {
+					if req.DbPass != "" {
+						return dbPassEnc
+					}
+					return config.DbPass // Conservar original si viene vacío
+				}(),
+				DbNames: string(dbNamesJSON),
 			})
 		}
 

@@ -50,6 +50,11 @@ export default function ServerList({ onRestore }: ServerListProps) {
   const [schedules, setSchedules] = useState<Record<string, string>>({}); 
   const [timezones, setTimezones] = useState<Record<string, string>>({}); 
   const [customSchedules, setCustomSchedules] = useState<Record<string, string>>({}); 
+  const [dbEnabled, setDbEnabled] = useState<Record<string, boolean>>({});
+  const [dbHosts, setDbHosts] = useState<Record<string, string>>({});
+  const [dbUsers, setDbUsers] = useState<Record<string, string>>({});
+  const [dbPasses, setDbPasses] = useState<Record<string, string>>({});
+  const [dbNames, setDbNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function fetchAgents() {
@@ -68,15 +73,27 @@ export default function ServerList({ onRestore }: ServerListProps) {
           const loadedSchedules: Record<string, string> = {};
           const loadedTimezones: Record<string, string> = {};
           const loadedCustoms: Record<string, string> = {};
+          const loadedDbEnabled: Record<string, boolean> = {};
+          const loadedDbHosts: Record<string, string> = {};
+          const loadedDbUsers: Record<string, string> = {};
+          const loadedDbNames: Record<string, string> = {};
 
           Object.entries(data).forEach(([id, agent]: [string, any]) => {
              loadedSchedules[id] = agent.schedule || "manual";
              loadedTimezones[id] = agent.timezone || "America/Lima";
              loadedCustoms[id] = agent.custom_schedule || "1,2,3,4,5,6,7|02";
+             loadedDbEnabled[id] = agent.db_enabled || false;
+             loadedDbHosts[id] = agent.db_host || "localhost";
+             loadedDbUsers[id] = agent.db_user || "";
+             loadedDbNames[id] = agent.db_names ? (typeof agent.db_names === 'string' ? agent.db_names : JSON.stringify(agent.db_names)) : "[]";
           });
           setSchedules(loadedSchedules);
           setTimezones(loadedTimezones);
           setCustomSchedules(loadedCustoms);
+          setDbEnabled(loadedDbEnabled);
+          setDbHosts(loadedDbHosts);
+          setDbUsers(loadedDbUsers);
+          setDbNames(loadedDbNames);
         }
       } catch (error) {
         console.error("Error fetching agents:", error);
@@ -124,7 +141,13 @@ export default function ServerList({ onRestore }: ServerListProps) {
             retention: retention,
             paths: currentPaths,
             timezone: timezones[agentId] || "America/Lima",
-            custom_schedule: customSchedules[agentId] || "1,2,3,4,5,6,7|02"
+            custom_schedule: customSchedules[agentId] || "1,2,3,4,5,6,7|02",
+            // V14.2.5: Datos DB
+            db_enabled: dbEnabled[agentId] || false,
+            db_host:    dbHosts[agentId] || "localhost",
+            db_user:    dbUsers[agentId] || "",
+            db_pass:    dbPasses[agentId] || "", // Si está vacío, el API conserva el anterior
+            db_names:   JSON.parse(dbNames[agentId] || "[]")
          })
        });
 
@@ -537,6 +560,71 @@ export default function ServerList({ onRestore }: ServerListProps) {
                   </div>
                 </div>
               )}
+
+              {/* V14.2.5: UI DE CONFIGURACIÓN DE BASE DE DATOS */}
+              <div className="mb-8 p-6 bg-gray-900/50 border border-gray-800 rounded-2xl animate-in fade-in duration-500">
+                <div className="flex items-center gap-3 mb-6">
+                  <Database className="text-emerald-500" size={20} />
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-gray-200">Configuración de Base de Datos</h4>
+                    <p className="text-[10px] text-gray-500 uppercase">Credenciales para volcados consistentes de MySQL / MariaDB</p>
+                  </div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{dbEnabled[id] ? 'PROTECCIÓN ACTIVA' : 'PROTECCIÓN DESACTIVADA'}</span>
+                    <button 
+                      onClick={() => setDbEnabled(prev => ({ ...prev, [id]: !prev[id] }))}
+                      className={`w-12 h-6 rounded-full transition-all relative ${dbEnabled[id] ? 'bg-emerald-600' : 'bg-gray-800'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${dbEnabled[id] ? 'right-1' : 'left-1'}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {dbEnabled[id] && (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in slide-in-from-left-4 duration-300">
+                    <div className="flex flex-col gap-1.5">
+                       <span className="text-[9px] font-black text-gray-500 uppercase ml-1 tracking-widest">Database Host</span>
+                       <input 
+                         type="text"
+                         className="bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-xs text-white focus:border-emerald-500 transition-all font-mono"
+                         placeholder="localhost"
+                         value={dbHosts[id] || ""}
+                         onChange={(e) => setDbHosts(prev => ({ ...prev, [id]: e.target.value }))}
+                       />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                       <span className="text-[9px] font-black text-gray-500 uppercase ml-1 tracking-widest">SQL User</span>
+                       <input 
+                         type="text"
+                         className="bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-xs text-white focus:border-emerald-500 transition-all"
+                         placeholder="root"
+                         value={dbUsers[id] || ""}
+                         onChange={(e) => setDbUsers(prev => ({ ...prev, [id]: e.target.value }))}
+                       />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                       <span className="text-[9px] font-black text-gray-500 uppercase ml-1 tracking-widest">SQL Password</span>
+                       <input 
+                         type="password"
+                         className="bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-xs text-white focus:border-emerald-500 transition-all"
+                         placeholder="••••••••"
+                         value={dbPasses[id] || ""}
+                         onChange={(e) => setDbPasses(prev => ({ ...prev, [id]: e.target.value }))}
+                       />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                       <span className="text-[9px] font-black text-gray-500 uppercase ml-1 tracking-widest">Databases (JSON)</span>
+                       <input 
+                         type="text"
+                         className="bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-xs text-emerald-500 focus:border-emerald-500 transition-all font-mono"
+                         placeholder='["db1", "db2"]'
+                         value={dbNames[id] || ""}
+                         onChange={(e) => setDbNames(prev => ({ ...prev, [id]: e.target.value }))}
+                       />
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {data.containers && data.containers.map((container, idx) => (

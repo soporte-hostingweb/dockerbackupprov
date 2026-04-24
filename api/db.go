@@ -85,6 +85,13 @@ type BackupConfig struct {
 	SnapshotMode    string `json:"snapshot_mode" gorm:"default:'live'"` // live | consistent (Enterprise only)
 	IsAutoManaged   bool   `json:"is_auto_managed" gorm:"default:false"` // true = API controla, false = usuario configura
 	IsDynamic       bool   `json:"is_dynamic" gorm:"default:false"` // true = Dynamic Tracking activo en todos los contenedores
+	// --- V14.2.5: Gestión de Credenciales DB ---
+	DbEnabled       bool   `json:"db_enabled" gorm:"default:false"`
+	DbType          string `json:"db_type" gorm:"default:'mysql'"`
+	DbHost          string `json:"db_host" gorm:"default:'localhost'"`
+	DbUser          string `json:"db_user"`
+	DbPass          string `json:"db_pass"`
+	DbNames         string `json:"db_names"` // JSON array de bases de datos
 	CreatedAt      time.Time
 }
 

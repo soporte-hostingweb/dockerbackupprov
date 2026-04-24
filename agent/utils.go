@@ -108,6 +108,46 @@ func GetContainerMounts(containerName string) []string {
 	return hostPaths
 }
 
+// GetContainersForPaths: Identifica qué contenedores están usando las rutas que vamos a respaldar (V14.2.5)
+func GetContainersForPaths(paths []string) []string {
+	var targets []string
+	
+	// 1. Obtener todos los contenedores activos
+	allContainers, err := GetRunningContainers()
+	if err != nil {
+		return targets
+	}
+
+	for _, container := range allContainers {
+		mounts := GetContainerMounts(container)
+		isRelevant := false
+		
+		for _, mount := range mounts {
+			for _, p := range paths {
+				// Normalizar paths: eliminar decoraciones y /host_root
+				cleanP := strings.TrimPrefix(p, "📂 ")
+				cleanP = strings.TrimPrefix(cleanP, "📄 ")
+				cleanP = strings.TrimPrefix(cleanP, "/host_root")
+				
+				if cleanP == "" || cleanP == "/" { continue }
+
+				// Si el path de backup está dentro de un mount, o el mount está dentro del path de backup
+				if strings.HasPrefix(cleanP, mount) || strings.HasPrefix(mount, cleanP) {
+					isRelevant = true
+					break
+				}
+			}
+			if isRelevant { break }
+		}
+		
+		if isRelevant {
+			targets = append(targets, container)
+		}
+	}
+	
+	return targets
+}
+
 
 // GenerateFingerprint: Crea la huella digital híbrida SHA256 (V13)
 func GenerateFingerprint() string {

@@ -271,6 +271,13 @@ type AgentConfigV2 struct {
 	SnapshotMode    string   `json:"snapshot_mode"`    // live | consistent
 	IsAutoManaged   bool     `json:"is_auto_managed"`  // true = API manda, false = usuario configura
 	IsDynamic       bool     `json:"is_dynamic"`       // true = incluir todos los contenedores dinámicamente
+	// V14.2.5: Datos DB
+	DbEnabled bool     `json:"db_enabled"`
+	DbType    string   `json:"db_type"`
+	DbHost    string   `json:"db_host"`
+	DbUser    string   `json:"db_user"`
+	DbPass    string   `json:"db_pass"`
+	DbNames   []string `json:"db_names"`
 }
 
 // ResolveBackupPaths convierte la configuración del API a paths reales de restic.

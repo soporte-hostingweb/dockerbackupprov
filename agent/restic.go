@@ -72,7 +72,8 @@ func EnsureResticRepo(repo string, password string, s3Key string, s3Secret strin
 }
 
 // RunResticBackup ejecuta el respaldo real de las carpetas seleccionadas hacia S3 (V14.1: Snapshot Mode)
-func RunResticBackup(paths []string, repo string, password string, s3Key string, s3Secret string, keepLast int, snapshotMode string) (string, int64, error) {
+func RunResticBackup(config *AgentConfigV2, repo string, password string, s3Key string, s3Secret string) (string, int64, error) {
+	paths := ResolveBackupPaths(config)
 	if len(paths) == 0 {
 		return "", 0, fmt.Errorf("no directories selected")
 	}
@@ -88,18 +89,29 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
 	}
 
-	// V14.1: Modo CONSISTENT (Solo Enterprise, Opcional - Pausar servicios antes del backup)
-	// IMPORTANTE: Esto puede causar downtime. Solo se activa si el cliente lo solicita 
-	// explícitamente desde el panel (el default siempre es 'live').
-	if snapshotMode == "consistent" {
-		LogInfo("[BACKUP] Mode: CONSISTENT - Pausing containers for data integrity (Enterprise)")
-		exec.Command("/bin/sh", "-c", "chroot /host_root docker ps -q | xargs -r docker pause").Run()
-		defer func() {
-			exec.Command("/bin/sh", "-c", "chroot /host_root docker ps -q | xargs -r docker unpause").Run()
-			LogInfo("[BACKUP] Containers unpaused after consistent snapshot")
-		}()
+	// V14.2.5: SMART PAUSE (Solo pausa contenedores afectados si el modo es 'consistent')
+	var containersToUnpause []string
+	if config.SnapshotMode == "consistent" {
+		LogInfo("[BACKUP] Mode: CONSISTENT - Identifying relevant containers for paths...")
+		targets := GetContainersForPaths(paths)
+		if len(targets) > 0 {
+			LogInfo("[BACKUP] Smart Pause: Stopping %d relevant containers: %s", len(targets), strings.Join(targets, ", "))
+			for _, container := range targets {
+				exec.Command("docker", "pause", container).Run()
+				containersToUnpause = append(containersToUnpause, container)
+			}
+			
+			defer func() {
+				for _, container := range containersToUnpause {
+					exec.Command("docker", "unpause", container).Run()
+				}
+				LogInfo("[BACKUP] Relevant containers unpaused.")
+			}()
+		} else {
+			LogInfo("[BACKUP] No relevant containers found for selected paths. Continuous execution.")
+		}
 	} else {
-		LogInfo("[BACKUP] Mode: LIVE - Zero-downtime backup (default)")
+		LogInfo("[BACKUP] Mode: LIVE - Zero-downtime backup (Standard SaaS)")
 	}
 
 	// Limpiar decoraciones (emojis) de los paths antes de enviar a restic
@@ -113,7 +125,7 @@ func RunResticBackup(paths []string, repo string, password string, s3Key string,
 	fmt.Printf("[RESTIC] Starting Incremental Backup for %d targets...\n", len(cleanPaths))
 	
 	// V14.2: Pre-hook de respaldo de base de datos (Dump asíncrono)
-	dumpPath, errDump := RunDatabaseDump()
+	dumpPath, errDump := RunDatabaseDump(config)
 	if errDump == nil && dumpPath != "" {
 		LogInfo("[BACKUP] Database dump attached to backup set: %s", dumpPath)
 		cleanPaths = append(cleanPaths, dumpPath)

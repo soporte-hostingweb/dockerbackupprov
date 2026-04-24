@@ -305,19 +305,12 @@ func main() {
 		if shouldRun && !IsSyncing {
 			LogInfo("[SCHEDULER] Triggering backup...")
 			
-			// V14.1: El agente NUNCA decide las rutas.
-			// Usa ResolveBackupPaths() que lee la configuración del backend.
-			currentPaths := ResolveBackupPaths(config)
-			if len(currentPaths) == 0 { currentPaths = backupPaths } // Fallback si no hay config aún
-			if force == "full" { currentPaths = []string{"/host_root"} } // Override de emergencia
-			
-			// Modo de snapshot: siempre leer del backend (default: live = zero downtime)
-			snapshotMode := "live"
-			if config != nil && config.SnapshotMode != "" {
-				snapshotMode = config.SnapshotMode
+			// V14.2.5: Si hay un comando de FORCE FULL, inyectamos el sentinel de protección total
+			if force == "full" && config != nil {
+				config.Paths = []string{"[ALL_SYSTEM_ROOT]"}
 			}
 
-			go func(paths []string, r, p, k, s, mode string) {
+			go func(c *AgentConfigV2, r, p, k, s string) {
 				startedAt := time.Now().Unix()
 				IsSyncing = true
 				
@@ -327,7 +320,7 @@ func main() {
 				f, t := GetDiskCapacity()
 				_, _, currentJobID, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, true, ActivePID, lastBackupUnix, f, t)
 				
-				snapID, bytesProcessed, errB := RunResticBackup(paths, r, p, k, s, config.Retention, mode)
+				snapID, bytesProcessed, errB := RunResticBackup(c, r, p, k, s)
 				
 				finishedAt := time.Now().Unix()
 				duration := int(finishedAt - startedAt)
@@ -380,7 +373,7 @@ func main() {
 				_, _, currentJobID, _, _ = ReportHeartbeat(agentID, LastKnownContainers, LastKnownExplorer, LastKnownSnapshots, false, ActivePID, lastBackupUnix, f, t)
 
 				IsSyncing = false
-			}(currentPaths, repo, pass, key, secret, snapshotMode)
+			}(config, repo, pass, key, secret)
 		} else {
 			if force == "none" || force == "" {
 				LogInfo("[IDLE] Waiting schedule (%s). Last: %s", config.Schedule, time.Unix(lastBackupUnix, 0).Format("15:04:05"))
