@@ -21,6 +21,19 @@ HW Cloud Recovery es una **plataforma SaaS de respaldo y recuperación ante desa
 | **Licenciamiento SaaS** | Control de acceso por token hardware-bound, anti-clonado, expiración automática |
 | **Integración WHMCS** | Provisión automática al vender un servicio, panel embebido en el área de cliente |
 | **Multi-Plan** | Tres niveles con políticas técnicas distintas aplicadas automáticamente |
+| **Zero-Downtime** | Backup en caliente sin interrupción de servicios (JetBackup style) |
+
+---
+
+## 📄 DOCUMENTACIÓN DE PLANES Y ESCENARIOS
+
+Para guías detalladas de instalación y casos de éxito por nivel de servicio, consulte:
+
+- 🎁 [**PLAN FREE**](file:///e:/WHMCS/dockerkup/PLANS_FREE.md): Micro-servicios y blogs personales.
+- 🛡️ [**PLAN STANDARD**](file:///e:/WHMCS/dockerkup/PLANS_STANDARD.md): E-commerce y WP en producción diaria.
+- 💎 [**PLAN ENTERPRISE**](file:///e:/WHMCS/dockerkup/PLANS_ENTERPRISE.md): Misión crítica, DR proactivo y alta disponibilidad.
+
+---
 
 ---
 

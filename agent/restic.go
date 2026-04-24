@@ -182,7 +182,7 @@ func RunResticBackup(config *AgentConfigV2, repo string, password string, s3Key 
 	fmt.Printf("[RESTIC] Backup cycle completed. Snapshot: %s | Processed: %d bytes\n", finalSnapshotID, totalBytes)
 	
 	// Tras el backup, aplicamos la política de retención dinámica (V5.1.1)
-	_ = ApplyRetentionPolicy(repo, password, s3Key, s3Secret, keepLast)
+	_ = ApplyRetentionPolicy(repo, password, s3Key, s3Secret, config.Retention)
 
 	return finalSnapshotID, totalBytes, nil
 }

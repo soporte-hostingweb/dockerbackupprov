@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // RunDatabaseDump ejecuta un volcado de MySQL utilizando el cliente nativo del agente (V14.2.5 Hardening)
@@ -40,7 +41,7 @@ func RunDatabaseDump(config *AgentConfigV2) (string, error) {
 		args = append(args, "--result-file="+dumpPath)
 		
 		cmd := exec.Command(args[0], args[1:]...)
-		output, err := cmd.CombinedOutput()
+		err := cmd.Run()
 		if err == nil {
 			LogInfo("[DB-BACKUP] Native SQL dump SUCCESS.")
 			return dumpPath, nil
