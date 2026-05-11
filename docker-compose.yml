@@ -38,6 +38,14 @@ services:
       - backend-net
     # Evitamos publicar el puerto 5432 externamente por seguridad (la API se conecta internamente)
 
+  dbp-redis:
+    image: redis:7-alpine
+    container_name: dbp-redis
+    restart: always
+    networks:
+      - backend-net
+
+
   # --- AGENTE DE BACKUP (V2.9.7: Build local activado) ---
   # Comentado por defecto (Caso 3) ya que este servidor es nativamente el API principal.
   # dbp-agent:
