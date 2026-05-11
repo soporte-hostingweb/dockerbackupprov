@@ -31,7 +31,7 @@ func main() {
 	LogInfo("🚀 Docker Backup Pro Agent %s Starting...", Version)
 	
 	// 1. Cargar Credenciales V13 (Desde JSON persistente)
-	credsPath := "/app/data/agent.json"
+	credsPath := "/app/agent.json"
 	if GetHostRoot() == "" { // Windows
 		credsPath = os.Getenv("ProgramData") + "\\dbp\\agent.json"
 	}
