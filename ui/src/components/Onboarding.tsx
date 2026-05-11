@@ -31,10 +31,12 @@ interface OnboardingProps {
 }
 
 export default function Onboarding({ agentId, detectedStack, onComplete, onCancel }: OnboardingProps) {
+  const stack = detectedStack ?? { wordpress: false, mysql: false, nginx: false, apache: false, node: false, pm2: false, has_docker: false };
   const [step, setStep] = React.useState(1);
-  const [selectedPlan, setSelectedPlan] = React.useState<'wordpress' | 'full' | 'app' | 'advanced'>('wordpress');
+  const [selectedPlan, setSelectedPlan] = React.useState<'wordpress' | 'full' | 'app' | 'advanced'>('full');
 
   React.useEffect(() => {
+    if (!detectedStack) return;
     if (detectedStack.wordpress) setSelectedPlan('wordpress');
     else if (detectedStack.has_docker) setSelectedPlan('app');
     else setSelectedPlan('full');
@@ -72,28 +74,28 @@ export default function Onboarding({ agentId, detectedStack, onComplete, onCance
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <div className={`p-4 rounded-2xl border transition-all ${detectedStack.wordpress ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
+                        <div className={`p-4 rounded-2xl border transition-all ${stack.wordpress ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
                             <div className="flex items-center gap-3">
-                                < Globe className={detectedStack.wordpress ? 'text-emerald-500' : 'text-gray-600'} />
-                                <span className={`text-sm font-black uppercase italic ${detectedStack.wordpress ? 'text-white' : 'text-gray-600'}`}>WordPress</span>
+                                < Globe className={stack.wordpress ? 'text-emerald-500' : 'text-gray-600'} />
+                                <span className={`text-sm font-black uppercase italic ${stack.wordpress ? 'text-white' : 'text-gray-600'}`}>WordPress</span>
                             </div>
                         </div>
-                        <div className={`p-4 rounded-2xl border transition-all ${detectedStack.mysql ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
+                        <div className={`p-4 rounded-2xl border transition-all ${stack.mysql ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
                             <div className="flex items-center gap-3">
-                                < Database className={detectedStack.mysql ? 'text-emerald-500' : 'text-gray-600'} />
-                                <span className={`text-sm font-black uppercase italic ${detectedStack.mysql ? 'text-white' : 'text-gray-600'}`}>MySQL DB</span>
+                                < Database className={stack.mysql ? 'text-emerald-500' : 'text-gray-600'} />
+                                <span className={`text-sm font-black uppercase italic ${stack.mysql ? 'text-white' : 'text-gray-600'}`}>MySQL DB</span>
                             </div>
                         </div>
-                        <div className={`p-4 rounded-2xl border transition-all ${detectedStack.has_docker ? 'bg-blue-500/10 border-blue-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
+                        <div className={`p-4 rounded-2xl border transition-all ${stack.has_docker ? 'bg-blue-500/10 border-blue-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
                             <div className="flex items-center gap-3">
-                                < ShieldCheck className={detectedStack.has_docker ? 'text-blue-500' : 'text-gray-600'} />
-                                <span className={`text-sm font-black uppercase italic ${detectedStack.has_docker ? 'text-white' : 'text-gray-600'}`}>Docker Stack</span>
+                                < ShieldCheck className={stack.has_docker ? 'text-blue-500' : 'text-gray-600'} />
+                                <span className={`text-sm font-black uppercase italic ${stack.has_docker ? 'text-white' : 'text-gray-600'}`}>Docker Stack</span>
                             </div>
                         </div>
-                        <div className={`p-4 rounded-2xl border transition-all ${!detectedStack.has_docker ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
+                        <div className={`p-4 rounded-2xl border transition-all ${!stack.has_docker ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gray-950 border-gray-900 opacity-40'}`}>
                             <div className="flex items-center gap-3">
-                                < Server className={!detectedStack.has_docker ? 'text-amber-500' : 'text-gray-600'} />
-                                <span className={`text-sm font-black uppercase italic ${!detectedStack.has_docker ? 'text-white' : 'text-gray-600'}`}>Bare-Metal</span>
+                                < Server className={!stack.has_docker ? 'text-amber-500' : 'text-gray-600'} />
+                                <span className={`text-sm font-black uppercase italic ${!stack.has_docker ? 'text-white' : 'text-gray-600'}`}>Bare-Metal</span>
                             </div>
                         </div>
                     </div>
