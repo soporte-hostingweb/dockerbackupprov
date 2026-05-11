@@ -72,10 +72,15 @@ func RegisterActivationHandlers(r *gin.Engine) {
 			// Permitir reinstalación en el mismo hardware: Recuperar credenciales originales
 			var agent AgentStatus
 			if err := DB.First(&agent, "id = ?", saasToken.AgentID).Error; err == nil {
+				// Generar nueva API key para que el agente pueda autenticarse
+				newApiKeyRaw := hex.EncodeToString(generateRandomBytes(32))
+				newHashedKey, _ := bcrypt.GenerateFromPassword([]byte(newApiKeyRaw), bcrypt.DefaultCost)
+				DB.Model(&agent).Update("api_key", string(newHashedKey))
 				c.JSON(http.StatusOK, gin.H{
 					"status":    "re-activated",
 					"agent_id":  agent.ID,
-					"message":   "Hardware already bound. Using existing identity.",
+					"api_key":   newApiKeyRaw,
+					"message":   "Hardware already bound. API key refreshed.",
 					"ghcr_user": os.Getenv("GHCR_USERNAME"),
 					"ghcr_pat":  os.Getenv("GHCR_READ_PAT"),
 				})
