@@ -20,6 +20,7 @@ services:
       - monitor-net
     depends_on:
       - dbp-postgres
+      - dbp-redis
 
   dbp-postgres:
     image: postgres:14-alpine
