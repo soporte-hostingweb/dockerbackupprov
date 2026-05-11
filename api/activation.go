@@ -31,8 +31,21 @@ func RegisterActivationHandlers(r *gin.Engine) {
 
 		var saasToken ActivationToken
 		if err := DB.Where("token = ?", req.Token).First(&saasToken).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Activation token not found"})
-			return
+			// V14.3 Fallback: Si el token no está en ActivationToken pero sí existe en TenantPlan (Cliente antiguo)
+			var tPlan TenantPlan
+			if errPlan := DB.Where("token = ?", req.Token).First(&tPlan).Error; errPlan == nil {
+				saasToken = ActivationToken{
+					Token:       req.Token,
+					TenantToken: req.Token,
+					Status:      "pending",
+					ExpiresAt:   time.Now().Add(48 * time.Hour),
+				}
+				DB.Create(&saasToken)
+				fmt.Printf("[SAAS] Legacy TenantPlan detected for %s. Auto-generated ActivationToken for backwards compatibility.\n", req.Token)
+			} else {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Activation token not found"})
+				return
+			}
 		}
 
 		// 1. Validar Ciclo de Vida (48h)
