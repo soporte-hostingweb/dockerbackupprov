@@ -47,9 +47,15 @@ func main() {
 		LogInfo("[AUTH] Using environment fallback (Dev Mode)")
 	}
 
-	// 2. Generar huella digital de hardware actual (V13)
-	CurrentCreds.Fingerprint = GenerateFingerprint()
-	LogInfo("[AUTH] Hardware Fingerprint: %s", CurrentCreds.Fingerprint)
+	// 2. Solo generar fingerprint si no vino en el agent.json
+	// El fingerprint registrado durante la instalación (en el host) debe mantenerse.
+	// Dentro de un contenedor Docker el hardware se ve diferente → no regenerar.
+	if CurrentCreds.Fingerprint == "" {
+		CurrentCreds.Fingerprint = GenerateFingerprint()
+		LogInfo("[AUTH] Hardware Fingerprint (generated): %s", CurrentCreds.Fingerprint)
+	} else {
+		LogInfo("[AUTH] Hardware Fingerprint (from config): %s", CurrentCreds.Fingerprint)
+	}
 
 	agentID := CurrentCreds.AgentID
 	var lastBackupUnix int64 = 0
