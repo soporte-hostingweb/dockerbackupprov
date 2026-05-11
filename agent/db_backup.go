@@ -9,7 +9,11 @@ import (
 
 // RunDatabaseDump ejecuta un volcado de MySQL utilizando el cliente nativo del agente (V14.2.5 Hardening)
 func RunDatabaseDump(config *AgentConfigV2) (string, error) {
-	dumpPath := "/host_root/tmp/dbp_db_dump.sql"
+	hostRoot := GetHostRoot()
+	dumpPath := hostRoot + "/tmp/dbp_db_dump.sql"
+	if hostRoot == "" { // Windows
+		dumpPath = os.Getenv("TEMP") + "\\dbp_db_dump.sql"
+	}
 	
 	// 1. Caso A: Configuración Explícita
 	if config != nil && config.DbEnabled {
@@ -59,7 +63,11 @@ func RunDatabaseDump(config *AgentConfigV2) (string, error) {
 
 // TryDockerExecDump: Intenta encontrar un contenedor SQL y ejecutar el dump desde dentro
 func TryDockerExecDump(config *AgentConfigV2) (string, error) {
-	dumpPath := "/host_root/tmp/dbp_db_dump.sql"
+	hostRoot := GetHostRoot()
+	dumpPath := hostRoot + "/tmp/dbp_db_dump.sql"
+	if hostRoot == "" { // Windows
+		dumpPath = os.Getenv("TEMP") + "\\dbp_db_dump.sql"
+	}
 	
 	// Buscar contenedores que parezcan MySQL
 	containers, _ := GetRunningContainers()
@@ -82,11 +90,19 @@ func TryDockerExecDump(config *AgentConfigV2) (string, error) {
 		if config != nil && config.DbPass != "" { passArg = "-p" + config.DbPass }
 
 		// Ejecutar mysqldump dentro del contenedor y redirigir al host_root del agente
-		// Comando: docker exec mysql_container mysqldump -u root -pPassword --all-databases
-		cmdStr := fmt.Sprintf("docker exec %s mysqldump -u %s %s --all-databases --single-transaction --quick > %s", 
-			mysqlContainer, user, passArg, dumpPath)
+		var cmd *exec.Cmd
+		if hostRoot != "" {
+			// Linux: Usar /bin/sh -c para redirección
+			cmdStr := fmt.Sprintf("docker exec %s mysqldump -u %s %s --all-databases --single-transaction --quick > %s", 
+				mysqlContainer, user, passArg, dumpPath)
+			cmd = exec.Command("/bin/sh", "-c", cmdStr)
+		} else {
+			// Windows: Usar powershell para redirección
+			cmdStr := fmt.Sprintf("docker exec %s mysqldump -u %s %s --all-databases --single-transaction --quick | Out-File -FilePath %s -Encoding utf8", 
+				mysqlContainer, user, passArg, dumpPath)
+			cmd = exec.Command("powershell", "-Command", cmdStr)
+		}
 		
-		cmd := exec.Command("/bin/sh", "-c", cmdStr)
 		err := cmd.Run()
 		if err == nil {
 			LogInfo("[DB-BACKUP] Docker-exec dump SUCCESS.")
@@ -99,9 +115,15 @@ func TryDockerExecDump(config *AgentConfigV2) (string, error) {
 
 // CleanupDatabaseDump elimina el archivo temporal después del backup
 func CleanupDatabaseDump() {
-	dumpPath := "/host_root/tmp/dbp_db_dump.sql"
+	hostRoot := GetHostRoot()
+	dumpPath := hostRoot + "/tmp/dbp_db_dump.sql"
+	if hostRoot == "" { // Windows
+		dumpPath = os.Getenv("TEMP") + "\\dbp_db_dump.sql"
+	}
+
 	if _, err := os.Stat(dumpPath); err == nil {
 		os.Remove(dumpPath)
 		LogInfo("[DB-BACKUP] Temporary dump file cleaned up.")
 	}
 }
+

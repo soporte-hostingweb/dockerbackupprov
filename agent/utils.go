@@ -9,36 +9,12 @@ import (
 	"github.com/google/uuid"
 )
 
-
-
-
-// GetPersistentID recupera el ID único del agente o genera uno nuevo (V3.7.1: Persistencia mejorada)
-func GetPersistentID() string {
-	idDir := "/etc/dbp"
-	idFile := idDir + "/agent_id"
-	
-	// Asegurar que el directorio existe
-	_ = os.MkdirAll(idDir, 0755)
-
-	data, err := os.ReadFile(idFile)
-	if err == nil && len(data) > 0 {
-		return strings.TrimSpace(string(data))
-	}
-
-	// Fallback para migración (si existía en la raíz)
-	oldData, oldErr := os.ReadFile("/.agent_id")
-	if oldErr == nil && len(oldData) > 0 {
-		id := strings.TrimSpace(string(oldData))
-		_ = os.WriteFile(idFile, []byte(id), 0644)
-		return id
-	}
-
-	// Si no existe, generar uno nuevo
+// generateNewID es un helper compartido por utils_linux y utils_windows
+func generateNewID(idFile string) string {
 	newID := uuid.New().String()[:12]
 	_ = os.WriteFile(idFile, []byte(newID), 0644)
 	return newID
 }
-
 
 // GetRunningContainers obtiene la lista de nombres de contenedores activos
 func GetRunningContainers() ([]string, error) {
@@ -96,10 +72,10 @@ func GetContainerMounts(containerName string) []string {
 		if path == "" { continue }
 		
 		// Filtrar rutas de sistema obvias
-		if strings.Contains(path, "/docker.sock") || 
-		   strings.Contains(path, "/etc/resolv.conf") ||
-		   strings.Contains(path, "/etc/hostname") ||
-		   strings.Contains(path, "/etc/hosts") {
+		if strings.Contains(path, "docker.sock") || 
+		   strings.Contains(path, "resolv.conf") ||
+		   strings.Contains(path, "hostname") ||
+		   strings.Contains(path, "hosts") {
 			continue
 		}
 		
@@ -118,16 +94,20 @@ func GetContainersForPaths(paths []string) []string {
 		return targets
 	}
 
+	hostRoot := GetHostRoot()
+
 	for _, container := range allContainers {
 		mounts := GetContainerMounts(container)
 		isRelevant := false
 		
 		for _, mount := range mounts {
 			for _, p := range paths {
-				// Normalizar paths: eliminar decoraciones y /host_root
+				// Normalizar paths: eliminar decoraciones y hostRoot
 				cleanP := strings.TrimPrefix(p, "📂 ")
 				cleanP = strings.TrimPrefix(cleanP, "📄 ")
-				cleanP = strings.TrimPrefix(cleanP, "/host_root")
+				if hostRoot != "" {
+					cleanP = strings.TrimPrefix(cleanP, hostRoot)
+				}
 				
 				if cleanP == "" || cleanP == "/" { continue }
 
@@ -161,32 +141,3 @@ func GenerateFingerprint() string {
 	return hex.EncodeToString(hash[:])
 }
 
-func getMachineID() string {
-	// Intentar leer desde /host_root/etc/machine-id (montaje recomendado en SaaS)
-	data, err := os.ReadFile("/host_root/etc/machine-id")
-	if err != nil {
-		// Fallback local
-		data, err = os.ReadFile("/etc/machine-id")
-	}
-	if err == nil {
-		return strings.TrimSpace(string(data))
-	}
-	return "unknown_machine"
-}
-
-func getDiskID() string {
-	// Prioridad: Serie física del disco sda (vía /sys)
-	data, err := os.ReadFile("/host_root/sys/block/sda/device/serial")
-	if err == nil {
-		return strings.TrimSpace(string(data))
-	}
-
-	// Fallback: UUID de la partición raíz
-	cmd := exec.Command("blkid", "-s", "UUID", "-o", "value", "/dev/sda1")
-	output, err := cmd.Output()
-	if err == nil && len(output) > 0 {
-		return strings.TrimSpace(string(output))
-	}
-
-	return "unknown_disk"
-}

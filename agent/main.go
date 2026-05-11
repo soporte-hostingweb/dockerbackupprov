@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -34,6 +32,10 @@ func main() {
 	
 	// 1. Cargar Credenciales V13 (Desde JSON persistente)
 	credsPath := "/app/data/agent.json"
+	if GetHostRoot() == "" { // Windows
+		credsPath = os.Getenv("ProgramData") + "\\dbp\\agent.json"
+	}
+	
 	data, err := os.ReadFile(credsPath)
 	if err == nil {
 		json.Unmarshal(data, &CurrentCreds)
@@ -207,7 +209,8 @@ func main() {
 			if name == "dbp-client-agent" { continue }
 			hostMounts := GetContainerMounts(name)
 			for _, hostPath := range hostMounts {
-				bridgePath := "/host_root" + hostPath
+				hostRoot := GetHostRoot()
+				bridgePath := hostRoot + hostPath
 				if info, err := os.Stat(bridgePath); err == nil && info.IsDir() {
 					backupPaths = append(backupPaths, bridgePath)
 					subItems := ScanVolumeFolders(bridgePath)
@@ -438,25 +441,6 @@ func LogInfo(format string, a ...interface{}) {
 	timestamp := time.Now().Format("15:04:05")
 	msg := fmt.Sprintf(format, a...)
 	fmt.Printf("[%s] %s\n", timestamp, msg)
-}
-
-// GetDiskCapacity obtiene el espacio libre y total del host (/host_root) (V4.5.5)
-func GetDiskCapacity() (string, string) {
-	cmd := exec.Command("df", "-k", "/host_root")
-	output, err := cmd.Output()
-	if err != nil {
-		LogInfo("[DISK ERROR] %v", err)
-		return "unknown", "unknown"
-	}
-	lines := strings.Split(string(output), "\n")
-	if len(lines) < 2 { return "unknown", "unknown" }
-	fields := strings.Fields(lines[1])
-	if len(fields) < 4 { return "unknown", "unknown" }
-	totalK, _ := strconv.ParseFloat(fields[1], 64)
-	freeK, _ := strconv.ParseFloat(fields[3], 64)
-	totalGB := totalK / (1024 * 1024)
-	freeGB := freeK / (1024 * 1024)
-	return fmt.Sprintf("%.1fGB", freeGB), fmt.Sprintf("%.1fGB", totalGB)
 }
 
 // FormatBytes convierte bytes a una unidad legible (B, MB, GB, TB) (V9.2)

@@ -45,6 +45,9 @@ const (
 //go:embed install.sh
 var installScript []byte
 
+//go:embed install.ps1
+var installPsScript []byte
+
 // --- POLICY ENGINE (V10.0: SaaS Pro) ---
 type PlanPolicy struct {
 	MaxRetentionDays int
@@ -389,6 +392,13 @@ func main() {
 	r.GET("/install.sh", func(c *gin.Context) {
 		c.Data(200, "text/x-shellscript", installScript)
 	})
+
+	r.GET("/install.ps1", func(c *gin.Context) {
+		c.Data(200, "text/plain", installPsScript)
+	})
+
+	// V15: Binarios para Windows
+	r.Static("/bin", "./bin")
 
 	// V14.2.5: Monitor de Salud Optimizado (Senior Remediation)
 	go func() {

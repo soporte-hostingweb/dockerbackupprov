@@ -288,24 +288,27 @@ func ResolveBackupPaths(config *AgentConfigV2) []string {
 		return []string{}
 	}
 
+	hostRoot := GetHostRoot()
+
 	// Buscar el sentinel de Protección Total
 	for _, p := range config.Paths {
 		if p == "[ALL_SYSTEM_ROOT]" {
-			// Snapshot completo: raíz del host montada en /host_root
+			// Snapshot completo: raíz del host
 			// Las exclusiones se agregan automáticamente en restic.go (GlobalExcludes)
-			// Esto produce: restic backup /host_root --exclude /host_root/proc --exclude ...
-			LogInfo("[CONFIG] Protection Level: TOTAL - Full system snapshot via /host_root")
-			return []string{"/host_root"}
+			LogInfo("[CONFIG] Protection Level: TOTAL - Full system snapshot via %s", hostRoot)
+			if hostRoot == "" { return []string{"C:\\"} } // Fallback para Windows root
+			return []string{hostRoot}
 		}
 	}
 
-	// Si dynamic y sin paths, incluir todos los contenedores detectados como [ALL_TARGETS]
+	// Si dynamic y sin paths, incluir raíz
 	if config.IsDynamic && len(config.Paths) == 0 {
 		LogInfo("[CONFIG] Protection Level: ADVANCED - Dynamic tracking, all containers")
-		return []string{"/host_root"}
+		if hostRoot == "" { return []string{"C:\\"} }
+		return []string{hostRoot}
 	}
 
-	// Paths manuales (Basic o Advanced con selección específica)
+	// Paths manuales
 	LogInfo("[CONFIG] Protection Level: %s - %d specific paths", config.ProtectionLevel, len(config.Paths))
 	return config.Paths
 }

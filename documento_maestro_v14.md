@@ -656,7 +656,45 @@ cd /opt/docker-backup-pro && docker compose restart
 
 ---
 
+### ESCENARIO H: Infraestructura Crítica Windows (AD + pfSense + 7TB SSD) 🏢
+**Perfil**: Cliente con un entorno Windows Server robusto que incluye Active Directory, firewall pfSense y gran volumen de datos (7TB SSD). El acceso de los usuarios se realiza mediante túneles VPN.
+
+**¿Qué producto se le debe ofrecer?**
+- **Plan ENTERPRISE**. Debido a la criticidad de los servicios (AD/VPN) y el gran volumen de datos (7TB), se requiere el nivel más alto de protección. El plan Enterprise garantiza retención de 30 días, modo de copia consistente y prioridad VIP en la cola de procesamiento.
+
+**¿Cuál sería el método de copia?**
+- **Restic (Incremental con Deduplicación) + Wasabi S3**. Se realiza una copia inicial completa y posteriormente solo se envían los bloques de datos modificados. La deduplicación es vital para gestionar los 7TB de forma eficiente sin saturar el almacenamiento en la nube.
+
+**¿Cuánto demoraría la copia?**
+- **Copia Inicial**: Depende del ancho de banda de subida. Con una conexión de 100 Mbps dedicados, los 7TB demorarían aproximadamente de **6 a 7 días**.
+- **Copias Diarias**: Tras la inicial, los respaldos diarios son ultra-rápidos (minutos) ya que solo procesan cambios.
+
+**¿Como se restauraría una copia o documento o archivo parcial?**
+- **Granularidad Total**: A través del **Restore Wizard** en el panel. El administrador puede navegar por el árbol de directorios de cualquier snapshot histórico, seleccionar archivos o carpetas específicas y definir una ruta de destino para la recuperación inmediata. No es necesario restaurar los 7TB para recuperar un solo documento.
+
+**¿Qué desastre o pérdida de datos cubriría?**
+- **Desastre Total**: Recuperación completa del servidor en caso de fallo de hardware o pérdida del VPS.
+- **Ransomware**: Protección crítica para Windows/AD; permite volver a un punto en el tiempo antes de la infección gracias a la inmutabilidad de los snapshots.
+- **Corrupción de AD/pfSense**: Recuperación de bases de datos de identidad y configuraciones de red/VPN.
+- **Error Humano**: Recuperación de archivos borrados accidentalmente dentro del gran volumen de datos.
+
+**¿Cuánto se cobraría por este plan y la capacidad?**
+- **Inversión Mensual**: **S/. 1,650.00 / mes** (Incluye gestión Enterprise, soporte DR y los 7TB iniciales).
+- **Expansión por 1TB adicional**: **S/. 240.00 / mes** (o S/. 2,400.00 anual).
+- *Nota: El precio refleja no solo el almacenamiento en Wasabi, sino la orquestación, validación diaria y el soporte de misión crítica.*
+
+**Mini Resumen de SLA (Service Level Agreement):**
+- **RTO (Recovery Time Objective)**: < 15 minutos para el inicio de la orquestación del restore.
+- **RPO (Recovery Point Objective)**: Máximo 24 horas (o personalizado según programación).
+- **Verificación de Integridad**: Diaria (Nivel Medium/Advanced).
+- **Soporte**: Respuesta prioritaria < 1 hora para incidentes de recuperación de datos.
+
+
+---
+
 ## 10. ENDPOINTS DEL API (REFERENCIA TÉCNICA)
+
+
 
 ### Públicos
 | Método | Endpoint | Función |

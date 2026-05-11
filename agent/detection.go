@@ -20,20 +20,29 @@ type StackInfo struct {
 // DetectStack escanea el servidor buscando firmas de tecnologías comunes
 func DetectStack() StackInfo {
 	info := StackInfo{}
+	hostRoot := GetHostRoot()
 
 	// 1. Detección de Docker (Socket)
-	if _, err := os.Stat("/host_root/var/run/docker.sock"); err == nil {
-		info.HasDocker = true
-	} else if _, err := os.Stat("/var/run/docker.sock"); err == nil {
-		info.HasDocker = true
+	dockerSocket := "/var/run/docker.sock"
+	if hostRoot != "" {
+		if _, err := os.Stat(hostRoot + dockerSocket); err == nil {
+			info.HasDocker = true
+		}
+	}
+	if !info.HasDocker {
+		if _, err := os.Stat(dockerSocket); err == nil {
+			info.HasDocker = true
+		}
 	}
 
 	// 2. Detección de WordPress
-	// Escaneamos rutas comunes en el host
 	wpPaths := []string{
-		"/host_root/var/www/html",
-		"/host_root/var/www",
-		"/host_root/home",
+		hostRoot + "/var/www/html",
+		hostRoot + "/var/www",
+		hostRoot + "/home",
+	}
+	if hostRoot == "" { // Windows fallback
+		wpPaths = []string{"C:\\inetpub\\wwwroot", "C:\\inetpub"}
 	}
 
 	for _, p := range wpPaths {
@@ -45,7 +54,6 @@ func DetectStack() StackInfo {
 				found = true
 				return filepath.SkipDir
 			}
-			// Limitar profundidad para no matar el performance
 			if osInfo.IsDir() && strings.Count(path, string(os.PathSeparator)) > 5 {
 				return filepath.SkipDir
 			}
@@ -55,26 +63,25 @@ func DetectStack() StackInfo {
 	}
 
 	// 3. Detección de MySQL / MariaDB
-	if _, err := os.Stat("/host_root/var/lib/mysql"); err == nil {
+	if _, err := os.Stat(hostRoot + "/var/lib/mysql"); err == nil {
 		info.MySQL = true
 	}
-	// También checar si existe el binario o socket
-	if _, err := os.Stat("/host_root/var/run/mysqld/mysqld.sock"); err == nil {
+	if _, err := os.Stat(hostRoot + "/var/run/mysqld/mysqld.sock"); err == nil {
 		info.MySQL = true
 	}
 
 	// 4. Servidores Web
-	if _, err := os.Stat("/host_root/etc/nginx"); err == nil {
+	if _, err := os.Stat(hostRoot + "/etc/nginx"); err == nil {
 		info.Nginx = true
 	}
-	if _, err := os.Stat("/host_root/etc/apache2"); err == nil {
+	if _, err := os.Stat(hostRoot + "/etc/apache2"); err == nil {
 		info.Apache = true
-	} else if _, err := os.Stat("/host_root/etc/httpd"); err == nil {
+	} else if _, err := os.Stat(hostRoot + "/etc/httpd"); err == nil {
 		info.Apache = true
 	}
 
 	// 5. Node.js / PM2
-	if _, err := os.Stat("/host_root/root/.pm2"); err == nil {
+	if _, err := os.Stat(hostRoot + "/root/.pm2"); err == nil {
 		info.PM2 = true
 		info.Node = true
 	}

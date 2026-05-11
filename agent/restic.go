@@ -11,29 +11,6 @@ import (
 	"time"
 )
 
-// GlobalExcludes: Exclusiones OBLIGATORIAS para snapshots en producción.
-// Estas rutas NO DEBEN ser respaldadas bajo ningún plan (evitan errores y datos inútiles).
-var GlobalExcludes = []string{
-	// Pseudo-filesystems del kernel (nunca tienen datos reales)
-	"/host_root/proc",
-	"/host_root/sys",
-	"/host_root/dev",
-	"/host_root/run",
-	// Directorios temporales (volátiles, sin valor de recuperación)
-	"/host_root/tmp",
-	"/host_root/var/tmp",
-	// Docker internals montados (evitar recursividad de contenedores)
-	"/host_root/var/lib/docker/overlay2",
-	"/host_root/var/lib/docker/aufs",
-	// Caches genéricas
-	"*/cache/*",
-	"*/__pycache__/*",
-	"*/node_modules/.cache/*",
-}
-
-
-
-
 // EnsureResticRepo garantiza que el repositorio S3 esté inicializado (V2.6.5)
 func EnsureResticRepo(repo string, password string, s3Key string, s3Secret string) error {
 	if repo == "" {
@@ -231,9 +208,7 @@ func RunResticRestore(snapshotID string, destination string, paths []string, rep
 	fmt.Printf("[RESTIC] Restoration successful. Duration: %d seconds.\n", durationSecs)
 	
 	// V10.2: Post-Restore Orchestration
-	// El parámetro 'destination' contiene el path /host_root/...
-	// Validamos servicios si hay docker-compose.yml
-	orchMsg := ValidateRestoredServices(destination, true) // Por defecto intentamos levantar si es V10.2
+	orchMsg := ValidateRestoredServices(destination, autoUp)
 	fmt.Printf("[ORCHESTRATOR] %s\n", orchMsg)
 	
 	return durationSecs, nil
@@ -267,12 +242,9 @@ func RunResticVerify(repo string, password string, s3Key string, s3Secret string
 
 // RunPartialTestRestore realiza una prueba aleatoria/inteligente restaurando un sample (.env, docker-compose) (V9.0)
 func RunPartialTestRestore(snapshotID string, repo string, password string, s3Key string, s3Secret string, tenantID string) error {
-	testDir := fmt.Sprintf("/tmp/restore-test-%s", tenantID)
+	testDir := os.TempDir() + "/restore-test-" + tenantID
 	os.RemoveAll(testDir) // Limpiar de inmediato remanentes previos
 
-	// Pedir a restic que intente extraer solo un archivo .env si lo hay, ignorando si falla
-	// Al no poder forzar un match estricto, le decimos restic restore con exclude genérico y dejamos un path como "*env*"
-	// (En restic puedes usar wildcard en --include)
 	_, err := RunResticRestore(snapshotID, testDir, []string{"*.env", "*docker-compose*"}, repo, password, s3Key, s3Secret, false)
 	
 	defer os.RemoveAll(testDir) // Siempre limpiar test sandbox
@@ -281,39 +253,25 @@ func RunPartialTestRestore(snapshotID string, repo string, password string, s3Ke
 		return fmt.Errorf("partial restore simulation failed: %v", err)
 	}
 
-	// Verificar estructuralmente si el directorio se pobló
-	info, err := os.Stat(testDir)
-	if err != nil || !info.IsDir() {
-		// No estricto: Puede que simplemente no hayan carpetas .env en este snap, 
-		// pero logramos hacer read/write.
-	}
 	return nil
 }
 
-
-
 // ApplyRetentionPolicy aplica una política de rotación dinámica (KEEP X) (V5.1.1)
 func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret string, keepLast int) error {
-	if keepLast <= 0 { keepLast = 1 } // Seguridad mínima (V5.1.1)
+	if keepLast <= 0 { keepLast = 1 } 
 	
 	fmt.Printf("[RESTIC] Applying retention policy (KEEP LAST %d)...\n", keepLast)
 	
 	env := os.Environ()
-	if password != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
-	}
-	if s3Key != "" {
-		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
-	}
-	if s3Secret != "" {
-		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
-	}
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
 
 	// 1. Unlock preventivo (V3.3.7)
 	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
 	unlockCmd.Env = env
 	_ = unlockCmd.Run()
-	time.Sleep(2 * time.Second) // Delay para consistencia S3
+	time.Sleep(2 * time.Second) 
 
 	// 2. Forget & Prune
 	cmd := exec.Command("restic", "-r", repo, "forget", "--keep-last", fmt.Sprintf("%d", keepLast), "--prune")
@@ -336,63 +294,39 @@ func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret s
 
 // GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo (V3.5.0)
 func GetSnapshotsJSON(repo string, password string, s3Key string, s3Secret string) []byte {
-	if repo == "" {
-		return []byte("[]")
-	}
+	if repo == "" { return []byte("[]") }
 
 	cmd := exec.Command("restic", "-r", repo, "snapshots", "--json")
 	env := os.Environ()
-	if password != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
-	}
-	if s3Key != "" {
-		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
-	}
-	if s3Secret != "" {
-		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
-	}
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
 	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return []byte("[]")
-	}
+	if err != nil { return []byte("[]") }
 	return output
 }
 
 // GetSnapshotContentJSON devuelve el listado de archivos de un snapshot filtrado por profundidad (V4.6.5: Lazy Loading)
 func GetSnapshotContentJSON(snapshotID string, requestPath string, repo string, password string, s3Key string, s3Secret string) []byte {
-	if repo == "" || snapshotID == "" {
-		return []byte("[]")
-	}
+	if repo == "" || snapshotID == "" { return []byte("[]") }
 
-	// 1. Ejecutamos LS completo pero procesamos el stream para no saturar memoria
 	args := []string{"-r", repo, "ls", snapshotID, "--json"}
 	cmd := exec.Command("restic", args...)
 	env := os.Environ()
-	if password != "" {
-		env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password))
-	}
-	if s3Key != "" {
-		env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key))
-	}
-	if s3Secret != "" {
-		env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret))
-	}
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
 	cmd.Env = env
 
 	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return []byte("[]")
-	}
-	if err := cmd.Start(); err != nil {
-		return []byte("[]")
-	}
+	if err != nil { return []byte("[]") }
+	if err := cmd.Start(); err != nil { return []byte("[]") }
 
 	var filtered []interface{}
 	decoder := json.NewDecoder(stdout)
 
-	// Normalizar requestPath para comparaciones exactas
 	cleanReq := strings.Trim(requestPath, "/")
 	reqDepth := len(strings.Split(cleanReq, "/"))
 	if cleanReq == "" { reqDepth = 0 }
@@ -404,128 +338,22 @@ func GetSnapshotContentJSON(snapshotID string, requestPath string, repo string, 
 			Type string `json:"type"`
 			Size int64  `json:"size,omitempty"`
 		}
-		if err := decoder.Decode(&item); err != nil {
-			break 
-		}
-
-		// Solo procesamos directorios y archivos normales del snapshot (omitimos el propio snapshot root si viene)
+		if err := decoder.Decode(&item); err != nil { break }
 		if item.Path == "/" || item.Path == "" { continue }
 
 		itemPath := strings.Trim(item.Path, "/")
-		
-		// Lógica de Filtrado por Nivel (Direct Children Only)
-		// 1. Debe empezar por la ruta solicitada
-		if cleanReq != "" && !strings.HasPrefix(itemPath, cleanReq) {
-			continue
-		}
+		if cleanReq != "" && !strings.HasPrefix(itemPath, cleanReq) { continue }
 
-		// 2. Calculamos profundidad del item
 		itemDepth := len(strings.Split(itemPath, "/"))
-
-		// 3. Si req es "", itemDepth debe ser 1 (Raíz del backup)
-		// Si req es "/a/b", itemDepth debe ser 3 (Hijos de b)
 		if itemDepth == reqDepth + 1 {
 			filtered = append(filtered, item)
 		}
 	}
 
 	_ = cmd.Wait()
-
 	resultJSON, _ := json.Marshal(filtered)
-	fmt.Printf("[DEBUG-RESTIC] ⚡ LS Depth Filter: %s -> %d items\n", requestPath, len(filtered))
 	return resultJSON
 }
 
-// --- ORCHESTRATION UTILS (V10.2: SaaS Pro) ---
-
-// CheckDockerEnvironment verifica si Docker está instalado y operativo en el HOST
-func CheckDockerEnvironment() bool {
-	fmt.Println("[PREP] Checking Docker availability on Host...")
-	// Intentamos ejecutar docker version a través de chroot en el host_root
-	cmd := exec.Command("chroot", "/host_root", "docker", "--version")
-	if err := cmd.Run(); err != nil {
-		fmt.Println("[PREP] Docker NOT found or not responding on Host.")
-		return false
-	}
-	fmt.Println("[PREP] Docker is available and ready on Host.")
-	return true
-}
-
-// InstallDockerOnHost intenta instalar Docker en el VPS destino (Host)
-func InstallDockerOnHost() error {
-	fmt.Println("[PREP] Starting automated Docker installation on Host...")
-	// Usamos el script oficial de Docker ejecutado en el Host
-	installCmd := "curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
-	cmd := exec.Command("chroot", "/host_root", "sh", "-c", installCmd)
-	
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("docker installation failed: %v | Output: %s", err, string(output))
-	}
-	
-	// Habilitar y arrancar el servicio
-	_ = exec.Command("chroot", "/host_root", "systemctl", "enable", "--now", "docker").Run()
-	
-	fmt.Println("[PREP] Docker successfully installed on Host.")
-	return nil
-}
-
-// ValidateRestoredServices busca docker-compose.yml y levanta servicios en modo AISLADO (V12 Sandbox)
-func ValidateRestoredServices(targetPath string, autoUp bool) string {
-	if !autoUp { return "Service validation skipped (autoUp=false)" }
-	
-	fmt.Printf("[SANDBOX] Starting isolated validation in %s...\n", targetPath)
-	
-	// 1. Asegurar Red Aislada (No Egress)
-	exec.Command("chroot", "/host_root", "docker", "network", "create", "--internal", "dbp_sandbox_net").Run()
-	
-	// Convertimos el path relativo al host
-	hostPath := strings.TrimPrefix(targetPath, "/host_root")
-	if hostPath == "" { hostPath = "/" }
-
-	findCmd := exec.Command("chroot", "/host_root", "find", hostPath, "-name", "docker-compose.yml")
-	output, _ := findCmd.Output()
-	composeFiles := strings.Split(strings.TrimSpace(string(output)), "\n")
-
-	if len(composeFiles) == 0 || composeFiles[0] == "" {
-		return "No docker-compose.yml found in restored path."
-	}
-
-	results := []string{}
-	for _, cf := range composeFiles {
-		fmt.Printf("[SANDBOX] Orchestrating isolated startup: %s\n", cf)
-		dir := strings.TrimSuffix(cf, "/docker-compose.yml")
-		
-		// V12 Hardening:
-		// -p dbp_sandbox: Prefijo para evitar colisiones con producción
-		// --internal network: Inyectada vía env o asumiendo que el compose la usa (Mejor: forzar aislamiento de red)
-		// Limitamos via COMPOSE_PROJECT_NAME
-		
-		sandboxCmd := fmt.Sprintf("cd %s && docker-compose -p dbp_sandbox up -d", dir)
-		upCmd := exec.Command("chroot", "/host_root", "sh", "-c", sandboxCmd)
-		
-		if err := upCmd.Run(); err != nil {
-			// Intentar con 'docker compose' (V2)
-			sandboxCmd = fmt.Sprintf("cd %s && docker compose -p dbp_sandbox up -d", dir)
-			upCmd = exec.Command("chroot", "/host_root", "sh", "-c", sandboxCmd)
-			if err2 := upCmd.Run(); err2 != nil {
-				results = append(results, fmt.Sprintf("Sandbox Failed: %v", err2))
-				continue
-			}
-		}
-
-		// Verificación de Salud Básica (Evidence of Life)
-		checkCmd := exec.Command("chroot", "/host_root", "docker", "ps", "--filter", "name=dbp_sandbox", "--format", "{{.Status}}")
-		status, _ := checkCmd.Output()
-		
-		results = append(results, fmt.Sprintf("Sandbox UP [%s]: %s", strings.TrimSpace(string(status)), cf))
-		
-		// Auto-Limpieza (V12): Opcionalmente podríamos dejarlo corriendo para que el admin lo vea, 
-		// pero por seguridad de recursos lo bajaremos tras 1 minuto o reportar el estado.
-		// En este caso, lo dejamos para que el verify_restore lo encuentre, pero marcamos el éxito.
-	}
-
-	return strings.Join(results, " | ")
-}
 
 

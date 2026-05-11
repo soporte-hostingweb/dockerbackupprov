@@ -140,6 +140,7 @@ type UserSettings struct {
 	WasabiRegion string `json:"wasabi_region"`
 	S3Endpoint   string `json:"s3_endpoint"` // V11.6.1: Soporte Universal S3
 	ResticPass   string `json:"restic_password"`
+	UseCustomS3  bool   `json:"use_custom_s3" gorm:"default:false"` // V14.3: Soporte para BYOS (Bring Your Own Storage)
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
