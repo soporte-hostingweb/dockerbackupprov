@@ -32,6 +32,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          tags: |
+            type=raw,value=latest
+            type=ref,event=branch
 
       - name: Build and push Docker image (API)
         uses: docker/build-push-action@v3
@@ -46,6 +49,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AGENT }}
+          tags: |
+            type=raw,value=latest
+            type=ref,event=branch
 
       - name: Build and push Docker image (Agent)
         uses: docker/build-push-action@v3

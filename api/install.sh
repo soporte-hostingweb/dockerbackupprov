@@ -9,7 +9,7 @@ set -e
 API_ENDPOINT="https://api.hwperu.com"
 INSTALL_DIR="/opt/docker-backup-pro"
 CONFIG_FILE="$INSTALL_DIR/agent.json"
-GHCR_IMAGE="ghcr.io/soporte-hostingweb/dbp-api:prod"
+GHCR_IMAGE="ghcr.io/soporte-hostingweb/dbp-agent:latest"
 
 echo "=========================================================="
 echo "   🛡️  HW CLOUD RECOVERY - SISTEMA DE ACTIVACIÓN SaaS     "
