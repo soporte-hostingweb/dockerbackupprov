@@ -98,7 +98,13 @@ fi
 
 AGENT_ID=$(echo "$RESPONSE" | jq -r '.agent_id')
 API_KEY=$(echo  "$RESPONSE" | jq -r '.api_key')
+GHCR_USER=$(echo "$RESPONSE" | jq -r '.ghcr_user')
 GHCR_PAT=$(echo "$RESPONSE" | jq -r '.ghcr_pat')
+
+# Si la API no devuelve usuario, usamos soporte-hostingweb por defecto
+if [ -z "$GHCR_USER" ] || [ "$GHCR_USER" = "null" ]; then
+    GHCR_USER="soporte-hostingweb"
+fi
 
 echo "✅ Activación Exitosa. AgentID: $AGENT_ID"
 
@@ -111,7 +117,7 @@ if [ -z "$GHCR_PAT" ] || [ "$GHCR_PAT" = "null" ]; then
     exit 1
 fi
 
-echo "$GHCR_PAT" | docker login ghcr.io -u soporte-hostingweb --password-stdin
+echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 if [ $? -ne 0 ]; then
     echo "❌ Error: Falló la autenticación con GHCR."
     exit 1

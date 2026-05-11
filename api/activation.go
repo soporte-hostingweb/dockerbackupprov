@@ -73,10 +73,11 @@ func RegisterActivationHandlers(r *gin.Engine) {
 			var agent AgentStatus
 			if err := DB.First(&agent, "id = ?", saasToken.AgentID).Error; err == nil {
 				c.JSON(http.StatusOK, gin.H{
-					"status":   "re-activated",
-					"agent_id": agent.ID,
-					"message":  "Hardware already bound. Using existing identity.",
-					"ghcr_pat": os.Getenv("GHCR_READ_PAT"),
+					"status":    "re-activated",
+					"agent_id":  agent.ID,
+					"message":   "Hardware already bound. Using existing identity.",
+					"ghcr_user": os.Getenv("GHCR_USERNAME"),
+					"ghcr_pat":  os.Getenv("GHCR_READ_PAT"),
 				})
 				return
 			}
@@ -114,10 +115,11 @@ func RegisterActivationHandlers(r *gin.Engine) {
 		})
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":   "activated",
-			"agent_id": agentID,
-			"api_key":  apiKeyRaw,
-			"ghcr_pat": os.Getenv("GHCR_READ_PAT"),
+			"status":    "activated",
+			"agent_id":  agentID,
+			"api_key":   apiKeyRaw,
+			"ghcr_user": os.Getenv("GHCR_USERNAME"),
+			"ghcr_pat":  os.Getenv("GHCR_READ_PAT"),
 		})
 	})
 
