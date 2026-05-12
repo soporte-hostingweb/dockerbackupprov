@@ -1085,9 +1085,14 @@ func main() {
 		}
 
 		// Estructura: BUCKET / TOKEN_CLIENTE / AGENT_ID
-		// Aseguramos el prefijo s3:https:// para compatibilidad con Restic
+		// Aseguramos el prefijo s3:https:// para compatibilidad con Restic (Inteligencia V14.3.6)
 		repoPrefix := "s3:https://"
-		if strings.HasPrefix(endpoint, "http") { repoPrefix = "s3:" }
+		if strings.HasPrefix(endpoint, "http") {
+			repoPrefix = "s3:"
+		} else if settings.S3Insecure && (strings.Contains(endpoint, ":") || regexp.MustCompile(`^\d+\.`).MatchString(endpoint)) {
+			// Si es inseguro y parece IP/Puerto, forzamos HTTP para evitar errores de handshake
+			repoPrefix = "s3:http://"
+		}
 		
 		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, endpoint, wasabiBucket, effectiveToken, agentID)
 		
