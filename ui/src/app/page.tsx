@@ -296,87 +296,94 @@ export default function DashboardPage() {
         return (
           <div className="max-w-2xl mx-auto animate-in zoom-in-95 duration-500">
               <form className="bg-gray-950/50 border border-gray-900 rounded-3xl p-8 shadow-2xl space-y-6">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 text-blue-500"><Cloud size={24} /></div>
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]"><Cloud size={24} /></div>
                     <h3 className="text-lg font-black text-white uppercase italic tracking-widest">S3 Tenant Configuration</h3>
                 </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 font-black uppercase">Access Key</label>
-                      <input type="text" value={settings.wasabi_key} onChange={(e) => setSettings({...settings, wasabi_key: e.target.value})} className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" />
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Access Key</label>
+                      <input type="text" value={settings.wasabi_key} onChange={(e) => setSettings({...settings, wasabi_key: e.target.value})} className="premium-input w-full font-mono text-emerald-400" placeholder="AKIA..." />
                    </div>
                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 font-black uppercase">Secret Key</label>
-                      <input type="password" value={settings.wasabi_secret} onChange={(e) => setSettings({...settings, wasabi_secret: e.target.value})} className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" />
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Secret Key</label>
+                      <input type="password" value={settings.wasabi_secret} onChange={(e) => setSettings({...settings, wasabi_secret: e.target.value})} className="premium-input w-full font-mono text-emerald-400" placeholder="••••••••" />
                    </div>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 font-black uppercase">Bucket</label>
-                      <input type="text" value={settings.wasabi_bucket} onChange={(e) => setSettings({...settings, wasabi_bucket: e.target.value})} className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" />
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Bucket Name</label>
+                      <input type="text" value={settings.wasabi_bucket} onChange={(e) => setSettings({...settings, wasabi_bucket: e.target.value})} className="premium-input w-full font-mono" placeholder="my-backups" />
                    </div>
                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 font-black uppercase">Restic Password</label>
-                      <input type="password" value={settings.restic_password} onChange={(e) => setSettings({...settings, restic_password: e.target.value})} className="w-full bg-emerald-950/10 border border-emerald-900/30 rounded-xl px-4 py-3 text-sm text-emerald-200 outline-none font-mono" />
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Restic Password</label>
+                      <input type="password" value={settings.restic_password} onChange={(e) => setSettings({...settings, restic_password: e.target.value})} className="premium-input w-full font-mono text-emerald-300 border-emerald-500/20" placeholder="••••••••" />
                    </div>
                 </div>
+
                 <div className="space-y-2">
                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] text-gray-500 font-black uppercase">S3 Custom Endpoint (Optional)</label>
-                      <span className="text-[9px] text-emerald-500/80 font-bold uppercase italic">No insertar s3:https://</span>
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">S3 Custom Endpoint (Optional)</label>
+                      <span className="text-[9px] text-emerald-500/60 font-bold uppercase italic bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">No insertar s3:https://</span>
                    </div>
                    <input 
                      type="text" 
-                     placeholder="s3.ca-central-1.wasabisys.com (Leave empty for Default Wasabi)" 
+                     placeholder="s3.ca-central-1.wasabisys.com" 
                      value={settings.s3_endpoint} 
                      onChange={(e) => setSettings({...settings, s3_endpoint: e.target.value})} 
-                     className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" 
+                     className="premium-input w-full font-mono text-blue-400" 
                    />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <label className="flex items-center gap-3 p-3 bg-black/20 border border-gray-800 rounded-xl cursor-pointer hover:border-gray-700 transition-all">
-                       <input 
-                         type="checkbox" 
-                         checked={settings.s3_force_path_style}
-                         onChange={(e) => setSettings({...settings, s3_force_path_style: e.target.checked})}
-                         className="w-4 h-4 accent-emerald-500"
-                       />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group">
                        <div className="flex flex-col">
-                          <span className="text-[10px] text-gray-200 font-black uppercase">Force Path Style</span>
-                          <span className="text-[8px] text-gray-500 uppercase font-bold">Required for Minio/Private S3</span>
+                          <span className="text-[10px] text-white font-black uppercase tracking-widest">Force Path Style</span>
+                          <span className="text-[9px] text-gray-500 uppercase font-bold">Required for Minio / Private S3</span>
                        </div>
-                    </label>
+                       <label className="switch">
+                          <input 
+                            type="checkbox" 
+                            checked={settings.s3_force_path_style}
+                            onChange={(e) => setSettings({...settings, s3_force_path_style: e.target.checked})}
+                          />
+                          <span className="slider"></span>
+                       </label>
+                    </div>
 
-                    <label className="flex items-center gap-3 p-3 bg-black/20 border border-gray-800 rounded-xl cursor-pointer hover:border-gray-700 transition-all">
-                       <input 
-                         type="checkbox" 
-                         checked={settings.s3_insecure}
-                         onChange={(e) => setSettings({...settings, s3_insecure: e.target.checked})}
-                         className="w-4 h-4 accent-red-500"
-                       />
+                    <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group">
                        <div className="flex flex-col">
-                          <span className="text-[10px] text-gray-200 font-black uppercase">Skip SSL Verify</span>
-                          <span className="text-[8px] text-gray-500 uppercase font-bold text-red-500/50">Insecure (Self-signed certs)</span>
+                          <span className="text-[10px] text-white font-black uppercase tracking-widest">Skip SSL Verify</span>
+                          <span className="text-[9px] text-red-500/60 uppercase font-bold italic">Insecure Handshake</span>
                        </div>
-                    </label>
+                       <label className="switch">
+                          <input 
+                            type="checkbox" 
+                            checked={settings.s3_insecure}
+                            onChange={(e) => setSettings({...settings, s3_insecure: e.target.checked})}
+                          />
+                          <span className="slider"></span>
+                       </label>
+                    </div>
                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
                     <button 
                       type="button" 
                       onClick={testS3Connection} 
                       disabled={testingWasabi || savingSettings} 
-                      className="md:col-span-1 bg-gray-900 hover:bg-gray-800 text-blue-400 font-black uppercase text-[10px] py-4 rounded-2xl transition-all border border-blue-900/30"
+                      className="md:col-span-1 bg-white/5 hover:bg-white/10 text-emerald-400 font-black uppercase text-[10px] py-4 rounded-2xl transition-all border border-emerald-500/20 glow-emerald disabled:opacity-50"
                     >
-                        {testingWasabi ? 'TESTING...' : 'TEST CONNECTION'}
+                       {testingWasabi ? '🔄 Testing...' : 'Test Connection'}
                     </button>
                     <button 
-                      type="button" 
-                      onClick={(e) => saveSettings(e, false)} 
-                      disabled={savingSettings || testingWasabi} 
-                      className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl transition-all shadow-xl shadow-emerald-950/40"
+                      type="submit"
+                      disabled={savingSettings}
+                      className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[11px] py-4 rounded-2xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] disabled:opacity-50"
                     >
-                        {savingSettings ? 'SYNCING...' : 'SAVE CONFIGURATION'}
+                       {savingSettings ? '💾 Saving...' : 'Save Configuration'}
                     </button>
                  </div>
 
