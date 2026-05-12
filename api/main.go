@@ -1376,7 +1376,6 @@ func main() {
 		}
 
 		if err := DB.Save(&agent).Error; err != nil {
-
 			c.JSON(500, gin.H{"error": "Database error"})
 			return
 		}
@@ -2347,17 +2346,6 @@ fi
 			"fingerprint": activation.Fingerprint,
 		}
 
-		// Si hay agente, añadir su info
-		if activation.AgentID != "" {
-			var agent AgentStatus
-			if DB.Where("id = ?", activation.AgentID).First(&agent).Error == nil {
-				result["agent_ip"]       = agent.IpAddress
-				result["agent_health"]   = agent.HealthStatus
-				result["agent_last_seen"] = agent.LastSeen
-				result["containers"]     = agent.Containers
-			}
-		}
-
 		c.JSON(200, result)
 	})
 
@@ -2368,13 +2356,10 @@ fi
 	go RunIntegrityOrchestrator()
 	go RunContinuityOrchestrator()
 	go RunAsyncReplicationWorker()
-	go RunJobWatchdog() // V12: El Verdugo (Watchdog de jobs colgados)
 
 	// Main Server
 	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8089"
-	}
+	if port == "" { port = "8089" }
 
 	fmt.Printf("==========================================\n")
 	fmt.Printf("🚀 DBP API %s - ONLINE\n", Version)
