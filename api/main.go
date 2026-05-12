@@ -1015,6 +1015,16 @@ func main() {
 		}
 		DB.Create(&audit)
 
+		// V14.3: Limpieza profunda - Resetear también el token de activación para permitir reinstalación
+		if agent.Token != "" {
+			DB.Table("activation_tokens").Where("token = ?", agent.Token).Updates(map[string]interface{}{
+				"status":      "pending",
+				"agent_id":    "",
+				"fingerprint": "",
+			})
+			fmt.Printf("[SYSTEM] Token %s reset after agent %s deletion\n", agent.Token, id)
+		}
+
 		DB.Delete(&agent)
 		c.JSON(200, gin.H{"status": "Deleted", "id": id, "audit_id": audit.ID})
 	})	// --- ENDPOINTS DE CONFIGURACIÓN (V5.1.2) ---
