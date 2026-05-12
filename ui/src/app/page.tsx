@@ -295,7 +295,10 @@ export default function DashboardPage() {
       case 'settings':
         return (
           <div className="max-w-2xl mx-auto animate-in zoom-in-95 duration-500">
-              <form className="bg-gray-950/50 border border-gray-900 rounded-3xl p-8 shadow-2xl space-y-6">
+              <form 
+                onSubmit={(e) => { e.preventDefault(); saveSettings(e); }}
+                className="bg-gray-950/50 border border-gray-900 rounded-3xl p-8 shadow-2xl space-y-6"
+              >
                 <div className="flex items-center gap-3 mb-2">
                     <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]"><Cloud size={24} /></div>
                     <h3 className="text-lg font-black text-white uppercase italic tracking-widest">S3 Tenant Configuration</h3>
@@ -379,7 +382,8 @@ export default function DashboardPage() {
                        {testingWasabi ? '🔄 Testing...' : 'Test Connection'}
                     </button>
                     <button 
-                      type="submit"
+                      type="button"
+                      onClick={(e) => saveSettings(e)}
                       disabled={savingSettings}
                       className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[11px] py-4 rounded-2xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] disabled:opacity-50"
                     >
