@@ -127,7 +127,7 @@ export default function DashboardPage() {
   const testS3Connection = async () => {
     setTestingWasabi(true);
     try {
-      const resp = await fetch("https://api.hwperu.com/v1/admin/test-s3", {
+      const resp = await fetch("https://api.hwperu.com/v1/user/test-wasabi", {
         method: "POST",
         headers: { 
           "Authorization": token,

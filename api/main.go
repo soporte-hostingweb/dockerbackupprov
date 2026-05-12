@@ -34,7 +34,7 @@ import (
 	"github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-const Version = "V14.2.5"
+const Version = "V14.3.5"
 
 // V14.2.5: Constantes de Distribución Unificadas
 const (
