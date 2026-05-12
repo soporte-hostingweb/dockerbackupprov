@@ -2220,15 +2220,15 @@ fi
 		}
 
 		agentID := activation.AgentID
-		hostname := "desconocido"
+		ipAddress := "desconocido"
 
 		// 2. Eliminar el AgentStatus si existe
 		if agentID != "" {
 			var agent AgentStatus
 			if DB.Where("id = ?", agentID).First(&agent).Error == nil {
-				hostname = agent.Hostname
+				ipAddress = agent.IpAddress
 				DB.Delete(&agent)
-				fmt.Printf("[ADMIN] Agent %s (%s) deleted for token %s\n", agentID, hostname, saasToken)
+				fmt.Printf("[ADMIN] Agent %s (%s) deleted for token %s\n", agentID, ipAddress, saasToken)
 			}
 		}
 
@@ -2242,11 +2242,11 @@ fi
 		fmt.Printf("[ADMIN] Token %s reset to pending (was agent: %s)\n", saasToken, agentID)
 
 		c.JSON(200, gin.H{
-			"status":          "uninstalled",
-			"token":           saasToken,
+			"status":           "uninstalled",
+			"token":            saasToken,
 			"agent_id_removed": agentID,
-			"hostname":        hostname,
-			"message":         "Agente eliminado. El token puede reutilizarse para reinstalar.",
+			"ip_address":       ipAddress,
+			"message":          "Agente eliminado. El token puede reutilizarse para reinstalar.",
 		})
 	})
 
@@ -2275,7 +2275,7 @@ fi
 		if activation.AgentID != "" {
 			var agent AgentStatus
 			if DB.Where("id = ?", activation.AgentID).First(&agent).Error == nil {
-				result["agent_hostname"] = agent.Hostname
+				result["agent_ip"]       = agent.IpAddress
 				result["agent_health"]   = agent.HealthStatus
 				result["agent_last_seen"] = agent.LastSeen
 				result["containers"]     = agent.Containers
