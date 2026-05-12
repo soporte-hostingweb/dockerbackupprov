@@ -68,6 +68,9 @@ export default function DashboardPage() {
         if (!onboardingAgent) {
           const freshAgentId = Object.keys(data).find(id => {
             const a = data[id];
+            // Verificar si ya fue configurado (guardado en localStorage)
+            const alreadyOnboarded = localStorage.getItem(`onboarded_${id}`) === 'true';
+            if (alreadyOnboarded) return false;
             // Si es default "Basic" y no tiene snapshots ni contenedores reportados (o es WP detectado)
             return a.protection_level === "Basic" && (!a.paths || a.paths.length === 0);
           });
@@ -414,7 +417,12 @@ export default function DashboardPage() {
         <Onboarding 
           agentId={onboardingAgent.agent_id}
           detectedStack={onboardingAgent.detected_stack}
-          onCancel={() => setOnboardingAgent(null)}
+          onCancel={() => {
+            if (onboardingAgent?.agent_id) {
+              localStorage.setItem(`onboarded_${onboardingAgent.agent_id}`, 'true');
+            }
+            setOnboardingAgent(null);
+          }}
           onComplete={async (config) => {
             try {
               // Guardar configuración del preset
@@ -434,6 +442,7 @@ export default function DashboardPage() {
                   is_auto_managed: true
                 })
               });
+              localStorage.setItem(`onboarded_${onboardingAgent.agent_id}`, 'true');
               setOnboardingAgent(null);
               fetchData();
             } catch (err) {
