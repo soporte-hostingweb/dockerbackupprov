@@ -2049,11 +2049,14 @@ fi
 			settings.ResticPass = encPass
 		}
 
-		// V14.3: Persistir flags de compatibilidad S3 (Forzamos actualización de booleanos)
+		// V14.3: Persistir flags de compatibilidad S3 (Forzamos actualización de TODOS los campos incluyendo booleanos)
 		settings.S3ForcePathStyle = input.S3ForcePathStyle
 		settings.S3Insecure = input.S3Insecure
 
-		if err := DB.Save(&settings).Error; err != nil {
+		fmt.Printf("[SETTINGS] Saving for %s: PathStyle=%v, Insecure=%v\n", saveToken, settings.S3ForcePathStyle, settings.S3Insecure)
+
+		// Usamos Select("*") para forzar que GORM incluya los campos booleanos aunque sean false
+		if err := DB.Model(&settings).Select("*").Updates(&settings).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Failed to save settings: " + err.Error()})
 			return
 		}
@@ -2066,7 +2069,11 @@ fi
 		alertConfig.Events = input.WebhookEvents
 		DB.Save(&alertConfig)
 		
-		c.JSON(200, gin.H{"message": "Settings saved successfully", "mode": saveToken})
+		c.JSON(200, gin.H{
+			"message": "Settings saved successfully", 
+			"mode": saveToken,
+			"s3_insecure": settings.S3Insecure,
+		})
 
 
 	})
