@@ -39,6 +39,8 @@ export default function DashboardPage() {
     wasabi_bucket: '',
     wasabi_region: 'us-east-1',
     s3_endpoint: '',
+    s3_force_path_style: true,
+    s3_insecure: false,
     restic_password: '',
     webhook_url: '',
     webhook_events: 'backup_failed,agent_offline,restore_completed,verification_failed'
@@ -328,6 +330,34 @@ export default function DashboardPage() {
                      onChange={(e) => setSettings({...settings, s3_endpoint: e.target.value})} 
                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" 
                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <label className="flex items-center gap-3 p-3 bg-black/20 border border-gray-800 rounded-xl cursor-pointer hover:border-gray-700 transition-all">
+                       <input 
+                         type="checkbox" 
+                         checked={settings.s3_force_path_style}
+                         onChange={(e) => setSettings({...settings, s3_force_path_style: e.target.checked})}
+                         className="w-4 h-4 accent-emerald-500"
+                       />
+                       <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-200 font-black uppercase">Force Path Style</span>
+                          <span className="text-[8px] text-gray-500 uppercase font-bold">Required for Minio/Private S3</span>
+                       </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-3 bg-black/20 border border-gray-800 rounded-xl cursor-pointer hover:border-gray-700 transition-all">
+                       <input 
+                         type="checkbox" 
+                         checked={settings.s3_insecure}
+                         onChange={(e) => setSettings({...settings, s3_insecure: e.target.checked})}
+                         className="w-4 h-4 accent-red-500"
+                       />
+                       <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-200 font-black uppercase">Skip SSL Verify</span>
+                          <span className="text-[8px] text-gray-500 uppercase font-bold text-red-500/50">Insecure (Self-signed certs)</span>
+                       </div>
+                    </label>
                 </div>
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <button 

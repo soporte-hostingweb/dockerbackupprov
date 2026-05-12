@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1383,6 +1384,8 @@ func main() {
 			Bucket    string `json:"wasabi_bucket"`
 			Region    string `json:"wasabi_region"`
 			Endpoint  string `json:"s3_endpoint"`
+			ForcePath bool   `json:"s3_force_path_style"`
+			Insecure  bool   `json:"s3_insecure"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -1390,14 +1393,36 @@ func main() {
 			return
 		}
 
+		// V14.3.2: Limpiar y normalizar el endpoint
+		endpoint := strings.TrimSpace(req.Endpoint)
+		if endpoint == "" {
+			endpoint = "s3.wasabisys.com"
+		}
+		// Si no tiene protocolo, se lo añadimos (Default HTTP para puertos custom o IPs)
+		if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+			if strings.Contains(endpoint, ":") || strings.Contains(endpoint, "15.235.") { // Detección de IP/Puerto
+				endpoint = "http://" + endpoint
+			} else {
+				endpoint = "https://" + endpoint
+			}
+		}
+
 		// Configurar cliente S3 temporal para el test
 		s3Config := &aws.Config{
 			Credentials:      credentials.NewStaticCredentials(req.AccessKey, req.SecretKey, ""),
-			Endpoint:         aws.String(req.Endpoint),
+			Endpoint:         aws.String(endpoint),
 			Region:           aws.String(req.Region),
-			S3ForcePathStyle: aws.Bool(true),
+			S3ForcePathStyle: aws.Bool(req.ForcePath),
 		}
-		if *s3Config.Endpoint == "" { s3Config.Endpoint = aws.String("s3.wasabisys.com") }
+
+		// Soporte para Insecure SSL (Ignorar errores de certificado)
+		if req.Insecure {
+			s3Config.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}
+		}
 
 		sess, _ := session.NewSession(s3Config)
 		svc := s3.New(sess)

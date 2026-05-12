@@ -139,6 +139,8 @@ type UserSettings struct {
 	WasabiBucket string `json:"wasabi_bucket"`
 	WasabiRegion string `json:"wasabi_region"`
 	S3Endpoint   string `json:"s3_endpoint"` // V11.6.1: Soporte Universal S3
+	S3ForcePathStyle bool `json:"s3_force_path_style" gorm:"default:true"`
+	S3Insecure       bool `json:"s3_insecure" gorm:"default:false"`
 	ResticPass   string `json:"restic_password"`
 	UseCustomS3  bool   `json:"use_custom_s3" gorm:"default:false"` // V14.3: Soporte para BYOS (Bring Your Own Storage)
 	CreatedAt    time.Time
