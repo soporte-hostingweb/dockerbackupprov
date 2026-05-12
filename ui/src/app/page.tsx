@@ -92,6 +92,8 @@ export default function DashboardPage() {
               wasabi_bucket: sData.wasabi_bucket || '',
               wasabi_region: sData.wasabi_region || 'us-east-1',
               s3_endpoint: sData.s3_endpoint || '',
+              s3_force_path_style: sData.s3_force_path_style ?? true,
+              s3_insecure: sData.s3_insecure ?? false,
               restic_password: sData.restic_password || '',
               webhook_url: sData.webhook_url || '',
               webhook_events: sData.webhook_events || 'backup_failed,agent_offline,restore_completed,verification_failed'
