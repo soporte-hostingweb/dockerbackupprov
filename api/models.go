@@ -35,4 +35,6 @@ type UserSettingsPayload struct {
 	ResticPass     string `json:"restic_password"`
 	WebhookURL     string `json:"webhook_url"`
 	WebhookEvents  string `json:"webhook_events"` // Formato: "backup_failed,agent_offline"
+	S3ForcePathStyle bool   `json:"s3_force_path_style"`
+	S3Insecure       bool   `json:"s3_insecure"`
 }

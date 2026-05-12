@@ -2049,6 +2049,10 @@ fi
 			settings.ResticPass = encPass
 		}
 
+		// V14.3: Persistir flags de compatibilidad S3
+		settings.S3ForcePathStyle = input.S3ForcePathStyle
+		settings.S3Insecure = input.S3Insecure
+
 		if err := DB.Save(&settings).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Failed to save settings: " + err.Error()})
 			return
@@ -2109,6 +2113,8 @@ fi
 			ResticPass:    settings.ResticPass,
 			WebhookURL:    alertConfig.WebhookURL,
 			WebhookEvents: alertConfig.Events,
+			S3ForcePathStyle: settings.S3ForcePathStyle,
+			S3Insecure:       settings.S3Insecure,
 		}
 
 		c.JSON(200, response)
