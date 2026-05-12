@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -2153,10 +2154,15 @@ fi
 			}
 		}
 
-		// Compatibilidad: Asegurar https para AWS SDK
+		// Compatibilidad: Normalización inteligente del protocolo (V14.3.6)
 		finalEndpoint := endpoint
 		if !strings.HasPrefix(finalEndpoint, "http") {
-			finalEndpoint = "https://" + finalEndpoint
+			// Si el usuario marcó 'Insecure' y parece una IP o puerto local, preferimos HTTP
+			if input.S3Insecure && (strings.Contains(finalEndpoint, ":") || regexp.MustCompile(`^\d+\.`).MatchString(finalEndpoint)) {
+				finalEndpoint = "http://" + finalEndpoint
+			} else {
+				finalEndpoint = "https://" + finalEndpoint
+			}
 		}
 
 		// Configurar Sesión S3 para Universal Storage (V11.6.1)
