@@ -1112,6 +1112,8 @@ func main() {
 			"restic_password":  resticPass,
 			"wasabi_key":       wasabiKey,
 			"wasabi_secret":    wasabiSecret,
+			"s3_force_path_style": settings.S3ForcePathStyle,
+			"s3_insecure":         settings.S3Insecure,
 			// V14.1: Campos de Control SaaS (El Agente Sólo Ejecuta)
 			"protection_level": config.ProtectionLevel,
 			"snapshot_mode":    config.SnapshotMode,
