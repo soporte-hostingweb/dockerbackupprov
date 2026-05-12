@@ -628,7 +628,14 @@ export default function ServerList({ onRestore }: ServerListProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {data.containers && data.containers
-                  .filter(c => !c.includes("watchtower") && !c.includes("dbp-") && !c.includes("redis") && !c.includes("postgres"))
+                  .filter(c => {
+                    const name = c.toLowerCase();
+                    return !name.includes("watchtower") && 
+                           !name.includes("dbp-") && 
+                           !name.includes("redis") && 
+                           !name.includes("postgres") &&
+                           !name.includes("agent");
+                  })
                   .map((container, idx) => (
                   <div key={idx} className="space-y-3">
                     <div className="flex items-center justify-between text-xs px-1">

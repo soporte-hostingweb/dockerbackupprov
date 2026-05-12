@@ -82,7 +82,7 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       }
 
       // 3. Mezclar rutas de otros contenedores con la selección ACTUAL de este
-      const finalPaths = [...new Set([...otherPaths, ...selectedFolders])];
+      const finalPaths = Array.from(new Set([...otherPaths, ...selectedFolders]));
 
       const response = await fetch("https://api.hwperu.com/v1/agent/config", {
         method: "POST",
