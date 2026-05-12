@@ -2151,7 +2151,15 @@ fi
 			Credentials:      credentials.NewStaticCredentials(input.WasabiKey, input.WasabiSecret, ""),
 			Endpoint:         aws.String(finalEndpoint),
 			Region:           aws.String(region),
-			S3ForcePathStyle: aws.Bool(true), // Wasabi prefiere Path Style
+			S3ForcePathStyle: aws.Bool(input.S3ForcePathStyle),
+		}
+
+		if input.S3Insecure {
+			s3Config.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}
 		}
 
 		sess, err := session.NewSession(s3Config)
@@ -2162,7 +2170,7 @@ fi
 
 		svc := s3.New(sess)
 		
-		fmt.Printf("[TEST] Testing Wasabi for bucket: %s (%s)...\n", input.WasabiBucket, region)
+		fmt.Printf("[TEST] Testing S3 Storage for bucket: %s (%s)...\n", input.WasabiBucket, region)
 
 		// 1. Probar ListBucket (Verifica existencia y permisos base)
 		_, err = svc.ListObjectsV2(&s3.ListObjectsV2Input{
@@ -2174,92 +2182,15 @@ fi
 			c.JSON(200, gin.H{
 				"success": false, 
 				"error": fmt.Sprintf("S3 Check Failed: %v", err),
-				"details": "Check if your Key/Secret are correct and have 'ListBucket' permission on this bucket.",
+				"details": "Check if your Key/Secret/Bucket are correct and if the service is reachable.",
 			})
 			return
 		}
 
 		c.JSON(200, gin.H{
 			"success": true, 
-			"message": "Connection Successful! API can communicate with this S3 target.",
+			"message": "Connection Successful! API can communicate with this storage target.",
 		})
-	})
-
-
-
-	// --- GESTIÓN DE CONFIGURACIÓN DE USUARIO (V14.3) ---
-
-	r.GET("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
-		token := c.GetString("token")
-		var settings UserSettings
-		DB.Where("token = ?", token).First(&settings)
-		
-		// Si no existe, devolver valores por defecto
-		if settings.ID == 0 {
-			settings.Token = token
-			settings.S3ForcePathStyle = true
-			settings.WasabiRegion = "us-east-1"
-		}
-
-		// Descifrar para el Dashboard
-		sKey, _ := Decrypt(settings.WasabiKey)
-		sSec, _ := Decrypt(settings.WasabiSecret)
-		rPass, _ := Decrypt(settings.ResticPass)
-
-		c.JSON(200, gin.H{
-			"wasabi_key":    sKey,
-			"wasabi_secret": sSec,
-			"wasabi_bucket": settings.WasabiBucket,
-			"wasabi_region": settings.WasabiRegion,
-			"s3_endpoint":   settings.S3Endpoint,
-			"s3_force_path_style": settings.S3ForcePathStyle,
-			"s3_insecure":   settings.S3Insecure,
-			"restic_password": rPass,
-		})
-	})
-
-	r.POST("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
-		token := c.GetString("token")
-		var req struct {
-			WasabiKey    string `json:"wasabi_key"`
-			WasabiSecret string `json:"wasabi_secret"`
-			WasabiBucket string `json:"wasabi_bucket"`
-			WasabiRegion string `json:"wasabi_region"`
-			S3Endpoint   string `json:"s3_endpoint"`
-			ForcePath    bool   `json:"s3_force_path_style"`
-			Insecure     bool   `json:"s3_insecure"`
-			ResticPass   string `json:"restic_password"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request"})
-			return
-		}
-
-		var settings UserSettings
-		DB.Where("token = ?", token).First(&settings)
-
-		// Cifrar datos sensibles
-		encKey, _ := Encrypt(req.WasabiKey)
-		encSec, _ := Encrypt(req.WasabiSecret)
-		encPass, _ := Encrypt(req.ResticPass)
-
-		settings.Token = token
-		settings.WasabiKey = encKey
-		settings.WasabiSecret = encSec
-		settings.WasabiBucket = req.WasabiBucket
-		settings.WasabiRegion = req.WasabiRegion
-		settings.S3Endpoint = req.S3Endpoint
-		settings.S3ForcePathStyle = req.ForcePath
-		settings.S3Insecure = req.Insecure
-		settings.ResticPass = encPass
-
-		if err := DB.Save(&settings).Error; err != nil {
-			c.JSON(500, gin.H{"error": "Failed to save settings"})
-			return
-		}
-
-		c.JSON(200, gin.H{"status": "Settings Saved", "s3_insecure": settings.S3Insecure})
 	})
 
 	r.GET("/v1/admin/wasabi/ping", AuthMiddleware(), func(c *gin.Context) {
