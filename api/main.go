@@ -1788,15 +1788,17 @@ func main() {
 		region := settings.WasabiRegion
 		if region == "" { region = "us-east-1" }
 		// V11.6.1: Soporte Universal S3 en Clonación
-		endpoint := settings.S3Endpoint
-		if endpoint == "" {
-			endpoint = "s3.wasabisys.com"
-			if region != "us-east-1" && region != "" { endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region) }
+		s3Endpoint := settings.S3Endpoint
+		if s3Endpoint == "" {
+			s3Endpoint = "s3.wasabisys.com"
+			if region != "us-east-1" && region != "" { s3Endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region) }
 		}
 		
+		// V14.3: Limpiar endpoint de slashes para evitar la doble barra // en la URL final
+		cleanEndpoint := strings.TrimRight(s3Endpoint, "/")
 		repoPrefix := "s3:https://"
-		if strings.HasPrefix(endpoint, "http") { repoPrefix = "s3:" }
-		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, endpoint, bucket, effectiveToken, req.SourceAgentID)
+		if strings.HasPrefix(cleanEndpoint, "http") { repoPrefix = "s3:" }
+		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, cleanEndpoint, bucket, effectiveToken, req.SourceAgentID)
 
 		// 4. Inyección Asíncrona (Conexión SSH y Restauración)
 		go func() {

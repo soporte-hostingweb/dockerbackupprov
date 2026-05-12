@@ -212,7 +212,6 @@ func main() {
 		var backupPaths []string
 
 		for _, name := range LastKnownContainers {
-			if name == "dbp-client-agent" { continue }
 			hostMounts := GetContainerMounts(name)
 			for _, hostPath := range hostMounts {
 				hostRoot := GetHostRoot()
