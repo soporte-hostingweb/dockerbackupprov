@@ -1353,7 +1353,12 @@ func main() {
 			agent.CmdTask = existing.CmdTask
 			agent.CmdParam = existing.CmdParam
 			agent.CmdResult = existing.CmdResult
-			
+
+			// ⚠️ CRÍTICO V14.3: Preservar credenciales - DB.Save() sobreescribiría
+			// api_key y fingerprint con string vacío ya que el heartbeat no los incluye
+			agent.ApiKey = existing.ApiKey
+			agent.Fingerprint = existing.Fingerprint
+
 			// --- LÓGICA DE AUTO-UPDATE (V14) ---
 			// Si el agente reporta una versión distinta a la del servidor y no tiene tareas pendientes,
 			// le enviamos un trigger de actualización (futuro)
