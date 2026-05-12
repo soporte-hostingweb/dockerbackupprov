@@ -2049,7 +2049,7 @@ fi
 			settings.ResticPass = encPass
 		}
 
-		// V14.3: Persistir flags de compatibilidad S3
+		// V14.3: Persistir flags de compatibilidad S3 (Forzamos actualización de booleanos)
 		settings.S3ForcePathStyle = input.S3ForcePathStyle
 		settings.S3Insecure = input.S3Insecure
 
