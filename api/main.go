@@ -2196,6 +2196,95 @@ fi
 		c.JSON(200, gin.H{"status": "Online", "latency_ms": 145, "bucket": s3Repo})
 	})
 
+	// --- GESTIÓN DE AGENTES (ADMIN) ---
+
+	// DELETE /v1/admin/agent/:token — Desinstalar/Resetear agente cliente por token SaaS
+	// Limpia activation_tokens + agent_statuses. El token queda listo para reinstalar.
+	r.DELETE("/v1/admin/agent/:token", AuthMiddleware(), func(c *gin.Context) {
+		if !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Admin required"})
+			return
+		}
+
+		saasToken := c.Param("token")
+		if saasToken == "" {
+			c.JSON(400, gin.H{"error": "Token requerido"})
+			return
+		}
+
+		// 1. Buscar el registro de activación
+		var activation ActivationToken
+		if err := DB.Where("token = ?", saasToken).First(&activation).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Token no encontrado", "token": saasToken})
+			return
+		}
+
+		agentID := activation.AgentID
+		hostname := "desconocido"
+
+		// 2. Eliminar el AgentStatus si existe
+		if agentID != "" {
+			var agent AgentStatus
+			if DB.Where("id = ?", agentID).First(&agent).Error == nil {
+				hostname = agent.Hostname
+				DB.Delete(&agent)
+				fmt.Printf("[ADMIN] Agent %s (%s) deleted for token %s\n", agentID, hostname, saasToken)
+			}
+		}
+
+		// 3. Resetear el token a pending (listo para reinstalar)
+		DB.Model(&activation).Updates(map[string]interface{}{
+			"status":      "pending",
+			"agent_id":    "",
+			"fingerprint": "",
+		})
+
+		fmt.Printf("[ADMIN] Token %s reset to pending (was agent: %s)\n", saasToken, agentID)
+
+		c.JSON(200, gin.H{
+			"status":          "uninstalled",
+			"token":           saasToken,
+			"agent_id_removed": agentID,
+			"hostname":        hostname,
+			"message":         "Agente eliminado. El token puede reutilizarse para reinstalar.",
+		})
+	})
+
+	// GET /v1/admin/agent/:token — Ver estado de un agente por token SaaS
+	r.GET("/v1/admin/agent/:token", AuthMiddleware(), func(c *gin.Context) {
+		if !c.GetBool("is_admin") {
+			c.JSON(403, gin.H{"error": "Admin required"})
+			return
+		}
+
+		saasToken := c.Param("token")
+		var activation ActivationToken
+		if err := DB.Where("token = ?", saasToken).First(&activation).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Token no encontrado"})
+			return
+		}
+
+		result := gin.H{
+			"token":       activation.Token,
+			"status":      activation.Status,
+			"agent_id":    activation.AgentID,
+			"fingerprint": activation.Fingerprint,
+		}
+
+		// Si hay agente, añadir su info
+		if activation.AgentID != "" {
+			var agent AgentStatus
+			if DB.Where("id = ?", activation.AgentID).First(&agent).Error == nil {
+				result["agent_hostname"] = agent.Hostname
+				result["agent_health"]   = agent.HealthStatus
+				result["agent_last_seen"] = agent.LastSeen
+				result["containers"]     = agent.Containers
+			}
+		}
+
+		c.JSON(200, result)
+	})
+
 	// 1.2 Inicializar Trabajadores de Fondo
 	go RunPruningWorker()
 	go RunJobWatchdog()
