@@ -1370,101 +1370,6 @@ func main() {
 			agent.ApiKey = existing.ApiKey
 			agent.Fingerprint = existing.Fingerprint
 
-			// V14.3.1: Endpoint de Validación de S3 en tiempo real
-	r.POST("/v1/admin/test-s3", AuthMiddleware(), func(c *gin.Context) {
-		isAdmin := c.GetBool("is_admin")
-		if !isAdmin {
-			c.JSON(403, gin.H{"error": "Solo administradores pueden validar almacenamiento global"})
-			return
-		}
-
-		var req struct {
-			AccessKey string `json:"wasabi_key"`
-			SecretKey string `json:"wasabi_secret"`
-			Bucket    string `json:"wasabi_bucket"`
-			Region    string `json:"wasabi_region"`
-			Endpoint  string `json:"s3_endpoint"`
-			ForcePath bool   `json:"s3_force_path_style"`
-			Insecure  bool   `json:"s3_insecure"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request"})
-			return
-		}
-
-		// V14.3.2: Limpiar y normalizar el endpoint
-		endpoint := strings.TrimSpace(req.Endpoint)
-		if endpoint == "" {
-			endpoint = "s3.wasabisys.com"
-		}
-		// Si no tiene protocolo, se lo añadimos (Default HTTP para puertos custom o IPs)
-		if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
-			if strings.Contains(endpoint, ":") || strings.Contains(endpoint, "15.235.") { // Detección de IP/Puerto
-				endpoint = "http://" + endpoint
-			} else {
-				endpoint = "https://" + endpoint
-			}
-		}
-
-		// Configurar cliente S3 temporal para el test
-		s3Config := &aws.Config{
-			Credentials:      credentials.NewStaticCredentials(req.AccessKey, req.SecretKey, ""),
-			Endpoint:         aws.String(endpoint),
-			Region:           aws.String(req.Region),
-			S3ForcePathStyle: aws.Bool(req.ForcePath),
-		}
-
-		// Soporte para Insecure SSL (Ignorar errores de certificado)
-		if req.Insecure {
-			s3Config.HTTPClient = &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				},
-			}
-		}
-
-		sess, _ := session.NewSession(s3Config)
-		svc := s3.New(sess)
-
-		// Intentar listar objetos (mínimo 1) para validar acceso
-		start := time.Now()
-		_, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{
-			Bucket:  aws.String(req.Bucket),
-			MaxKeys: aws.Int64(1),
-		})
-
-		if err != nil {
-			c.JSON(400, gin.H{
-				"status": "error",
-				"message": fmt.Sprintf("Error de conexión: %v", err),
-			})
-			return
-		}
-
-		latency := time.Since(start).Milliseconds()
-		c.JSON(200, gin.H{
-			"status": "ok",
-			"message": "¡Conexión Exitosa!",
-			"latency_ms": latency,
-		})
-	})
-
-	// --- REGISTRO DE ACTIVIDADES (TELEMETRÍA) ---
-			// Si el agente reporta una versión distinta a la del servidor y no tiene tareas pendientes,
-			// le enviamos un trigger de actualización (futuro)
-			if payload.Version != "" && payload.Version != Version && agent.CmdTask == "none" {
-				fmt.Printf("[SYSTEM] Agent %s is OUTDATED (Server: %s, Agent: %s). Queueing update check.\n", payload.AgentID, Version, payload.Version)
-				// Por ahora solo logueamos o marcamos para futura implementación de descarga automática
-			}
-			
-			// Si el agente reporta que está sincronizando, consumimos la instrucción (V3.4.1)
-			if payload.IsSyncing && agent.PendingForce != "none" {
-				agent.PendingForce = "none"
-			}
-			
-			// Si se procesó una orden de kill, la reiniciamos (V3.4.1)
-			// V6.8: Si el payload vino vacío, recuperamos lo que ya teníamos en DB
 			if agent.Containers == "" { agent.Containers = existing.Containers }
 			if agent.Explorer == ""   { agent.Explorer = existing.Explorer }
 			if agent.Snapshots == ""  { agent.Snapshots = existing.Snapshots }
@@ -2283,7 +2188,80 @@ fi
 
 
 
-	// --- DIAGNÓSTICOS ---
+	// --- GESTIÓN DE CONFIGURACIÓN DE USUARIO (V14.3) ---
+
+	r.GET("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var settings UserSettings
+		DB.Where("token = ?", token).First(&settings)
+		
+		// Si no existe, devolver valores por defecto
+		if settings.ID == 0 {
+			settings.Token = token
+			settings.S3ForcePathStyle = true
+			settings.WasabiRegion = "us-east-1"
+		}
+
+		// Descifrar para el Dashboard
+		sKey, _ := Decrypt(settings.WasabiKey)
+		sSec, _ := Decrypt(settings.WasabiSecret)
+		rPass, _ := Decrypt(settings.ResticPass)
+
+		c.JSON(200, gin.H{
+			"wasabi_key":    sKey,
+			"wasabi_secret": sSec,
+			"wasabi_bucket": settings.WasabiBucket,
+			"wasabi_region": settings.WasabiRegion,
+			"s3_endpoint":   settings.S3Endpoint,
+			"s3_force_path_style": settings.S3ForcePathStyle,
+			"s3_insecure":   settings.S3Insecure,
+			"restic_password": rPass,
+		})
+	})
+
+	r.POST("/v1/user/settings", AuthMiddleware(), func(c *gin.Context) {
+		token := c.GetString("token")
+		var req struct {
+			WasabiKey    string `json:"wasabi_key"`
+			WasabiSecret string `json:"wasabi_secret"`
+			WasabiBucket string `json:"wasabi_bucket"`
+			WasabiRegion string `json:"wasabi_region"`
+			S3Endpoint   string `json:"s3_endpoint"`
+			ForcePath    bool   `json:"s3_force_path_style"`
+			Insecure     bool   `json:"s3_insecure"`
+			ResticPass   string `json:"restic_password"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		var settings UserSettings
+		DB.Where("token = ?", token).First(&settings)
+
+		// Cifrar datos sensibles
+		encKey, _ := Encrypt(req.WasabiKey)
+		encSec, _ := Encrypt(req.WasabiSecret)
+		encPass, _ := Encrypt(req.ResticPass)
+
+		settings.Token = token
+		settings.WasabiKey = encKey
+		settings.WasabiSecret = encSec
+		settings.WasabiBucket = req.WasabiBucket
+		settings.WasabiRegion = req.WasabiRegion
+		settings.S3Endpoint = req.S3Endpoint
+		settings.S3ForcePathStyle = req.ForcePath
+		settings.S3Insecure = req.Insecure
+		settings.ResticPass = encPass
+
+		if err := DB.Save(&settings).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Failed to save settings"})
+			return
+		}
+
+		c.JSON(200, gin.H{"status": "Settings Saved", "s3_insecure": settings.S3Insecure})
+	})
 
 	r.GET("/v1/admin/wasabi/ping", AuthMiddleware(), func(c *gin.Context) {
 		if !c.GetBool("is_admin") {
