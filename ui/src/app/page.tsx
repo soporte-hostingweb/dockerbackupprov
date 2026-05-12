@@ -32,6 +32,7 @@ export default function DashboardPage() {
 
   const [wasabiStatus, setWasabiStatus] = useState<{ status: string; latency_ms: number; bucket: string } | null>(null);
   const [testingWasabi, setTestingWasabi] = useState(false);
+  const [testResult, setTestResult] = useState<{message: string, success: boolean} | null>(null);
 
   const [settings, setSettings] = useState({
     wasabi_key: '',
@@ -136,15 +137,24 @@ export default function DashboardPage() {
         body: JSON.stringify(settings)
       });
       const data = await resp.json();
-      if (resp.ok) {
-        alert(`✅ CONEXIÓN EXITOSA\nLatencia: ${data.latency_ms}ms\n${data.message}`);
+      
+      if (data.success) {
+        setTestResult({
+          message: `✅ CONEXIÓN EXITOSA (${data.latency_ms}ms): ${data.message}`,
+          success: true
+        });
       } else {
-        alert(`❌ ERROR DE CONEXIÓN\n${data.message}`);
+        setTestResult({
+          message: `❌ ERROR: ${data.error || data.message || 'Falló la conexión'}`,
+          success: false
+        });
       }
     } catch (err) {
-      alert("Error al contactar con el Control Plane para el test.");
+      setTestResult({ message: "❌ Error crítico al contactar con el API", success: false });
     } finally {
       setTestingWasabi(false);
+      // Auto-ocultar después de 5 segundos
+      setTimeout(() => setTestResult(null), 5000);
     }
   };
 
@@ -390,6 +400,12 @@ export default function DashboardPage() {
                        {savingSettings ? '💾 Saving...' : 'Save Configuration'}
                     </button>
                  </div>
+
+                 {testResult && (
+                    <div className={`text-center p-3 rounded-xl border animate-in fade-in slide-in-from-top-2 duration-300 ${testResult.success ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                        <p className="text-[10px] font-black uppercase tracking-widest">{testResult.message}</p>
+                    </div>
+                 )}
 
                 <div className="pt-6 border-t border-gray-900 space-y-4">
                     <div className="flex items-center gap-3">
