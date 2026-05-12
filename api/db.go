@@ -47,7 +47,7 @@ type AgentStatus struct {
 	HealthScore        int    `json:"health_score" gorm:"default:100"` // V9.1: Scoring SaaS (0-100)
 	IpAddress          string `json:"ip_address"`                  // V11.2.1: Trackear IP del nodo anfitrión
 	Fingerprint        string `gorm:"index" json:"fingerprint"`    // V13: Huella digital hardware (SHA256)
-	ApiKey             string `json:"api_key"`                      // V13: Credencial única del agente (Hashed)
+	ApiKey             string `gorm:"column:api_key;not null;default:''" json:"api_key"`                      // V13: Credencial única del agente (Hashed)
 	Version            string `json:"version" gorm:"default:'V12.0.0'"` // V14: Tracker de versión para auto-updates
 	NodeType           string `json:"node_type" gorm:"default:'agent'"` // V11.5.0: "agent" o "verifier"
 	RecoveryTier       int    `json:"recovery_tier" gorm:"default:0"`      // V11.4.0: 0:Normal, 1:Detection, 2:Restarting, 3:Escalated
