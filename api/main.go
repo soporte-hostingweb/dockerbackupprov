@@ -2173,6 +2173,7 @@ fi
 		fmt.Printf("[TEST] Testing S3 Storage for bucket: %s (%s)...\n", input.WasabiBucket, region)
 
 		// 1. Probar ListBucket (Verifica existencia y permisos base)
+		start := time.Now()
 		_, err = svc.ListObjectsV2(&s3.ListObjectsV2Input{
 			Bucket:  aws.String(input.WasabiBucket),
 			MaxKeys: aws.Int64(1),
@@ -2187,9 +2188,11 @@ fi
 			return
 		}
 
+		latency := time.Since(start).Milliseconds()
 		c.JSON(200, gin.H{
 			"success": true, 
-			"message": "Connection Successful! API can communicate with this storage target.",
+			"message": "¡API Control Plane conectado con éxito al almacenamiento S3!",
+			"latency_ms": latency,
 		})
 	})
 
