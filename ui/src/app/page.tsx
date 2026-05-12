@@ -120,7 +120,31 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [activeTab, token]);
 
-  const saveSettings = async (e: React.FormEvent, isGlobal = false) => {
+  const testS3Connection = async () => {
+    setTestingWasabi(true);
+    try {
+      const resp = await fetch("https://api.hwperu.com/v1/admin/test-s3", {
+        method: "POST",
+        headers: { 
+          "Authorization": token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(settings)
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        alert(`✅ CONEXIÓN EXITOSA\nLatencia: ${data.latency_ms}ms\n${data.message}`);
+      } else {
+        alert(`❌ ERROR DE CONEXIÓN\n${data.message}`);
+      }
+    } catch (err) {
+      alert("Error al contactar con el Control Plane para el test.");
+    } finally {
+      setTestingWasabi(false);
+    }
+  };
+
+  const saveSettings = async (e: any, isGlobal = false) => {
     e.preventDefault();
     setSavingSettings(true);
     try {
@@ -305,9 +329,24 @@ export default function DashboardPage() {
                      className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none font-mono" 
                    />
                 </div>
-                <button type="button" onClick={(e) => saveSettings(e, false)} disabled={savingSettings} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl transition-all shadow-xl shadow-emerald-950/40">
-                    {savingSettings ? 'SYNCING...' : 'SAVE CONFIGURATION'}
-                </button>
+                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <button 
+                      type="button" 
+                      onClick={testS3Connection} 
+                      disabled={testingWasabi || savingSettings} 
+                      className="md:col-span-1 bg-gray-900 hover:bg-gray-800 text-blue-400 font-black uppercase text-[10px] py-4 rounded-2xl transition-all border border-blue-900/30"
+                    >
+                        {testingWasabi ? 'TESTING...' : 'TEST CONNECTION'}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={(e) => saveSettings(e, false)} 
+                      disabled={savingSettings || testingWasabi} 
+                      className="md:col-span-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs py-4 rounded-2xl transition-all shadow-xl shadow-emerald-950/40"
+                    >
+                        {savingSettings ? 'SYNCING...' : 'SAVE CONFIGURATION'}
+                    </button>
+                 </div>
 
                 <div className="pt-6 border-t border-gray-900 space-y-4">
                     <div className="flex items-center gap-3">

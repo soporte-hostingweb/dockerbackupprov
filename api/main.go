@@ -1369,7 +1369,63 @@ func main() {
 			agent.ApiKey = existing.ApiKey
 			agent.Fingerprint = existing.Fingerprint
 
-			// --- LÓGICA DE AUTO-UPDATE (V14) ---
+			// V14.3.1: Endpoint de Validación de S3 en tiempo real
+	r.POST("/v1/admin/test-s3", AuthMiddleware(), func(c *gin.Context) {
+		isAdmin := c.GetBool("is_admin")
+		if !isAdmin {
+			c.JSON(403, gin.H{"error": "Solo administradores pueden validar almacenamiento global"})
+			return
+		}
+
+		var req struct {
+			AccessKey string `json:"wasabi_key"`
+			SecretKey string `json:"wasabi_secret"`
+			Bucket    string `json:"wasabi_bucket"`
+			Region    string `json:"wasabi_region"`
+			Endpoint  string `json:"s3_endpoint"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		// Configurar cliente S3 temporal para el test
+		s3Config := &aws.Config{
+			Credentials:      credentials.NewStaticCredentials(req.AccessKey, req.SecretKey, ""),
+			Endpoint:         aws.String(req.Endpoint),
+			Region:           aws.String(req.Region),
+			S3ForcePathStyle: aws.Bool(true),
+		}
+		if *s3Config.Endpoint == "" { s3Config.Endpoint = aws.String("s3.wasabisys.com") }
+
+		sess, _ := session.NewSession(s3Config)
+		svc := s3.New(sess)
+
+		// Intentar listar objetos (mínimo 1) para validar acceso
+		start := time.Now()
+		_, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{
+			Bucket:  aws.String(req.Bucket),
+			MaxKeys: aws.Int64(1),
+		})
+
+		if err != nil {
+			c.JSON(400, gin.H{
+				"status": "error",
+				"message": fmt.Sprintf("Error de conexión: %v", err),
+			})
+			return
+		}
+
+		latency := time.Since(start).Milliseconds()
+		c.JSON(200, gin.H{
+			"status": "ok",
+			"message": "¡Conexión Exitosa!",
+			"latency_ms": latency,
+		})
+	})
+
+	// --- REGISTRO DE ACTIVIDADES (TELEMETRÍA) ---
 			// Si el agente reporta una versión distinta a la del servidor y no tiene tareas pendientes,
 			// le enviamos un trigger de actualización (futuro)
 			if payload.Version != "" && payload.Version != Version && agent.CmdTask == "none" {
