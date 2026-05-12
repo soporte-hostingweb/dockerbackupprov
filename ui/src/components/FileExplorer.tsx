@@ -24,7 +24,6 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       const token = localStorage.getItem('dbp_sso_token');
       if (!token || !agentId || agentId === "") return;
 
-
       try {
         const response = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {
           headers: { "Authorization": token }
@@ -32,8 +31,14 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
         if (response.ok) {
           const data = await response.json();
           if (data.paths) {
-            setSelectedFolders(data.paths);
-            console.log(`[CONFIG] Loaded ${data.paths.length} paths for agent ${agentId}`);
+            // AISLAMIENTO: Solo cargar rutas que pertenecen a este contenedor
+            // O que están en la lista de 'folders' proporcionada
+            const myPaths = data.paths.filter((p: string) => 
+                folders.includes(p) || 
+                p.startsWith(`[ALL_TARGETS]:${containerName}`)
+            );
+            setSelectedFolders(myPaths);
+            console.log(`[CONFIG] Isolated ${myPaths.length} paths for ${containerName}`);
           }
         }
       } catch (err) {
@@ -43,7 +48,7 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       }
     }
     fetchSavedConfig();
-  }, [agentId]);
+  }, [agentId, containerName, folders]);
 
   const toggleFolder = (folderPath: string) => {
     setSelectedFolders(prev => {
@@ -59,23 +64,25 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
 
     setSaving(true);
     try {
-      // 1. Obtener configuración global actual para no pisar otros contenedores (V2.7.1)
+      // 1. Obtener configuración global actual para no pisar otros contenedores
       const getResponse = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {
         headers: { "Authorization": token }
       });
       
-      let allPaths: string[] = [];
+      let otherPaths: string[] = [];
       if (getResponse.ok) {
         const currentData = await getResponse.json();
         const existingPaths = currentData.paths || [];
         
-        // 2. Filtrar lo que NO sea de este contenedor
-        // (Asumimos que las carpetas de este contenedor están en la lista 'folders' que recibimos por props)
-        allPaths = existingPaths.filter((p: string) => !folders.includes(p) && p !== `[ALL_TARGETS]:${containerName}`);
+        // 2. Filtrar TODO lo que pertenezca a este contenedor (limpieza atómica)
+        otherPaths = existingPaths.filter((p: string) => 
+            !folders.includes(p) && 
+            p !== `[ALL_TARGETS]:${containerName}`
+        );
       }
 
-      // 3. Mezclar con la selección actual de este componente
-      const finalPaths = [...allPaths, ...selectedFolders];
+      // 3. Mezclar rutas de otros contenedores con la selección ACTUAL de este
+      const finalPaths = [...new Set([...otherPaths, ...selectedFolders])];
 
       const response = await fetch("https://api.hwperu.com/v1/agent/config", {
         method: "POST",
@@ -88,7 +95,7 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
       });
 
       if (response.ok) {
-        alert(`✅ [CONFIG] Se han guardado ${selectedFolders.length} carpetas para ${containerName}. Total servidor: ${finalPaths.length}`);
+        alert(`✅ [CONFIG] Se han guardado ${selectedFolders.length} elementos para ${containerName}.\nTotal servidor: ${finalPaths.length} rutas activas.`);
       }
     } catch (err) {
       console.error("Failed to save selection:", err);

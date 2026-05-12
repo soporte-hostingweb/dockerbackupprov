@@ -627,7 +627,9 @@ export default function ServerList({ onRestore }: ServerListProps) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {data.containers && data.containers.map((container, idx) => (
+                {data.containers && data.containers
+                  .filter(c => !c.includes("watchtower") && !c.includes("dbp-") && !c.includes("redis") && !c.includes("postgres"))
+                  .map((container, idx) => (
                   <div key={idx} className="space-y-3">
                     <div className="flex items-center justify-between text-xs px-1">
                       <div className="flex items-center gap-2 text-gray-200">
