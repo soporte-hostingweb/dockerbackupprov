@@ -207,7 +207,7 @@ export default function DashboardPage() {
                 <div className="bg-gray-950/50 border border-gray-900 p-6 rounded-2xl shadow-xl">
                   <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-2">Cluster Storage Load</p>
                    <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-black text-white italic">PRO</span>
+                    <span className="text-3xl font-black text-blue-500 italic uppercase">{plan?.name || 'PRO'}</span>
                     <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">Edition Active</span>
                   </div>
                 </div>
@@ -486,21 +486,23 @@ export default function DashboardPage() {
           <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em] mt-1 font-black leading-none">Enterprise Disaster Recovery as a Service (DRaaS)</p>
         </div>
 
-        <div className="flex bg-black/40 p-2 rounded-2xl border border-gray-800">
-           {(['servers', 'history', 'settings'] as TabType[]).map((tab) => (
-             <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>
-                {tab === 'servers' && <Server size={14} />}
-                {tab === 'history' && <History size={14} />}
-                {tab === 'settings' && <Settings size={14} />}
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-             </button>
-           ))}
-           {isAdminParam && !isEmbed && (
-             <button onClick={() => setActiveTab('admin')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admin' ? 'bg-red-600 text-white shadow-lg' : 'text-red-500/60 hover:text-red-400'}`}>
-                <Network size={14} /> Admin
-             </button>
-           )}
-        </div>
+        {!isEmbed && (
+          <div className="flex bg-black/40 p-2 rounded-2xl border border-gray-800">
+             {(['servers', 'history', 'settings'] as TabType[]).map((tab) => (
+               <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>
+                  {tab === 'servers' && <Server size={14} />}
+                  {tab === 'history' && <History size={14} />}
+                  {tab === 'settings' && <Settings size={14} />}
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+               </button>
+             ))}
+             {isAdminParam && (
+               <button onClick={() => setActiveTab('admin')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admin' ? 'bg-red-600 text-white shadow-lg' : 'text-red-500/60 hover:text-red-400'}`}>
+                  <Network size={14} /> Admin
+               </button>
+             )}
+          </div>
+        )}
       </div>
 
       <div className="min-h-[60vh]">{renderTabContent()}</div>

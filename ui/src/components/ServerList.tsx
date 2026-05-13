@@ -72,55 +72,37 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
   const [customS3Endpoint, setCustomS3Endpoint] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    async function fetchAgents() {
-      const token = localStorage.getItem("dbp_token");
-      if (!token) return;
+    if (propsAgents) {
+      setAgents(propsAgents);
+      
+      const loadedSchedules: Record<string, string> = {};
+      const loadedTimezones: Record<string, string> = {};
+      const loadedCustoms: Record<string, string> = {};
+      const loadedDbEnabled: Record<string, boolean> = {};
+      const loadedDbHosts: Record<string, string> = {};
+      const loadedDbUsers: Record<string, string> = {};
+      const loadedDbNames: Record<string, string> = {};
 
-      try {
-        const response = await fetch("https://api.hwperu.com/v1/agent/status", {
-          headers: { "Authorization": token }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setAgents(data);
-          
-          // V5.0: Sincronizar el estado de schedules local con lo que viene del servidor
-          const loadedSchedules: Record<string, string> = {};
-          const loadedTimezones: Record<string, string> = {};
-          const loadedCustoms: Record<string, string> = {};
-          const loadedDbEnabled: Record<string, boolean> = {};
-          const loadedDbHosts: Record<string, string> = {};
-          const loadedDbUsers: Record<string, string> = {};
-          const loadedDbNames: Record<string, string> = {};
+      Object.entries(propsAgents).forEach(([id, agent]: [string, any]) => {
+         loadedSchedules[id] = agent.schedule || "manual";
+         loadedTimezones[id] = agent.timezone || "America/Lima";
+         loadedCustoms[id] = agent.custom_schedule || "1,2,3,4,5,6,7|02";
+         loadedDbEnabled[id] = agent.db_enabled || false;
+         loadedDbHosts[id] = agent.db_host || "localhost";
+         loadedDbUsers[id] = agent.db_user || "";
+         loadedDbNames[id] = agent.db_names ? (typeof agent.db_names === 'string' ? agent.db_names : JSON.stringify(agent.db_names)) : "[]";
+      });
 
-          Object.entries(data).forEach(([id, agent]: [string, any]) => {
-             loadedSchedules[id] = agent.schedule || "manual";
-             loadedTimezones[id] = agent.timezone || "America/Lima";
-             loadedCustoms[id] = agent.custom_schedule || "1,2,3,4,5,6,7|02";
-             loadedDbEnabled[id] = agent.db_enabled || false;
-             loadedDbHosts[id] = agent.db_host || "localhost";
-             loadedDbUsers[id] = agent.db_user || "";
-             loadedDbNames[id] = agent.db_names ? (typeof agent.db_names === 'string' ? agent.db_names : JSON.stringify(agent.db_names)) : "[]";
-          });
-          setSchedules(loadedSchedules);
-          setTimezones(loadedTimezones);
-          setCustomSchedules(loadedCustoms);
-          setDbEnabled(loadedDbEnabled);
-          setDbHosts(loadedDbHosts);
-          setDbUsers(loadedDbUsers);
-          setDbNames(loadedDbNames);
-        }
-      } catch (error) {
-        console.error("Error fetching agents (Possible Rate Limit):", error);
-      } finally {
-        setLoading(false);
-      }
+      setSchedules(loadedSchedules);
+      setTimezones(loadedTimezones);
+      setCustomSchedules(loadedCustoms);
+      setDbEnabled(loadedDbEnabled);
+      setDbHosts(loadedDbHosts);
+      setDbUsers(loadedDbUsers);
+      setDbNames(loadedDbNames);
+      setLoading(false);
     }
-
-    fetchAgents();
-    const interval = setInterval(fetchAgents, 30000); // 30s refresh (evita saturar el API)
-    return () => clearInterval(interval);
-  }, []);
+  }, [propsAgents]);
 
   const handleSaveConfig = async (agentId: string) => {
     const token = localStorage.getItem("dbp_token");
