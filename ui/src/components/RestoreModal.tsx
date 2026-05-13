@@ -65,6 +65,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const clearSelection = () => setSelectedPaths([]);
 
   const fetchSnapshotContent = async (snapId: string, path: string) => {
+    if (isLoadingContent) return; // V15: Bloqueo anti-spam
     setIsLoadingContent(true);
     setCurrentPath(path);
     try {
@@ -172,7 +173,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                 <RotateCcw size={24} />
              </div>
              <div>
-                <h3 className="text-lg font-black text-white italic uppercase">Restore Wizard Pro</h3>
+                <h3 className="text-lg font-black text-white italic uppercase">SaaS RECOVERY</h3>
                 <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[9px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/10">V5.0 SAFE RESTORE</span>
                     <span className="text-[9px] text-gray-600 font-bold uppercase">{agentId}</span>
@@ -206,7 +207,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                     {sortedSnapshots.map((s: any) => (
-                        <button key={s.id} onClick={() => { setSelectedSnapshot(s); fetchSnapshotContent(s.id, ""); }} className="w-full flex items-center justify-between p-5 bg-gray-900/40 border border-gray-800 rounded-3xl hover:border-blue-500 transition-all group">
+                        <button key={s.id} disabled={isLoadingContent} onClick={() => { if(!isLoadingContent) { setSelectedSnapshot(s); fetchSnapshotContent(s.id, ""); } }} className={`w-full flex items-center justify-between p-5 bg-gray-900/40 border border-gray-800 rounded-3xl transition-all group ${isLoadingContent ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-500'}`}>
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-gray-800 rounded-2xl text-gray-600 group-hover:text-blue-500"><Clock size={18} /></div>
                                 <div className="flex flex-col">
