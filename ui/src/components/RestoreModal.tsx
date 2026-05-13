@@ -77,25 +77,40 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
         let attempts = 0;
         const poll = setInterval(async () => {
              attempts++;
-             const statusResp = await fetch(`https://api.hwperu.com/v1/agent/status?agent_id=${agentId}`, {
-                 headers: { "Authorization": token }
-             });
-             const statusData = await statusResp.json();
-             const agent = statusData[agentId];
-             
-             if (agent && agent.cmd_task === "none") {
-                 clearInterval(poll);
-                 if (agent.cmd_result) {
-                     try {
-                        const parsed = JSON.parse(agent.cmd_result);
-                        setExplorerContent(Array.isArray(parsed) ? parsed : [parsed]);
-                     } catch (e) { console.error(e); }
+             try {
+                 const statusResp = await fetch(`https://api.hwperu.com/v1/agent/status?agent_id=${agentId}`, {
+                     headers: { "Authorization": token }
+                 });
+
+                 if (statusResp.status === 429) {
+                    console.warn("[RATE LIMIT] Slower polling due to 429");
+                    return; // No incrementar intentos, esperar al siguiente ciclo
                  }
-                 setIsLoadingContent(false);
-                 if (step === 1) setStep(2);
+
+                 const statusData = await statusResp.json();
+                 const agent = statusData[agentId];
+                 
+                 if (agent && agent.cmd_task === "none") {
+                     clearInterval(poll);
+                     if (agent.cmd_result) {
+                         try {
+                            const parsed = JSON.parse(agent.cmd_result);
+                            setExplorerContent(Array.isArray(parsed) ? parsed : [parsed]);
+                         } catch (e) { console.error(e); }
+                     }
+                     setIsLoadingContent(false);
+                     if (step === 1) setStep(2);
+                 }
+             } catch (err) {
+                 console.error("Polling error:", err);
              }
-             if (attempts > 30) { clearInterval(poll); setIsLoadingContent(false); }
-        }, 1000);
+
+             if (attempts > 30) { 
+                clearInterval(poll); 
+                setIsLoadingContent(false); 
+                console.log("[POLLING] Timed out after 30 attempts");
+             }
+        }, 2000); // V15: Aumentado a 2s para estabilidad SaaS
     } catch (err) { setIsLoadingContent(false); }
   };
 

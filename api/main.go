@@ -338,6 +338,12 @@ func CircuitBreakerRateLimit(limitNormal int, limitDegraded int) gin.HandlerFunc
 		// Verificar si el middleware de ulule bloqueó la petición
 		if c.IsAborted() {
 			M_BlockedTotal.Inc()
+			// V15: Siempre responder con JSON para no romper el frontend (evitar "Unexpected token L")
+			c.JSON(429, gin.H{
+				"error": "Limit exceeded",
+				"message": "Too many requests. Please wait a moment.",
+			})
+			return
 		}
 	}
 }
