@@ -911,7 +911,13 @@ func main() {
 				"active_pid":          a.ActivePID,
 				"last_backup_at":      a.LastBackupAt,
 				"last_backup_bytes":   a.LastBackupBytes,
-				"wasabi_usage_gb":     fmt.Sprintf("%.2f GB", float64(a.LastBackupBytes)/(1024*1024*1024)),
+				"wasabi_usage_gb": func() string {
+					usage := float64(a.LastBackupBytes) / (1024 * 1024 * 1024)
+					if usage < 0.5 {
+						usage = 0.5
+					}
+					return fmt.Sprintf("%.2f GB", usage)
+				}(),
 				"health_score":        a.HealthScore,
 				"health_status":       a.HealthStatus,
 				"verification_status": a.VerificationStatus,

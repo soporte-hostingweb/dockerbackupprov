@@ -751,7 +751,7 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
                   <div className="text-center">
                      <p className="text-[10px] text-gray-600 uppercase font-black">Current Usage (Wasabi)</p>
                      <p className="text-xs text-emerald-500 font-bold">
-                       {data.last_backup_bytes ? (data.last_backup_bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB" : "0.00 GB"}
+                       {data.wasabi_usage_gb || "0.50 GB"}
                      </p>
                   </div>
                 </div>
