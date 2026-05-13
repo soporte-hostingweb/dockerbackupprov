@@ -183,38 +183,38 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
     const token = localStorage.getItem("dbp_token");
     if (!token) return;
 
-    // Confirmaciones especiales
     if (action === 'reset' && !confirm("¿Estás seguro de REINICIAR TODA LA CONFIGURACIÓN de este servidor? Se borrarán las rutas seleccionadas.")) return;
     if (action === 'kill_sync' && !confirm("¿Deseas TERMINAR el proceso de backup actual para reducir la carga?")) return;
 
     try {
-      const response = await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
+      const resp = await fetch(`https://api.hwperu.com/v1/agent/action/${agentId}`, {
         method: "POST",
         headers: { 
           "Authorization": token,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json" 
         },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ action: action })
       });
-
-      if (response.ok) {
-        // Refrescar localmente el estado si es necesario
-        setAgents(prev => ({
-          ...prev,
-          [agentId]: {
-            ...prev[agentId],
-            status: action === 'reset' ? 'Resetting...' : prev[agentId].status,
-            maintenance: action === 'maintenance_on' ? true : (action === 'maintenance_off' ? false : prev[agentId].maintenance)
-          }
-        }));
+      if (resp.ok) {
+         if (action === 'force_full' || action === 'force_selected') {
+            alert(`🚀 [DISPARO MANUAL] El Control Plane ha encolado la petición. El agente reaccionará en unos segundos.`);
+         }
+         // Refrescar localmente el estado de mantenimiento para feedback inmediato
+         setAgents(prev => ({
+           ...prev,
+           [agentId]: {
+             ...prev[agentId],
+             maintenance: action === 'maintenance_on' ? true : (action === 'maintenance_off' ? false : prev[agentId].maintenance)
+           }
+         }));
+         return true;
       }
+      return false;
     } catch (err) {
-      console.error("Error sending action:", err);
+      console.error("Action error:", err);
+      return false;
     }
   };
-
-
-
 
   if (loading) return (
     <div className="flex items-center justify-center p-12 bg-gray-900/10 border border-gray-800/50 rounded-xl animate-pulse">
