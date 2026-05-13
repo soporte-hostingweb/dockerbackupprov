@@ -48,11 +48,11 @@ export default function DashboardPage() {
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
-  const token = searchParams.get("sso") || localStorage.getItem("dbp_sso_token") || "";
+  const token = searchParams.get("sso") || localStorage.getItem("dbp_token") || "";
 
   useEffect(() => {
     if (searchParams.get("sso")) {
-      localStorage.setItem("dbp_sso_token", searchParams.get("sso")!);
+      localStorage.setItem("dbp_token", searchParams.get("sso")!);
     }
   }, [searchParams]);
 

@@ -58,7 +58,7 @@ export default function ServerList({ onRestore }: ServerListProps) {
 
   useEffect(() => {
     async function fetchAgents() {
-      const token = localStorage.getItem("dbp_sso_token");
+      const token = localStorage.getItem("dbp_token");
       if (!token) return;
 
       try {
@@ -108,7 +108,7 @@ export default function ServerList({ onRestore }: ServerListProps) {
   }, []);
 
   const handleSaveConfig = async (agentId: string) => {
-    const token = localStorage.getItem("dbp_sso_token");
+    const token = localStorage.getItem("dbp_token");
     if (!token) return;
 
     try {
@@ -163,7 +163,7 @@ export default function ServerList({ onRestore }: ServerListProps) {
   const removeAgent = async (id: string) => {
     if (!confirm(`¿Eliminar servidor "${id}" del panel?`)) return;
     
-    const token = localStorage.getItem("dbp_sso_token");
+    const token = localStorage.getItem("dbp_token");
     try {
       const response = await fetch(`https://api.hwperu.com/v1/agent/status/${id}`, {
         method: "DELETE",
@@ -182,7 +182,7 @@ export default function ServerList({ onRestore }: ServerListProps) {
   };
 
   const handleAction = async (agentId: string, action: string) => {
-    const token = localStorage.getItem("dbp_sso_token");
+    const token = localStorage.getItem("dbp_token");
     if (!token) return;
 
     // Confirmaciones especiales
