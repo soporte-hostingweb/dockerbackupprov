@@ -18,7 +18,7 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
   const [restorePath, setRestorePath] = useState("/restore_data");
   const [isOverwriteMode, setIsOverwriteMode] = useState(false);
   const [explorerContent, setExplorerContent] = useState<any[]>([]);
-  const [isLodingContent, setIsLoadingContent] = useState(false);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [agentData, setAgentData] = useState<any>(null);
   const [currentPath, setCurrentPath] = useState(""); 
   
