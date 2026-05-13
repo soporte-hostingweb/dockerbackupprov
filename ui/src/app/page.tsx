@@ -225,7 +225,7 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                   <div className="lg:col-span-3 space-y-8">
-                      <ServerList onRestore={openRestore} />
+                      <ServerList agents={agents} plan={plan} onRestore={openRestore} />
                   </div>
                   <div className="lg:col-span-1">
                       <GlobalActivity token={token} />

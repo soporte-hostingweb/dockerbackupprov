@@ -100,8 +100,8 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
       setDbHosts(loadedDbHosts);
       setDbUsers(loadedDbUsers);
       setDbNames(loadedDbNames);
-      setLoading(false);
     }
+    setLoading(false);
   }, [propsAgents]);
 
   const handleSaveConfig = async (agentId: string) => {
