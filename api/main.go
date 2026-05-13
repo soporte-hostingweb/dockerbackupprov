@@ -381,7 +381,7 @@ func main() {
 	})
 
 	// --- MIDDLEWARES GLOBALES CON CIRCUIT BREAKER (V11.6.0) ---
-	r.Use(CircuitBreakerRateLimit(60, 20))
+	r.Use(CircuitBreakerRateLimit(300, 100))
 
 	// --- MONITORING ENDPOINTS ---
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -1915,21 +1915,23 @@ fi
 			forceType := "selected"
 			if req.Action == "force_full" { forceType = "full" }
 			DB.Create(&Job{
-				AgentID:  id,
-				Token:    agent.Token,
-				Type:     "backup",
-				Param:    forceType,
-				Priority: policy.Priority + 1, // Prioridad extra por ser manual
+				AgentID:   id,
+				Token:     agent.Token,
+				Type:      "backup",
+				Param:     forceType,
+				Priority:  policy.Priority + 1, // Prioridad extra por ser manual
+				NextRunAt: time.Now().UTC(),
 			})
 		case "ls_snapshot":
 			param := req.SnapshotID
 			if req.Path != "" { param = req.SnapshotID + "|" + req.Path }
 			DB.Create(&Job{
-				AgentID:  id,
-				Token:    agent.Token,
-				Type:     "ls_snapshot",
-				Param:    param,
-				Priority: policy.Priority,
+				AgentID:   id,
+				Token:     agent.Token,
+				Type:      "ls_snapshot",
+				Param:     param,
+				Priority:  policy.Priority,
+				NextRunAt: time.Now().UTC(),
 			})
 		case "restore":
 			pathsStr := strings.Join(req.Paths, ",")
@@ -1944,11 +1946,12 @@ fi
 			// V12: COMPUERTA DE SEGURIDAD (El Guardián)
 			// No lanzamos Restore directo, lanzamos primero una Verificación
 			DB.Create(&Job{
-				AgentID:  id,
-				Token:    agent.Token,
-				Type:     "verify_snapshot",
-				Param:    req.SnapshotID + "|" + param, // Guardamos el param original para el callback
-				Priority: 10,                           // Prioridad Máxima (DR en progreso)
+				AgentID:   id,
+				Token:     agent.Token,
+				Type:      "verify_snapshot",
+				Param:     req.SnapshotID + "|" + param, // Guardamos el param original para el callback
+				Priority:  10,                           // Prioridad Máxima (DR en progreso)
+				NextRunAt: time.Now().UTC(),
 			})
 			
 			DB.Create(&ActivityLog{
