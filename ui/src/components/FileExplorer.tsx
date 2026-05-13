@@ -20,35 +20,41 @@ export default function FileExplorer({ agentId, containerName, folders, schedule
 
   // EFECTO: Cargar configuración existente desde la DB al montar
   useEffect(() => {
+    let isMounted = true;
     async function fetchSavedConfig() {
       const token = localStorage.getItem('dbp_sso_token');
-      if (!token || !agentId || agentId === "") return;
+      if (!token || !agentId || agentId === "" || !isMounted) return;
 
       try {
         const response = await fetch(`https://api.hwperu.com/v1/agent/config?agent_id=${agentId}`, {
           headers: { "Authorization": token }
         });
+        
+        if (response.status === 429) {
+          console.warn("[RATE LIMIT] El API está saturado, reintentando en breve...");
+          return;
+        }
+
         if (response.ok) {
           const data = await response.json();
-          if (data.paths) {
+          if (data && data.paths && isMounted) {
             // AISLAMIENTO: Solo cargar rutas que pertenecen a este contenedor
-            // O que están en la lista de 'folders' proporcionada
             const myPaths = data.paths.filter((p: string) => 
                 folders.includes(p) || 
                 p.startsWith(`[ALL_TARGETS]:${containerName}`)
             );
             setSelectedFolders(myPaths);
-            console.log(`[CONFIG] Isolated ${myPaths.length} paths for ${containerName}`);
           }
         }
       } catch (err) {
-        console.error("Failed to load saved config:", err);
+        console.error("Failed to load saved config (Network or Syntax Error):", err);
       } finally {
-        setLoadingConfig(false);
+        if (isMounted) setLoadingConfig(false);
       }
     }
     fetchSavedConfig();
-  }, [agentId, containerName, folders]);
+    return () => { isMounted = false; };
+  }, [agentId, containerName]); // Quitamos 'folders' de aquí para evitar el bucle infinito de refresco
 
   const toggleFolder = (folderPath: string) => {
     setSelectedFolders(prev => {

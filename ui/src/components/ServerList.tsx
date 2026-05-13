@@ -96,14 +96,14 @@ export default function ServerList({ onRestore }: ServerListProps) {
           setDbNames(loadedDbNames);
         }
       } catch (error) {
-        console.error("Error fetching agents:", error);
+        console.error("Error fetching agents (Possible Rate Limit):", error);
       } finally {
         setLoading(false);
       }
     }
 
     fetchAgents();
-    const interval = setInterval(fetchAgents, 15000); // 15s refresh
+    const interval = setInterval(fetchAgents, 30000); // 30s refresh (evita saturar el API)
     return () => clearInterval(interval);
   }, []);
 
