@@ -98,8 +98,8 @@ func GetPolicyForTenant(planName string) PlanPolicy {
 var VirtualizorOSMap = map[string]int{
 	"Ubuntu 22.04": 1001, // IDs de ejemplo, deben coincidir con el panel real
 	"Ubuntu 20.04": 1002,
-	"CentOS 7":      1003,
-	"Debian 11":     1004,
+	"CentOS 7":     1003,
+	"Debian 11":    1004,
 }
 
 var VirtualizorPlanMap = map[string]int{
@@ -107,6 +107,7 @@ var VirtualizorPlanMap = map[string]int{
 	"premium":  20,
 	"extreme":  30,
 }
+
 // --- END VIRTUALIZOR MAPPING ---
 
 // --- END POLICY ENGINE ---
@@ -117,7 +118,7 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 		var config AlertConfig
 		// 1. Intentar buscar config específica para el inquilino (V11.7.0: Búsqueda Silenciosa)
 		DB.Where("token = ?", token).Limit(1).Find(&config)
-		
+
 		isGlobal := false
 		if config.WebhookURL == "" {
 			// 2. Fallback: Usar la GLOBAL (SYSTEM_GLOBAL)
@@ -136,7 +137,7 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 
 		// Filtrar eventos (V9.0)
 		if !strings.Contains(config.Events, eventType) {
-			return 
+			return
 		}
 
 		payload := map[string]interface{}{
@@ -148,10 +149,12 @@ func DispatchAlert(token string, eventType string, details map[string]interface{
 
 		jsonBody, _ := json.Marshal(payload)
 		fmt.Printf("[WEBHOOK] Attempting dispatch to %s (Event: %s)...\n", config.WebhookURL, eventType)
-		
+
 		req, err := http.NewRequest("POST", config.WebhookURL, bytes.NewBuffer(jsonBody))
-		if err != nil { return }
-		
+		if err != nil {
+			return
+		}
+
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", "DBP-SaaS-Orchestrator/"+Version)
 
@@ -189,7 +192,7 @@ func UpdateHealthScore(agentID string) {
 	if !agent.LastBackupAt.IsZero() && time.Since(agent.LastBackupAt) > 24*time.Hour {
 		score -= 20
 	}
-	
+
 	// 2.5 Penalización por Recuperación Activa (Fase 2)
 	if agent.RecoveryTier == 2 {
 		score -= 15 // Degraded por reinicio local
@@ -212,8 +215,12 @@ func UpdateHealthScore(agentID string) {
 	}
 
 	// Capamos el score entre 0 y 100
-	if score < 0 { score = 0 }
-	if score > 100 { score = 100 }
+	if score < 0 {
+		score = 0
+	}
+	if score > 100 {
+		score = 100
+	}
 
 	// 1. Capturar versión previa (para comparar)
 	oldScore := agent.HealthScore
@@ -227,8 +234,10 @@ func UpdateHealthScore(agentID string) {
 
 	// 3. Evaluar si emitir log (Anti-Saturación V9.2.7 Mejorado)
 	vStatus := agent.VerificationStatus
-	if vStatus == "" { vStatus = "PENDING" }
-	
+	if vStatus == "" {
+		vStatus = "PENDING"
+	}
+
 	scoreChanged := oldScore != score
 	statusChanged := oldHStatus != agent.HealthStatus
 	verificationChanged := (oldVStatus != vStatus) && vStatus != "PENDING" // No loguear redundancia de PENDING
@@ -338,13 +347,13 @@ func CircuitBreakerRateLimit(limitNormal int, limitDegraded int) gin.HandlerFunc
 			M_FallbackTotal.Inc()
 			limitMemory(c)
 		}
-		
+
 		// Verificar si el middleware de ulule bloqueó la petición
 		if c.IsAborted() {
 			M_BlockedTotal.Inc()
 			// V15: Siempre responder con JSON para no romper el frontend (evitar "Unexpected token L")
 			c.JSON(429, gin.H{
-				"error": "Limit exceeded",
+				"error":   "Limit exceeded",
 				"message": "Too many requests. Please wait a moment.",
 			})
 			return
@@ -366,7 +375,7 @@ func main() {
 	RedisClient = goredis.NewClient(&goredis.Options{
 		Addr: os.Getenv("REDIS_URL"), // ej: localhost:6379 o redis:6379
 	})
-	
+
 	// Iniciar monitoreo asíncrono de salud (Hardening)
 	StartRedisHealthWorker()
 
@@ -416,7 +425,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(2 * time.Minute)
-			
+
 			// 1. Marcar agentes OFFLINE de forma masiva (sin loop O(N) en memoria)
 			fiveMinAgo := time.Now().Add(-5 * time.Minute)
 			DB.Model(&AgentStatus{}).
@@ -431,12 +440,12 @@ func main() {
 			// 3. Cleanup: Inactividad severa (> 15 días)
 			fifteenDaysAgo := time.Now().AddDate(0, 0, -15)
 			DB.Unscoped().Where("updated_at < ?", fifteenDaysAgo).Delete(&AgentStatus{})
-			
+
 			// 4. Purga de logs (> 30 días)
 			thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
 			DB.Unscoped().Where("started_at < ?", thirtyDaysAgo).Delete(&ActivityLog{})
 			DB.Unscoped().Where("started_at < ?", thirtyDaysAgo).Delete(&BackupActivity{})
-			
+
 			fmt.Println("[WORKER] Health & Cleanup Cycle Completed (SQL Optimized)")
 		}
 	}()
@@ -470,7 +479,7 @@ func main() {
 
 		// 1. Crear/Actualizar TenantPlan (Source of Truth Comercial)
 		policy := GetPolicyForTenant(req.Plan)
-		
+
 		var plan TenantPlan
 		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
 		plan.Token = token
@@ -478,13 +487,13 @@ func main() {
 		plan.ClientEmail = req.ClientEmail
 		plan.Plan = req.Plan
 		plan.RetentionDays = req.Retention
-		
+
 		// V10: Configuración Automática vía Policy Engine
 		plan.Priority = (policy.Priority > 1)
 		plan.ValidationLvl = policy.ValidationLvl
-		
+
 		DB.Save(&plan)
-		
+
 		// 2. Asegurar que UserSettings exista para Wasabi
 		var settings UserSettings
 		DB.Where("token = ?", token).Limit(1).Find(&settings)
@@ -523,7 +532,7 @@ func main() {
 			// Obtener Webhook del Maestro para herencia
 			var masterConfig AlertConfig
 			DB.Where("token = ?", "SYSTEM_GLOBAL").Limit(1).Find(&masterConfig)
-			
+
 			DB.Create(&AlertConfig{
 				Token:      token,
 				WebhookURL: masterConfig.WebhookURL,
@@ -555,7 +564,7 @@ func main() {
 		if c.Writer.Status() == 429 {
 			fmt.Printf("[AUDIT] RATE LIMIT BLOCKED - IP: %s (Endpoint: /login)\n", c.ClientIP())
 		}
-		
+
 		var input struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
@@ -579,9 +588,8 @@ func main() {
 		}
 	})
 
-
 	// --- ENDPOINTS DE CICLO DE VIDA TENANT (v11.0: Lifecycle Management) ---
-	
+
 	// v1/tenant/update-plan: Sincroniza cambios comerciales con políticas técnicas
 	r.POST("/v1/tenant/update-plan", func(c *gin.Context) {
 		adminKey := os.Getenv("API_ADMIN_KEY")
@@ -624,12 +632,14 @@ func main() {
 			return
 		}
 
-		var req struct { ServiceID string `json:"service_id"` }
+		var req struct {
+			ServiceID string `json:"service_id"`
+		}
 		c.ShouldBindJSON(&req)
 
 		var plan TenantPlan
 		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
-		
+
 		// Forzar mantenimiento en todos los agentes del token (suspensión total)
 		DB.Model(&AgentStatus{}).Where("token = ?", plan.Token).Update("maintenance", true)
 
@@ -644,12 +654,14 @@ func main() {
 			return
 		}
 
-		var req struct { ServiceID string `json:"service_id"` }
+		var req struct {
+			ServiceID string `json:"service_id"`
+		}
 		c.ShouldBindJSON(&req)
 
 		var plan TenantPlan
 		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
-		
+
 		DB.Model(&AgentStatus{}).Where("token = ?", plan.Token).Update("maintenance", false)
 
 		c.JSON(200, gin.H{"status": "Tenant unsuspended", "token": plan.Token})
@@ -685,7 +697,7 @@ func main() {
 	r.POST("/v1/dr/recover/:id", AuthMiddleware(), func(c *gin.Context) {
 		id := c.Param("id")
 		token := c.GetString("token")
-		
+
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", id).Error; err != nil {
 			c.JSON(404, gin.H{"error": "Agent not found"})
@@ -694,7 +706,7 @@ func main() {
 
 		var tPlan TenantPlan
 		DB.Where("token = ?", token).First(&tPlan)
-		
+
 		if tPlan.VpsTemplate == "" {
 			c.JSON(400, gin.H{"error": "No VPS Template configured for this client. Please update plan settings."})
 			return
@@ -725,24 +737,24 @@ func main() {
 		go func(actID uint, t string, aid string) {
 			time.Sleep(30 * time.Second) // Simular tiempo de BOOT y SSH
 			DB.Model(&ActivityLog{}).Where("id = ?", actID).Updates(map[string]interface{}{
-				"status": "STEP_2_AGENT_INSTALL",
+				"status":  "STEP_2_AGENT_INSTALL",
 				"message": "[DR] Connectivity established. Agent installation script injected.",
 			})
 
 			time.Sleep(60 * time.Second) // Simular Instalación
 			DB.Model(&ActivityLog{}).Where("id = ?", actID).Updates(map[string]interface{}{
-				"status": "STEP_3_RESTORE_INIT",
+				"status":  "STEP_3_RESTORE_INIT",
 				"message": "[DR] Agent online. Initiating restic restore from Wasabi S3...",
 			})
-			
+
 			// Incrementar métrica de RTO real (Fase 4)
 			M_RTOUnits.WithLabelValues(t).Observe(1.5) // 1.5 min
 		}(activity.ID, token, id)
-		
+
 		c.JSON(200, gin.H{
-			"status": "Success", 
-			"message": "Protocolo de Recuperación Iniciado via Virtualizor", 
-			"vs_id": vsID,
+			"status":      "Success",
+			"message":     "Protocolo de Recuperación Iniciado via Virtualizor",
+			"vs_id":       vsID,
 			"activity_id": activity.ID,
 		})
 	})
@@ -755,15 +767,17 @@ func main() {
 			return
 		}
 
-		var req struct { ServiceID string `json:"service_id"` }
+		var req struct {
+			ServiceID string `json:"service_id"`
+		}
 		c.ShouldBindJSON(&req)
 
 		var plan TenantPlan
 		DB.Where("whmcs_service_id = ?", req.ServiceID).First(&plan)
-		
+
 		// Borrado lógico: Cambiamos token a 'TERMINATED' para que no sincronicen
 		oldToken := plan.Token
-		DB.Model(&plan).Update("token", "TERMINATED_" + oldToken)
+		DB.Model(&plan).Update("token", "TERMINATED_"+oldToken)
 		DB.Model(&AgentStatus{}).Where("token = ?", oldToken).Update("token", "TERMINATED")
 
 		c.JSON(200, gin.H{"status": "Tenant terminated"})
@@ -777,7 +791,9 @@ func main() {
 			return
 		}
 
-		var req struct { WebhookURL string `json:"webhook_url"` }
+		var req struct {
+			WebhookURL string `json:"webhook_url"`
+		}
 		c.ShouldBindJSON(&req)
 
 		// Buscar/Crear record de AlertConfig para SYSTEM_GLOBAL
@@ -809,7 +825,9 @@ func main() {
 	// --- ENDPOINTS DE TRADUCCIÓN (i18n) ---
 	r.GET("/v1/translations", func(c *gin.Context) {
 		lang := c.Query("lang")
-		if lang == "" { lang = "en" }
+		if lang == "" {
+			lang = "en"
+		}
 
 		// 1. Cargar base según el idioma o fallback a 'en'
 		baseFile := fmt.Sprintf("lang/%s.json", lang)
@@ -878,32 +896,32 @@ func main() {
 			isOnline := (time.Now().Unix() - a.LastSeenUnix) < 25
 
 			resp[a.ID] = gin.H{
-				"agent_id":       a.ID,
-				"token":          a.Token,
-				"status":         a.Status,
-				"is_online":      isOnline,
-				"last_sync":      a.LastSeen.Format(time.RFC3339),
-				"last_seen_unix": a.LastSeenUnix,
-				"os":             a.OS,
-				"containers":     cleanContainers,
-				"explorer":       explorer,
-				"snapshots":      snapshots,
-				"maintenance":    a.Maintenance,
-				"is_syncing":     a.IsSyncing,
-				"active_pid":     a.ActivePID,
-				"last_backup_at": a.LastBackupAt,
-				"last_backup_bytes": a.LastBackupBytes,
-				"wasabi_usage_gb":   fmt.Sprintf("%.2f GB", float64(a.LastBackupBytes)/(1024*1024*1024)),
-				"health_score":      a.HealthScore,
-				"health_status":     a.HealthStatus,
+				"agent_id":            a.ID,
+				"token":               a.Token,
+				"status":              a.Status,
+				"is_online":           isOnline,
+				"last_sync":           a.LastSeen.Format(time.RFC3339),
+				"last_seen_unix":      a.LastSeenUnix,
+				"os":                  a.OS,
+				"containers":          cleanContainers,
+				"explorer":            explorer,
+				"snapshots":           snapshots,
+				"maintenance":         a.Maintenance,
+				"is_syncing":          a.IsSyncing,
+				"active_pid":          a.ActivePID,
+				"last_backup_at":      a.LastBackupAt,
+				"last_backup_bytes":   a.LastBackupBytes,
+				"wasabi_usage_gb":     fmt.Sprintf("%.2f GB", float64(a.LastBackupBytes)/(1024*1024*1024)),
+				"health_score":        a.HealthScore,
+				"health_status":       a.HealthStatus,
 				"verification_status": a.VerificationStatus,
-				"est_rto_secs":      a.EstRtoSecs,
-				"schedule":       config.Schedule,
-				"timezone":       config.TimeZone,
-				"custom_schedule": config.CustomSchedule,
-				"cmd_result":     a.CmdResult,
-				"protection_level": config.ProtectionLevel,
-				"has_docker":     a.HasDocker,
+				"est_rto_secs":        a.EstRtoSecs,
+				"schedule":            config.Schedule,
+				"timezone":            config.TimeZone,
+				"custom_schedule":     config.CustomSchedule,
+				"cmd_result":          a.CmdResult,
+				"protection_level":    config.ProtectionLevel,
+				"has_docker":          a.HasDocker,
 				"detected_stack": func() map[string]bool {
 					var s map[string]bool
 					json.Unmarshal([]byte(a.DetectedStack), &s)
@@ -924,25 +942,30 @@ func main() {
 		policy := GetPolicyForTenant(tenantPlan.Plan)
 
 		c.JSON(200, gin.H{
-			"agents": agentsMap,
+			"agents": resp,
 			"plan": gin.H{
-				"name": tenantPlan.Plan,
+				"name":   tenantPlan.Plan,
 				"policy": policy,
 			},
 		})
 	})
 
-	// V6.3: Monitor de Actividad Global (Reemplaza a /history por uno más detallado)
+	// V15: Monitor de Actividad Unificado (Admin ve TODO, Cliente ve lo SUYO)
 	r.GET("/v1/activities", AuthMiddleware(), func(c *gin.Context) {
 		token := c.GetString("token")
 		isAdmin := c.GetBool("is_admin")
+		agentID := c.Query("agent_id")
 
 		var activities []ActivityLog
-		if isAdmin {
-			DB.Order("started_at desc").Limit(50).Find(&activities)
-		} else {
-			DB.Where("token = ?", token).Order("started_at desc").Limit(50).Find(&activities)
+		query := DB.Order("started_at desc").Limit(100)
+
+		if !isAdmin {
+			query = query.Where("token = ?", token)
+		} else if agentID != "" {
+			query = query.Where("agent_id = ?", agentID)
 		}
+
+		query.Find(&activities)
 		c.JSON(200, activities)
 	})
 
@@ -966,8 +989,8 @@ func main() {
 		var req struct {
 			ActivityID uint   `json:"activity_id"`
 			AgentID    string `json:"agent_id"`
-			Type       string `json:"type"`    // backup, restore, prune
-			Status     string `json:"status"`  // running, success, error
+			Type       string `json:"type"`   // backup, restore, prune
+			Status     string `json:"status"` // running, success, error
 			Message    string `json:"message"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -975,7 +998,7 @@ func main() {
 			return
 		}
 
-		fmt.Printf("[%s] [ACTIVITY] Agent %s reporting %s status: %s\n", 
+		fmt.Printf("[%s] [ACTIVITY] Agent %s reporting %s status: %s\n",
 			time.Now().Format("15:04:05"), req.AgentID, req.Type, req.Status)
 
 		var activity ActivityLog
@@ -1009,7 +1032,6 @@ func main() {
 		c.JSON(200, gin.H{"status": "created", "activity_id": activity.ID})
 	})
 
-
 	v1Agent.DELETE("/status/:id", AuthMiddleware(), func(c *gin.Context) {
 		id := c.Param("id")
 		token := c.GetString("token")
@@ -1028,12 +1050,12 @@ func main() {
 
 		// V6.6: Registro de auditoría antes de eliminar
 		audit := ActivityLog{
-			Token:     agent.Token,
-			AgentID:   agent.ID,
-			Type:      "DELETED",
-			Status:    "success",
-			Message:   fmt.Sprintf("Agent %s was manually deleted from Control Plane", agent.ID),
-			StartedAt: time.Now(),
+			Token:      agent.Token,
+			AgentID:    agent.ID,
+			Type:       "DELETED",
+			Status:     "success",
+			Message:    fmt.Sprintf("Agent %s was manually deleted from Control Plane", agent.ID),
+			StartedAt:  time.Now(),
 			FinishedAt: time.Now(),
 		}
 		DB.Create(&audit)
@@ -1050,7 +1072,7 @@ func main() {
 
 		DB.Delete(&agent)
 		c.JSON(200, gin.H{"status": "Deleted", "id": id, "audit_id": audit.ID})
-	})	// --- ENDPOINTS DE CONFIGURACIÓN (V5.1.2) ---
+	}) // --- ENDPOINTS DE CONFIGURACIÓN (V5.1.2) ---
 
 	v1Agent.GET("/config", AuthMiddleware(), func(c *gin.Context) {
 		agentID := c.Query("agent_id")
@@ -1094,7 +1116,9 @@ func main() {
 		resticPass, _ := Decrypt(settings.ResticPass)
 		wasabiBucket := settings.WasabiBucket
 		wasabiRegion := settings.WasabiRegion
-		if wasabiRegion == "" { wasabiRegion = "us-east-1" }
+		if wasabiRegion == "" {
+			wasabiRegion = "us-east-1"
+		}
 
 		// V11.6.1: Soporte Universal S3 (Preferencia de Endpoint Personalizado)
 		endpoint := settings.S3Endpoint
@@ -1114,30 +1138,34 @@ func main() {
 			// Si es inseguro y parece IP/Puerto, forzamos HTTP para evitar errores de handshake
 			repoPrefix = "s3:http://"
 		}
-		
+
 		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, endpoint, wasabiBucket, effectiveToken, agentID)
-		
+
 		fmt.Printf("[CONFIG] Serving Universal S3 URL to Agent %s: %s (Endpoint Source: %s)\n", agentID, fullRepo, endpoint)
-		
+
 		fmt.Printf("[CONFIG] Serving repo URL to Agent %s: %s (Region: %s)\n", agentID, fullRepo, wasabiRegion)
 
 		var config BackupConfig
-		if len(configs) > 0 { config = configs[0] }
+		if len(configs) > 0 {
+			config = configs[0]
+		}
 
 		var paths []string
-		if config.Paths != "" { json.Unmarshal([]byte(config.Paths), &paths) }
+		if config.Paths != "" {
+			json.Unmarshal([]byte(config.Paths), &paths)
+		}
 
 		c.JSON(200, gin.H{
-			"status":           "success",
-			"paths":            paths,
-			"schedule":         config.Schedule,
-			"retention":        config.Retention,
-			"timezone":         config.TimeZone,
-			"custom_schedule":  config.CustomSchedule,
-			"full_repo_url":    fullRepo,
-			"restic_password":  resticPass,
-			"wasabi_key":       wasabiKey,
-			"wasabi_secret":    wasabiSecret,
+			"status":              "success",
+			"paths":               paths,
+			"schedule":            config.Schedule,
+			"retention":           config.Retention,
+			"timezone":            config.TimeZone,
+			"custom_schedule":     config.CustomSchedule,
+			"full_repo_url":       fullRepo,
+			"restic_password":     resticPass,
+			"wasabi_key":          wasabiKey,
+			"wasabi_secret":       wasabiSecret,
 			"s3_force_path_style": settings.S3ForcePathStyle,
 			"s3_insecure":         settings.S3Insecure,
 			// V14.1: Campos de Control SaaS (El Agente Sólo Ejecuta)
@@ -1146,10 +1174,10 @@ func main() {
 			"is_auto_managed":  config.IsAutoManaged,
 			"is_dynamic":       config.IsDynamic,
 			// V14.2.5: Credenciales DB (Descifradas para el agente)
-			"db_enabled":       config.DbEnabled,
-			"db_type":          config.DbType,
-			"db_host":          config.DbHost,
-			"db_user":          config.DbUser,
+			"db_enabled": config.DbEnabled,
+			"db_type":    config.DbType,
+			"db_host":    config.DbHost,
+			"db_user":    config.DbUser,
 			"db_pass": func() string {
 				pass, _ := Decrypt(config.DbPass)
 				return pass
@@ -1162,21 +1190,20 @@ func main() {
 		})
 	})
 
-
 	// V5.0/V5.1.2: Endpoint para GUARDAR la configuración (Con impersonación Admin)
 	v1Agent.POST("/config/save", AuthMiddleware(), func(c *gin.Context) {
 		var req struct {
-			AgentID         string   `json:"agent_id"`
-			Schedule        string   `json:"schedule"`
-			Paths           []string `json:"paths"`
-			Retention       int      `json:"retention"`
-			TimeZone        string   `json:"timezone"`
-			CustomSchedule  string   `json:"custom_schedule"`
+			AgentID        string   `json:"agent_id"`
+			Schedule       string   `json:"schedule"`
+			Paths          []string `json:"paths"`
+			Retention      int      `json:"retention"`
+			TimeZone       string   `json:"timezone"`
+			CustomSchedule string   `json:"custom_schedule"`
 			// V14.1: Nuevos campos de Nivel de Protección
-			ProtectionLevel string   `json:"protection_level"` // Basic, Advanced, Total
-			SnapshotMode    string   `json:"snapshot_mode"`    // live, consistent
-			IsAutoManaged   bool     `json:"is_auto_managed"`
-			IsDynamic       bool     `json:"is_dynamic"`
+			ProtectionLevel string `json:"protection_level"` // Basic, Advanced, Total
+			SnapshotMode    string `json:"snapshot_mode"`    // live, consistent
+			IsAutoManaged   bool   `json:"is_auto_managed"`
+			IsDynamic       bool   `json:"is_dynamic"`
 			// V14.2.5: Datos DB
 			DbEnabled bool     `json:"db_enabled"`
 			DbType    string   `json:"db_type"`
@@ -1201,19 +1228,23 @@ func main() {
 				effectiveToken = agent.Token
 			}
 		}
-		
+
 		var config BackupConfig
 		errFind := DB.Limit(1).Where("token = ? AND agent_id = ?", effectiveToken, req.AgentID).Find(&config).Error
-		
+
 		pathsJSON, _ := json.Marshal(req.Paths)
 		dbNamesJSON, _ := json.Marshal(req.DbNames)
 		dbPassEnc, _ := Encrypt(req.DbPass)
 
 		if errFind != nil || config.ID == 0 {
 			snapshotMode := req.SnapshotMode
-			if snapshotMode == "" { snapshotMode = "live" } // Default: siempre Live (Zero Downtime)
+			if snapshotMode == "" {
+				snapshotMode = "live"
+			} // Default: siempre Live (Zero Downtime)
 			protLevel := req.ProtectionLevel
-			if protLevel == "" { protLevel = "Basic" }
+			if protLevel == "" {
+				protLevel = "Basic"
+			}
 
 			config = BackupConfig{
 				Token:           effectiveToken,
@@ -1237,12 +1268,20 @@ func main() {
 			DB.Create(&config)
 		} else {
 			snapshotMode := req.SnapshotMode
-			if snapshotMode == "" { snapshotMode = config.SnapshotMode } // Preservar el valor existente
-			if snapshotMode == "" { snapshotMode = "live" }
+			if snapshotMode == "" {
+				snapshotMode = config.SnapshotMode
+			} // Preservar el valor existente
+			if snapshotMode == "" {
+				snapshotMode = "live"
+			}
 
 			protLevel := req.ProtectionLevel
-			if protLevel == "" { protLevel = config.ProtectionLevel }
-			if protLevel == "" { protLevel = "Basic" }
+			if protLevel == "" {
+				protLevel = config.ProtectionLevel
+			}
+			if protLevel == "" {
+				protLevel = "Basic"
+			}
 
 			DB.Model(&config).Updates(BackupConfig{
 				Schedule:        req.Schedule,
@@ -1270,7 +1309,6 @@ func main() {
 
 		c.JSON(200, gin.H{"status": "Configuration Saved", "schedule": req.Schedule, "protection_level": config.ProtectionLevel, "snapshot_mode": config.SnapshotMode})
 	})
-
 
 	// Dashboard guarda la configuración
 	v1Agent.POST("/config", AuthMiddleware(), func(c *gin.Context) {
@@ -1322,19 +1360,19 @@ func main() {
 	v1Agent.POST("/heartbeat", AuthMiddleware(), func(c *gin.Context) {
 		// Heartbeat Payload (con soporte para reporte de estado de proceso activo)
 		var payload struct {
-			AgentID      string              `json:"agent_id"`
-			Containers   []string            `json:"containers"`
-			ExplorerData map[string][]string `json:"explorer_data"`
-			Snapshots    []interface{}       `json:"snapshots"`
-			FreeSpace    string              `json:"free_space"`
-			TotalSpace   string              `json:"total_space"`
-			OS           string              `json:"os"`
-			IsSyncing    bool                `json:"is_syncing"`
-			ActivePID    int                 `json:"active_pid"`
-			Version      string              `json:"version"`          // V14: Reporte de versión del agente
-			LastBackupAt int64               `json:"last_backup_unix"` // Reportado por el agente
-			HasDocker    bool                `json:"has_docker"`       // V14.2
-			DetectedStack map[string]bool    `json:"detected_stack"`   // V14.2
+			AgentID       string              `json:"agent_id"`
+			Containers    []string            `json:"containers"`
+			ExplorerData  map[string][]string `json:"explorer_data"`
+			Snapshots     []interface{}       `json:"snapshots"`
+			FreeSpace     string              `json:"free_space"`
+			TotalSpace    string              `json:"total_space"`
+			OS            string              `json:"os"`
+			IsSyncing     bool                `json:"is_syncing"`
+			ActivePID     int                 `json:"active_pid"`
+			Version       string              `json:"version"`          // V14: Reporte de versión del agente
+			LastBackupAt  int64               `json:"last_backup_unix"` // Reportado por el agente
+			HasDocker     bool                `json:"has_docker"`       // V14.2
+			DetectedStack map[string]bool     `json:"detected_stack"`   // V14.2
 		}
 
 		if err := c.ShouldBindJSON(&payload); err != nil {
@@ -1365,21 +1403,25 @@ func main() {
 		}
 
 		// V6.8: Protección de Inventario - Solo actualizamos si el payload no viene vacío
-		if len(payload.Containers) > 0 { agent.Containers = string(contJSON) }
-		if len(payload.ExplorerData) > 0 { agent.Explorer = string(expJSON) }
-		if len(payload.Snapshots) > 0 { agent.Snapshots = string(snapJSON) }
-		
+		if len(payload.Containers) > 0 {
+			agent.Containers = string(contJSON)
+		}
+		if len(payload.ExplorerData) > 0 {
+			agent.Explorer = string(expJSON)
+		}
+		if len(payload.Snapshots) > 0 {
+			agent.Snapshots = string(snapJSON)
+		}
+
 		// V14.2: Guardar stack detectado como JSON string
 		if len(payload.DetectedStack) > 0 {
 			stackJSON, _ := json.Marshal(payload.DetectedStack)
 			agent.DetectedStack = string(stackJSON)
 		}
 
-
 		if payload.LastBackupAt > 0 {
 			agent.LastBackupAt = time.Unix(payload.LastBackupAt, 0).UTC()
 		}
-
 
 		// Importante: No machacar Maintenance, PendingForce y Tareas si ya existen
 		var existingList []AgentStatus
@@ -1388,7 +1430,7 @@ func main() {
 			agent.Maintenance = existing.Maintenance
 			agent.PendingForce = existing.PendingForce
 			agent.KillSync = existing.KillSync
-			
+
 			// V4.6.0: Preservar tareas de comando para que no se borren antes de entregarse
 			agent.CmdTask = existing.CmdTask
 			agent.CmdParam = existing.CmdParam
@@ -1399,9 +1441,15 @@ func main() {
 			agent.ApiKey = existing.ApiKey
 			agent.Fingerprint = existing.Fingerprint
 
-			if agent.Containers == "" { agent.Containers = existing.Containers }
-			if agent.Explorer == ""   { agent.Explorer = existing.Explorer }
-			if agent.Snapshots == ""  { agent.Snapshots = existing.Snapshots }
+			if agent.Containers == "" {
+				agent.Containers = existing.Containers
+			}
+			if agent.Explorer == "" {
+				agent.Explorer = existing.Explorer
+			}
+			if agent.Snapshots == "" {
+				agent.Snapshots = existing.Snapshots
+			}
 		}
 
 		if err := DB.Save(&agent).Error; err != nil {
@@ -1424,19 +1472,19 @@ func main() {
 			DB.Order("priority DESC, created_at ASC").
 				Where("agent_id = ? AND status = ? AND next_run_at <= ?", payload.AgentID, "pending", time.Now().UTC()).
 				Limit(1).Find(&nextJobList)
-			
+
 			if len(nextJobList) > 0 {
 				nextJob := nextJobList[0]
 				taskName = nextJob.Type
 				taskParam = nextJob.Param
 				taskJobID = nextJob.ID
-				
+
 				// Marcar como 'running' para evitar doble entrega (Idempotencia)
 				now := time.Now().UTC()
 				DB.Model(&nextJob).Updates(map[string]interface{}{
-					"status": "running", 
+					"status":     "running",
 					"started_at": &now,
-					"attempts": nextJob.Attempts + 1,
+					"attempts":   nextJob.Attempts + 1,
 				})
 			}
 		} else if hasActive {
@@ -1479,7 +1527,7 @@ func main() {
 		} else {
 			errJ = DB.Order("started_at DESC").Where("agent_id = ? AND type = ? AND status = ?", req.AgentID, req.Task, "running").First(&job).Error
 		}
-		
+
 		finishTime := time.Now().UTC()
 		if errJ == nil {
 			status := "completed"
@@ -1499,9 +1547,11 @@ func main() {
 				if len(parts) >= 2 {
 					snapID := parts[0]
 					originalParam := strings.Join(parts[1:], "|")
-					
+
 					auditStatus := "HEALTHY"
-					if status == "failed" { auditStatus = "CORRUPTED" }
+					if status == "failed" {
+						auditStatus = "CORRUPTED"
+					}
 
 					// 1. Registrar Audit Trail Persistente (V12)
 					DB.Create(&SnapshotAudit{
@@ -1523,7 +1573,7 @@ func main() {
 							Param:    originalParam,
 							Priority: 10, // Máxima prioridad para el restore final
 						})
-						
+
 						DispatchAlert(job.Token, "restore_started", map[string]interface{}{
 							"agent_id":    job.AgentID,
 							"snapshot_id": snapID,
@@ -1549,18 +1599,17 @@ func main() {
 		c.JSON(200, gin.H{"status": "Job result saved", "job_id": job.ID})
 	})
 
-
 	// --- TELEMETRÍA DE BACKUP (MÉTRICAS) ---
 	v1Agent.POST("/backup/complete", AuthMiddleware(), func(c *gin.Context) {
 		var payload struct {
-			AgentID      string `json:"agent_id"`
-			Status       string `json:"status"`
-			TotalSizeMB  int    `json:"total_size_mb"`
+			AgentID        string `json:"agent_id"`
+			Status         string `json:"status"`
+			TotalSizeMB    int    `json:"total_size_mb"`
 			TotalSizeBytes int64  `json:"total_size_bytes"` // V4.6.1
-			DurationSecs int    `json:"duration_secs"`
-			SnapshotID   string `json:"snapshot_id"`
-			Timestamp    int64  `json:"timestamp"`
-			StartedAt    int64  `json:"started_at"`
+			DurationSecs   int    `json:"duration_secs"`
+			SnapshotID     string `json:"snapshot_id"`
+			Timestamp      int64  `json:"timestamp"`
+			StartedAt      int64  `json:"started_at"`
 		}
 
 		if err := c.ShouldBindJSON(&payload); err != nil {
@@ -1572,7 +1621,7 @@ func main() {
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", payload.AgentID).Error; err == nil {
 			fmt.Printf("[METRICS] Receiving backup metrics for Agent %s. Size: %d bytes\n", payload.AgentID, payload.TotalSizeBytes)
-			
+
 			activity := BackupActivity{
 				AgentID:      payload.AgentID,
 				Token:        agent.Token,
@@ -1586,14 +1635,14 @@ func main() {
 				CreatedAt:    time.Now(),
 			}
 			DB.Create(&activity)
-			
+
 			// Actualizamos el último backup exitoso en el estado del agente
 			if payload.Status == "SUCCESS" {
 				DB.Model(&agent).Updates(map[string]interface{}{
 					"last_backup_at":    time.Unix(payload.Timestamp, 0).UTC(),
 					"last_backup_bytes": payload.TotalSizeBytes,
 				})
-				
+
 				// V11.6.0: Incrementar Métricas de Éxito
 				M_BackupsTotal.WithLabelValues(agent.Token, "SUCCESS").Inc()
 				UpdateAgentRPO(&agent)
@@ -1601,12 +1650,12 @@ func main() {
 
 				// V9.2.5: Auditoría de Métricas
 				DB.Create(&ActivityLog{
-					Token:     agent.Token,
-					AgentID:   agent.ID,
-					Type:      "TELEMETRY",
-					Status:    "success",
-					Message:   fmt.Sprintf("[METRICS] Consumo Wasabi registrado: %d bytes.", payload.TotalSizeBytes),
-					StartedAt: time.Now().UTC(),
+					Token:      agent.Token,
+					AgentID:    agent.ID,
+					Type:       "TELEMETRY",
+					Status:     "success",
+					Message:    fmt.Sprintf("[METRICS] Consumo Wasabi registrado: %d bytes.", payload.TotalSizeBytes),
+					StartedAt:  time.Now().UTC(),
 					FinishedAt: time.Now().UTC(),
 				})
 
@@ -1629,7 +1678,6 @@ func main() {
 			// V9.1: Siempre actualizar score tras backup
 			go UpdateHealthScore(payload.AgentID)
 		}
-
 
 		c.JSON(200, gin.H{"status": "Metrics recorded and activity saved"})
 	})
@@ -1680,12 +1728,12 @@ func main() {
 
 		// V9.2.5: Auditoría de Verificación
 		DB.Create(&ActivityLog{
-			Token:     agent.Token,
-			AgentID:   agent.ID,
-			Type:      "TELEMETRY",
-			Status:    "success",
-			Message:   fmt.Sprintf("[INTEGRITY] Snapshot %s verificado: %s", req.SnapshotID, req.Status),
-			StartedAt: time.Now().UTC(),
+			Token:      agent.Token,
+			AgentID:    agent.ID,
+			Type:       "TELEMETRY",
+			Status:     "success",
+			Message:    fmt.Sprintf("[INTEGRITY] Snapshot %s verificado: %s", req.SnapshotID, req.Status),
+			StartedAt:  time.Now().UTC(),
 			FinishedAt: time.Now().UTC(),
 		})
 
@@ -1705,13 +1753,13 @@ func main() {
 		}
 
 		DB.Model(&BackupActivity{}).Where("snapshot_id = ?", req.SnapshotID).Update("restore_duration_secs", req.TotalSeconds)
-		
+
 		// Calcular Nuevo RTO Estimado (avg de los últimos 5)
 		var agent AgentStatus
 		if err := DB.First(&agent, "id = ?", req.AgentID).Error; err == nil {
 			var activities []BackupActivity
 			DB.Where("agent_id = ? AND restore_duration_secs > 0", req.AgentID).Order("started_at desc").Limit(5).Find(&activities)
-			
+
 			if len(activities) > 0 {
 				var total int
 				for _, act := range activities {
@@ -1722,12 +1770,12 @@ func main() {
 
 				// V9.2.5: Auditoría de RTO
 				DB.Create(&ActivityLog{
-					Token:     agent.Token,
-					AgentID:   agent.ID,
-					Type:      "TELEMETRY",
-					Status:    "success",
-					Message:   fmt.Sprintf("[RTO] Nuevo tiempo estimado de recuperación: %d segundos.", avg),
-					StartedAt: time.Now().UTC(),
+					Token:      agent.Token,
+					AgentID:    agent.ID,
+					Type:       "TELEMETRY",
+					Status:     "success",
+					Message:    fmt.Sprintf("[RTO] Nuevo tiempo estimado de recuperación: %d segundos.", avg),
+					StartedAt:  time.Now().UTC(),
 					FinishedAt: time.Now().UTC(),
 				})
 			}
@@ -1762,9 +1810,9 @@ func main() {
 		// V11.4: Validación de 2FA (Seguridad de Hierro)
 		if !isAdmin {
 			var auth AuthCode
-			errA := DB.Where("token = ? AND code = ? AND action = ? AND used = ? AND expires_at > ?", 
+			errA := DB.Where("token = ? AND code = ? AND action = ? AND used = ? AND expires_at > ?",
 				token, req.AuthCode, "clone_authorize", false, time.Now()).First(&auth).Error
-			
+
 			if errA != nil {
 				c.JSON(403, gin.H{"error": "Código 2FA inválido o expirado. Se requiere autorización vía WhatsApp."})
 				return
@@ -1800,18 +1848,24 @@ func main() {
 		resticPass, _ := Decrypt(settings.ResticPass)
 		bucket := settings.WasabiBucket
 		region := settings.WasabiRegion
-		if region == "" { region = "us-east-1" }
+		if region == "" {
+			region = "us-east-1"
+		}
 		// V11.6.1: Soporte Universal S3 en Clonación
 		s3Endpoint := settings.S3Endpoint
 		if s3Endpoint == "" {
 			s3Endpoint = "s3.wasabisys.com"
-			if region != "us-east-1" && region != "" { s3Endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region) }
+			if region != "us-east-1" && region != "" {
+				s3Endpoint = fmt.Sprintf("s3.%s.wasabisys.com", region)
+			}
 		}
-		
+
 		// V14.3: Limpiar endpoint de slashes para evitar la doble barra // en la URL final
 		cleanEndpoint := strings.TrimRight(s3Endpoint, "/")
 		repoPrefix := "s3:https://"
-		if strings.HasPrefix(cleanEndpoint, "http") { repoPrefix = "s3:" }
+		if strings.HasPrefix(cleanEndpoint, "http") {
+			repoPrefix = "s3:"
+		}
 		fullRepo := fmt.Sprintf("%s%s/%s/%s/%s", repoPrefix, cleanEndpoint, bucket, effectiveToken, req.SourceAgentID)
 
 		// 4. Inyección Asíncrona (Conexión SSH y Restauración)
@@ -1872,7 +1926,7 @@ fi
 			cmdSSH := exec.Command("sshpass", "-p", req.TargetPass, "ssh", "-o", "StrictHostKeyChecking=no", "-p", req.TargetPort, "root@"+req.TargetIP, rescueScript)
 			// Lanzarlo en background desatendido
 			err := cmdSSH.Start()
-			
+
 			if err != nil {
 				activity.Status = "error"
 				activity.Message = fmt.Sprintf("SSH Negotiation failed with %s: %v", req.TargetIP, err)
@@ -1896,8 +1950,8 @@ fi
 			SnapshotID  string   `json:"snapshot_id"`
 			Destination string   `json:"destination"`
 			Paths       []string `json:"paths"`
-			Path        string   `json:"path"` // Ruta para filtrar ls_snapshot (V4.5.9)
-			AutoUp      bool     `json:"auto_up"` // V10.2: Orquestar docker-compose up
+			Path        string   `json:"path"`         // Ruta para filtrar ls_snapshot (V4.5.9)
+			AutoUp      bool     `json:"auto_up"`      // V10.2: Orquestar docker-compose up
 			InstallDeps bool     `json:"install_deps"` // V10.2: Auto-instalar Docker si falta
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -1934,7 +1988,9 @@ fi
 		case "force_selected", "force_full":
 			// V10: Los disparos manuales ahora son Jobs de alta prioridad
 			forceType := "selected"
-			if req.Action == "force_full" { forceType = "full" }
+			if req.Action == "force_full" {
+				forceType = "full"
+			}
 			DB.Create(&Job{
 				AgentID:   id,
 				Token:     agent.Token,
@@ -1945,7 +2001,9 @@ fi
 			})
 		case "ls_snapshot":
 			param := req.SnapshotID
-			if req.Path != "" { param = req.SnapshotID + "|" + req.Path }
+			if req.Path != "" {
+				param = req.SnapshotID + "|" + req.Path
+			}
 			DB.Create(&Job{
 				AgentID:   id,
 				Token:     agent.Token,
@@ -1957,13 +2015,17 @@ fi
 		case "restore":
 			pathsStr := strings.Join(req.Paths, ",")
 			autoUpStr := "false"
-			if req.AutoUp { autoUpStr = "true" }
+			if req.AutoUp {
+				autoUpStr = "true"
+			}
 			installDockerStr := "false"
-			if req.InstallDeps { installDockerStr = "true" }
-			
+			if req.InstallDeps {
+				installDockerStr = "true"
+			}
+
 			// Formato Param: snapID | target | paths | autoUp | installDocker
 			param := fmt.Sprintf("%s|%s|%s|%s|%s", req.SnapshotID, req.Destination, pathsStr, autoUpStr, installDockerStr)
-			
+
 			// V12: COMPUERTA DE SEGURIDAD (El Guardián)
 			// No lanzamos Restore directo, lanzamos primero una Verificación
 			DB.Create(&Job{
@@ -1974,7 +2036,7 @@ fi
 				Priority:  10,                           // Prioridad Máxima (DR en progreso)
 				NextRunAt: time.Now().UTC(),
 			})
-			
+
 			DB.Create(&ActivityLog{
 				Token:     agent.Token,
 				AgentID:   id,
@@ -1989,56 +2051,54 @@ fi
 	})
 
 	// V12: MODO OVERRIDE (FORCE RESTORE) CON 2FA
-		v1Agent.POST("/action/force_restore/:id", AuthMiddleware(), func(c *gin.Context) {
-			id := c.Param("id")
-			token := c.GetString("token")
-			var req struct {
-				SnapshotID  string   `json:"snapshot_id"`
-				Destination string   `json:"destination"`
-				Paths       []string `json:"paths"`
-				AuthCode    string   `json:"auth_code"`
-			}
-			c.ShouldBindJSON(&req)
+	v1Agent.POST("/action/force_restore/:id", AuthMiddleware(), func(c *gin.Context) {
+		id := c.Param("id")
+		token := c.GetString("token")
+		var req struct {
+			SnapshotID  string   `json:"snapshot_id"`
+			Destination string   `json:"destination"`
+			Paths       []string `json:"paths"`
+			AuthCode    string   `json:"auth_code"`
+		}
+		c.ShouldBindJSON(&req)
 
-			// 1. Validar 2FA (Seguridad de Hierro V12)
-			var auth AuthCode
-			errA := DB.Where("token = ? AND code = ? AND action = ? AND used = ? AND expires_at > ?", 
-				token, req.AuthCode, "force_restore", false, time.Now().UTC()).First(&auth).Error
-			
-			if errA != nil {
-				c.JSON(403, gin.H{"error": "Código 2FA inválido para Bypass de Seguridad. Contacte soporte."})
-				return
-			}
-			DB.Model(&auth).Update("used", true)
+		// 1. Validar 2FA (Seguridad de Hierro V12)
+		var auth AuthCode
+		errA := DB.Where("token = ? AND code = ? AND action = ? AND used = ? AND expires_at > ?",
+			token, req.AuthCode, "force_restore", false, time.Now().UTC()).First(&auth).Error
 
-			// 2. Encolar Restore Directo (Sin validación)
-			pathsStr := strings.Join(req.Paths, ",")
-			param := fmt.Sprintf("%s|%s|%s|false|false", req.SnapshotID, req.Destination, pathsStr)
-			
-			DB.Create(&Job{
-				AgentID:  id,
-				Token:    token,
-				Type:     "restore",
-				Param:    param,
-				Priority: 10,
-			})
+		if errA != nil {
+			c.JSON(403, gin.H{"error": "Código 2FA inválido para Bypass de Seguridad. Contacte soporte."})
+			return
+		}
+		DB.Model(&auth).Update("used", true)
 
-			DB.Create(&ActivityLog{
-				Token:     token,
-				AgentID:   id,
-				Type:      "RECOVERY_WITH_RISK",
-				Status:    "warning",
-				Message:   fmt.Sprintf("[OVERRIDE] Usuario forzó restauración de snapshot %s (Bypass de Integridad)", req.SnapshotID),
-				StartedAt: time.Now().UTC(),
-			})
+		// 2. Encolar Restore Directo (Sin validación)
+		pathsStr := strings.Join(req.Paths, ",")
+		param := fmt.Sprintf("%s|%s|%s|false|false", req.SnapshotID, req.Destination, pathsStr)
 
-			c.JSON(200, gin.H{"status": "Override Successful", "message": "Restauración forzada en curso"})
+		DB.Create(&Job{
+			AgentID:  id,
+			Token:    token,
+			Type:     "restore",
+			Param:    param,
+			Priority: 10,
 		})
 
+		DB.Create(&ActivityLog{
+			Token:     token,
+			AgentID:   id,
+			Type:      "RECOVERY_WITH_RISK",
+			Status:    "warning",
+			Message:   fmt.Sprintf("[OVERRIDE] Usuario forzó restauración de snapshot %s (Bypass de Integridad)", req.SnapshotID),
+			StartedAt: time.Now().UTC(),
+		})
 
+		c.JSON(200, gin.H{"status": "Override Successful", "message": "Restauración forzada en curso"})
+	})
 
 	// --- AJUSTES DE USUARIO (WASABI) (V2.3.2) ---
-	
+
 	v1User := r.Group("/v1/user")
 	v1User.Use(AuthMiddleware())
 
@@ -2066,7 +2126,7 @@ fi
 		settings.WasabiBucket = input.WasabiBucket
 		settings.WasabiRegion = input.WasabiRegion
 		settings.S3Endpoint = input.S3Endpoint // V11.6.1
-		
+
 		// Solo ciframos y actualizamos las llaves si no vienen vacías (V2.9.1)
 		if input.WasabiKey != "" {
 			encKey, _ := Encrypt(input.WasabiKey)
@@ -2100,20 +2160,18 @@ fi
 		alertConfig.WebhookURL = input.WebhookURL
 		alertConfig.Events = input.WebhookEvents
 		DB.Save(&alertConfig)
-		
+
 		c.JSON(200, gin.H{
-			"message": "Settings saved successfully", 
-			"mode": saveToken,
+			"message":     "Settings saved successfully",
+			"mode":        saveToken,
 			"s3_insecure": settings.S3Insecure,
 		})
 
-
 	})
-
 
 	v1User.GET("/settings", func(c *gin.Context) {
 		token := c.GetString("token")
-		
+
 		// Permitir ver los settings Globales (V2.6.1)
 		searchToken := token
 		if c.Query("mode") == "global" && c.GetBool("is_admin") {
@@ -2124,11 +2182,11 @@ fi
 		if err := DB.Where("token = ?", searchToken).First(&settings).Error; err != nil {
 			// V2.3.2: Devolver 200 con campos vacíos en lugar de 404 para el UI
 			c.JSON(200, gin.H{
-				"wasabi_key": "",
-				"wasabi_secret": "",
-				"wasabi_bucket": "",
-				"wasabi_region": "us-east-1",
-				"s3_endpoint": "",
+				"wasabi_key":      "",
+				"wasabi_secret":   "",
+				"wasabi_bucket":   "",
+				"wasabi_region":   "us-east-1",
+				"s3_endpoint":     "",
 				"restic_password": "",
 			})
 			return
@@ -2144,21 +2202,20 @@ fi
 		DB.Where("token = ?", searchToken).Limit(1).Find(&alertConfig)
 
 		response := UserSettingsPayload{
-			WasabiKey:     settings.WasabiKey,
-			WasabiSecret:  settings.WasabiSecret,
-			WasabiBucket:  settings.WasabiBucket,
-			WasabiRegion:  settings.WasabiRegion,
-			S3Endpoint:    settings.S3Endpoint,
-			ResticPass:    settings.ResticPass,
-			WebhookURL:    alertConfig.WebhookURL,
-			WebhookEvents: alertConfig.Events,
+			WasabiKey:        settings.WasabiKey,
+			WasabiSecret:     settings.WasabiSecret,
+			WasabiBucket:     settings.WasabiBucket,
+			WasabiRegion:     settings.WasabiRegion,
+			S3Endpoint:       settings.S3Endpoint,
+			ResticPass:       settings.ResticPass,
+			WebhookURL:       alertConfig.WebhookURL,
+			WebhookEvents:    alertConfig.Events,
 			S3ForcePathStyle: settings.S3ForcePathStyle,
 			S3Insecure:       settings.S3Insecure,
 		}
 
 		c.JSON(200, response)
 	})
-
 
 	// Endpoint de Prueba de Conexión Wasabi (V2.8)
 	v1User.POST("/test-wasabi", func(c *gin.Context) {
@@ -2175,8 +2232,10 @@ fi
 		}
 
 		region := input.WasabiRegion
-		if region == "" { region = "us-east-1" }
-		
+		if region == "" {
+			region = "us-east-1"
+		}
+
 		endpoint := input.S3Endpoint
 		if endpoint == "" {
 			endpoint = "s3.wasabisys.com"
@@ -2219,7 +2278,7 @@ fi
 		}
 
 		svc := s3.New(sess)
-		
+
 		fmt.Printf("[TEST] Testing S3 Storage for bucket: %s (%s)...\n", input.WasabiBucket, region)
 
 		// 1. Probar ListBucket (Verifica existencia y permisos base)
@@ -2231,8 +2290,8 @@ fi
 
 		if err != nil {
 			c.JSON(200, gin.H{
-				"success": false, 
-				"error": fmt.Sprintf("S3 Check Failed: %v", err),
+				"success": false,
+				"error":   fmt.Sprintf("S3 Check Failed: %v", err),
 				"details": "Check if your Key/Secret/Bucket are correct and if the service is reachable.",
 			})
 			return
@@ -2240,8 +2299,8 @@ fi
 
 		latency := time.Since(start).Milliseconds()
 		c.JSON(200, gin.H{
-			"success": true, 
-			"message": "¡API Control Plane conectado con éxito al almacenamiento S3!",
+			"success":    true,
+			"message":    "¡API Control Plane conectado con éxito al almacenamiento S3!",
 			"latency_ms": latency,
 		})
 	})
@@ -2343,7 +2402,9 @@ fi
 
 	// Main Server
 	port := os.Getenv("PORT")
-	if port == "" { port = "8089" }
+	if port == "" {
+		port = "8089"
+	}
 
 	fmt.Printf("==========================================\n")
 	fmt.Printf("🚀 DBP API %s - ONLINE\n", Version)
@@ -2356,19 +2417,21 @@ func RunContinuityOrchestrator() {
 	fmt.Println("[CONTINUITY] High Availability Orchestrator started.")
 	for {
 		time.Sleep(30 * time.Second) // SLA 2 min: Revisamos cada 30s
-		
+
 		now := time.Now().UTC()
 		var agents []AgentStatus
 		DB.Find(&agents)
-		
+
 		for _, a := range agents {
 			isOffline := (now.Unix() - a.LastSeenUnix) > 120
-			
+
 			// V11.6.0: Telemetría de Estado
 			onlineVal := 1.0
-			if isOffline { onlineVal = 0.0 }
+			if isOffline {
+				onlineVal = 0.0
+			}
 			M_AgentOnline.WithLabelValues(a.Token, a.ID).Set(onlineVal)
-			
+
 			// Actualizar RPO (Fase 4)
 			UpdateAgentRPO(&a)
 			DB.Model(&a).Update("last_rpo_mins", a.LastRpoMins)
@@ -2378,14 +2441,14 @@ func RunContinuityOrchestrator() {
 				if a.RecoveryTier < 2 {
 					fmt.Printf("[RECOVERY] Agent %s offline. Attempting Tier 2 (Local Restart)...\n", a.ID)
 					DB.Create(&Job{
-						AgentID: a.ID,
-						Token:   a.Token,
-						Type:    "cmd_exec",
-						Param:   "docker restart dbp-client-agent || systemctl restart dbp-agent",
+						AgentID:  a.ID,
+						Token:    a.Token,
+						Type:     "cmd_exec",
+						Param:    "docker restart dbp-client-agent || systemctl restart dbp-agent",
 						Priority: 10,
 						Status:   "pending",
 					})
-					
+
 					DB.Model(&a).Updates(map[string]interface{}{
 						"recovery_tier":     2,
 						"recovery_attempts": a.RecoveryAttempts + 1,
@@ -2423,27 +2486,27 @@ func RunAsyncReplicationWorker() {
 	fmt.Println("[STORAGE] Async Replication Worker started.")
 	for {
 		time.Sleep(10 * time.Minute) // Procesar en bloques cada 10 min
-		
+
 		var activities []BackupActivity
 		// Buscar actividades exitosas que aún no tengan copia secundaria
 		DB.Where("status = ? AND has_secondary_copy = ?", "SUCCESS", false).Order("created_at asc").Limit(5).Find(&activities)
-		
+
 		for _, act := range activities {
 			var plan TenantPlan
 			DB.Where("token = ?", act.Token).First(&plan)
-			
+
 			if plan.BackupStrategy == "dual_async" || plan.BackupStrategy == "cross_region" {
 				fmt.Printf("[STORAGE] Replicating Snapshot %s to Secondary Storage for Tenant %s\n", act.SnapshotID, plan.Token)
-				
+
 				err := ReplicateSnapshot(act.Token, plan, act.SnapshotID)
 				if err != nil {
 					fmt.Printf("[STORAGE ERROR] Replication failed for %s: %v\n", act.SnapshotID, err)
 					continue
 				}
-				
+
 				DB.Model(&act).Update("has_secondary_copy", true)
 				fmt.Printf("[STORAGE SUCCESS] Snapshot %s replicated to OVHcloud.\n", act.SnapshotID)
-				
+
 				DispatchAlert(act.Token, "replication_success", map[string]interface{}{
 					"snapshot_id": act.SnapshotID,
 					"target":      "OVHcloud",
@@ -2459,8 +2522,8 @@ func RunAsyncReplicationWorker() {
 // ReplicateSnapshot: Ejecuta rclone sync desde el Control Plane (Fase 2)
 // USA LA OPCIÓN B: Configuración mediante variables de entorno (Sin archivos en disco)
 func ReplicateSnapshot(token string, plan TenantPlan, snapshotID string) error {
-    // ... logic already implemented correctly in previous turns ...
-    return nil // placeholder for chunk start/end consistency
+	// ... logic already implemented correctly in previous turns ...
+	return nil // placeholder for chunk start/end consistency
 }
 
 // --- VIRTUALIZOR API CLIENT (V11.5.0) ---
@@ -2477,7 +2540,9 @@ func CreateVirtualizorVS(templateJSON string, hostname string, rootPass string) 
 	json.Unmarshal([]byte(templateJSON), &template)
 
 	osID := VirtualizorOSMap[template["os"]]
-	if osID == 0 { osID = 1001 } // Fallback
+	if osID == 0 {
+		osID = 1001
+	} // Fallback
 
 	data := url.Values{}
 	data.Set("api_key", apiKey)
@@ -2492,7 +2557,9 @@ func CreateVirtualizorVS(templateJSON string, hostname string, rootPass string) 
 	data.Set("space", template["disk"])
 
 	resp, err := http.PostForm(apiUrl+"?act=addvs", data)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
@@ -2513,7 +2580,7 @@ func CreateVirtualizorVS(templateJSON string, hostname string, rootPass string) 
 func RunIntegrityOrchestrator() {
 	for {
 		time.Sleep(1 * time.Hour) // Evaluación horaria
-		
+
 		var agents []AgentStatus
 		DB.Where("node_type = 'agent'").Find(&agents)
 
@@ -2521,7 +2588,7 @@ func RunIntegrityOrchestrator() {
 			// Calcular prioridad de chequeo según el plan (V12 SaaS Quotas)
 			var tPlan TenantPlan
 			DB.Where("token = ?", a.Token).First(&tPlan)
-			
+
 			// Si el nivel de integridad es 'none', omitimos
 			if tPlan.IntegrityLvl == "none" || tPlan.IntegrityLvl == "" {
 				continue
@@ -2544,7 +2611,7 @@ func RunIntegrityOrchestrator() {
 							AgentID:  a.ID,
 							Token:    a.Token,
 							Type:     "verify_snapshot",
-							Param:    "AUTO_INTEGRITY_CHECK", 
+							Param:    "AUTO_INTEGRITY_CHECK",
 							Priority: 1, // Prioridad mínima para no molestar
 						})
 					}
@@ -2559,9 +2626,9 @@ func RunIntegrityOrchestrator() {
 					Param:    fmt.Sprintf("%s|%s|%s", a.Token, a.ID, tPlan.IntegrityLvl),
 					Priority: 5,
 				})
-				
+
 				fmt.Printf("[INTEGRITY] Dispatched V12 %s check for agent %s to verifier %s\n", tPlan.IntegrityLvl, a.ID, verifier.ID)
-				
+
 				// Actualizar marca de tiempo para no repetir
 				DB.Model(&a).Update("last_verified_at", time.Now().UTC())
 			}
@@ -2574,7 +2641,7 @@ func RunPruningWorker() {
 	for {
 		time.Sleep(24 * time.Hour)
 		fmt.Println("[PRUNING] Executing 90-day data retention policy...")
-		
+
 		retention := "90 days"
 		if os.Getenv("LOG_RETENTION_INTERVAL") != "" {
 			retention = os.Getenv("LOG_RETENTION_INTERVAL")
@@ -2598,18 +2665,17 @@ func UpdateAgentRPO(agent *AgentStatus) {
 	agent.LastRpoMins = int(diff)
 }
 
-
 // SendWhatsApp2FA: Envía un código de seguridad vía Meta Cloud API (Fase 2)
 func SendWhatsApp2FA(phone, code, action string) error {
 	token := os.Getenv("WHATSAPP_TOKEN")
 	phoneID := os.Getenv("WHATSAPP_PHONE_ID")
-	
+
 	if token == "" || phoneID == "" {
 		return fmt.Errorf("WhatsApp API not configured")
 	}
 
 	url := fmt.Sprintf("https://graph.facebook.com/v21.0/%s/messages", phoneID)
-	
+
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"to":                phone,
@@ -2660,11 +2726,11 @@ func GenerateAuthCode(token, action string) (string, error) {
 		Action:    action,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
 	}
-	
+
 	if err := DB.Create(&auth).Error; err != nil {
 		return "", err
 	}
-	
+
 	return code, nil
 }
 
@@ -2674,26 +2740,28 @@ func RunJobWatchdog() {
 	fmt.Println("[WATCHDOG] Job Watchdog Service (El Verdugo) started.")
 	for {
 		time.Sleep(2 * time.Minute) // Revisar cada 2 minutos
-		
+
 		var hungJobs []Job
 		now := time.Now().UTC()
-		
+
 		// Buscar jobs que llevan corriendo más de su timeout configurado
 		DB.Where("status = ? AND started_at IS NOT NULL", "running").Find(&hungJobs)
-		
+
 		for _, job := range hungJobs {
-			if job.StartedAt == nil { continue }
+			if job.StartedAt == nil {
+				continue
+			}
 			timeoutAt := job.StartedAt.Add(time.Duration(job.TimeoutSecs) * time.Second)
 			if now.After(timeoutAt) {
 				fmt.Printf("[WATCHDOG] Job %d (%s) timed out. Marking as FAILED.\n", job.ID, job.Type)
-				
+
 				DB.Model(&job).Updates(map[string]interface{}{
 					"status":      "failed",
 					"result":      "TIMEOUT: Process exceeded allowed duration",
 					"finished_at": &now,
 					"error_log":   fmt.Sprintf("Watchdog detected hang after %d seconds", job.TimeoutSecs),
 				})
-				
+
 				// Alertar al administrador
 				var agent AgentStatus
 				DB.First(&agent, "id = ?", job.AgentID)

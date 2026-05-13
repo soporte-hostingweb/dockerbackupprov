@@ -64,6 +64,13 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
   const [dbPasses, setDbPasses] = useState<Record<string, string>>({});
   const [dbNames, setDbNames] = useState<Record<string, string>>({});
 
+  // V15: Bring Your Own Storage States
+  const [useCustomS3, setUseCustomS3] = useState<Record<string, boolean>>({});
+  const [customS3Key, setCustomS3Key] = useState<Record<string, string>>({});
+  const [customS3Secret, setCustomS3Secret] = useState<Record<string, string>>({});
+  const [customS3Bucket, setCustomS3Bucket] = useState<Record<string, string>>({});
+  const [customS3Endpoint, setCustomS3Endpoint] = useState<Record<string, string>>({});
+
   useEffect(() => {
     async function fetchAgents() {
       const token = localStorage.getItem("dbp_token");
@@ -632,6 +639,54 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
                          onChange={(e) => setDbNames(prev => ({ ...prev, [id]: e.target.value }))}
                        />
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* V15: Bring Your Own Storage (BYOS) Section */}
+              <div className="bg-blue-500/5 border border-blue-500/10 rounded-3xl p-6 mt-4 space-y-4">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                      <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-400">
+                         <Cloud className="w-5 h-5" />
+                      </div>
+                      <div>
+                         <h5 className="text-xs font-black text-white italic uppercase">Bring Your Own Storage (BYOS)</h5>
+                         <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Utilizar mi propio Bucket S3 (AWS/Wasabi/Minio)</p>
+                      </div>
+                   </div>
+                   {plan?.policy?.features?.includes('custom_schedule') ? (
+                     <label className="switch">
+                        <input 
+                          type="checkbox" 
+                          checked={useCustomS3[id] || false}
+                          onChange={(e) => setUseCustomS3(prev => ({ ...prev, [id]: e.target.checked }))}
+                        />
+                        <span className="slider"></span>
+                     </label>
+                   ) : (
+                     <span className="text-[10px] text-blue-500 font-black uppercase italic bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">Upgrade Required 🔒</span>
+                   )}
+                </div>
+
+                {useCustomS3[id] && (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2 animate-in slide-in-from-top-2 duration-300">
+                     <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] font-black text-blue-500/60 uppercase ml-1">S3 Endpoint</span>
+                        <input type="text" className="premium-mini-input" placeholder="s3.wasabisys.com" value={customS3Endpoint[id] || ""} onChange={(e) => setCustomS3Endpoint(prev => ({ ...prev, [id]: e.target.value }))} />
+                     </div>
+                     <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] font-black text-blue-500/60 uppercase ml-1">Access Key</span>
+                        <input type="text" className="premium-mini-input" placeholder="AKIA..." value={customS3Key[id] || ""} onChange={(e) => setCustomS3Key(prev => ({ ...prev, [id]: e.target.value }))} />
+                     </div>
+                     <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] font-black text-blue-500/60 uppercase ml-1">Secret Key</span>
+                        <input type="password" className="premium-mini-input" placeholder="••••••••" value={customS3Secret[id] || ""} onChange={(e) => setCustomS3Secret(prev => ({ ...prev, [id]: e.target.value }))} />
+                     </div>
+                     <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] font-black text-blue-500/60 uppercase ml-1">Bucket Name</span>
+                        <input type="text" className="premium-mini-input" placeholder="my-backups" value={customS3Bucket[id] || ""} onChange={(e) => setCustomS3Bucket(prev => ({ ...prev, [id]: e.target.value }))} />
+                     </div>
                   </div>
                 )}
               </div>

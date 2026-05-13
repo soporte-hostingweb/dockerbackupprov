@@ -92,6 +92,12 @@ type BackupConfig struct {
 	DbUser          string `json:"db_user"`
 	DbPass          string `json:"db_pass"`
 	DbNames         string `json:"db_names"` // JSON array de bases de datos
+	// --- V15: Bring Your Own Storage (BYOS) ---
+	UseCustomS3     bool   `json:"use_custom_s3" gorm:"default:false"`
+	CustomS3Key     string `json:"custom_s3_key"`
+	CustomS3Secret  string `json:"custom_s3_secret"`
+	CustomS3Bucket  string `json:"custom_s3_bucket"`
+	CustomS3Endpoint string `json:"custom_s3_endpoint"`
 	CreatedAt      time.Time
 }
 
