@@ -250,21 +250,34 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
 
           {step === 2 && (
             <div className="space-y-6 animate-in slide-in-from-right-4">
-                <div className="flex justify-between items-center bg-gray-900/30 p-4 rounded-3xl border border-gray-900">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500"><Database size={16} /></div>
-                        <span className="text-[10px] text-blue-400 font-black uppercase italic truncate tracking-tighter">{agentId} / {currentPath || "ROOT"}</span>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                        <button onClick={selectAll} className="text-[9px] px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg font-black uppercase">SELECT ALL</button>
-                        <button onClick={clearSelection} className="text-[9px] px-3 py-1 bg-gray-800 text-gray-400 rounded-lg font-black uppercase">CLEAR</button>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setStep(1)} className="p-2 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-gray-500 hover:text-white transition-all"><ChevronRight className="rotate-180" size={16} /></button>
+                    <div className="flex-1 flex justify-between items-center bg-gray-900/30 p-4 rounded-3xl border border-gray-900 min-w-0">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500"><Database size={16} /></div>
+                            <span className="text-[10px] text-blue-400 font-black uppercase italic truncate tracking-tighter">{agentId} / {currentPath || "ROOT"}</span>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                            <button onClick={selectAll} className="text-[9px] px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg font-black uppercase">SELECT ALL</button>
+                            <button onClick={clearSelection} className="text-[9px] px-3 py-1 bg-gray-800 text-gray-400 rounded-lg font-black uppercase">CLEAR</button>
+                        </div>
                     </div>
                 </div>
 
                 {currentPath && <button onClick={() => { const p = currentPath.split('/'); p.pop(); fetchSnapshotContent(selectedSnapshot.id, p.join('/')); }} className="text-[10px] text-gray-500 font-black uppercase italic hover:text-blue-400">← VOLVER ATRÁS</button>}
 
-                <div className="grid grid-cols-1 gap-3 max-h-[45vh] overflow-y-auto pr-2 relative">
-                    {explorerContent.map((item: any, idx: number) => {
+                <div className="grid grid-cols-1 gap-3 max-h-[45vh] overflow-y-auto pr-2 relative min-h-[100px]">
+                    {isLoadingContent ? (
+                        <div className="flex flex-col items-center justify-center p-10 space-y-3 animate-pulse">
+                            <Activity className="text-blue-500" size={32} />
+                            <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Reading S3 Storage...</span>
+                        </div>
+                    ) : explorerContent.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center p-10 border-2 border-dashed border-gray-900 rounded-3xl">
+                            <Search className="text-gray-800 mb-2" size={32} />
+                            <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest text-center">No files found in this path</span>
+                        </div>
+                    ) : explorerContent.map((item: any, idx: number) => {
                         const path = item.path;
                         const isDir = item.type === "dir";
                         const isSelected = selectedPaths.includes(path);
