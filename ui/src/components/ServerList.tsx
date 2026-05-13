@@ -797,14 +797,20 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
                   <div className="flex gap-0.5">
                     <button 
                       onClick={() => handleAction(id, 'force_selected')}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-6 py-2.5 rounded-l-lg font-bold shadow-xl shadow-emerald-900/30 transition-all uppercase tracking-widest border border-emerald-400/20"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-6 py-2.5 rounded-l-lg font-bold shadow-xl shadow-emerald-900/30 transition-all uppercase tracking-widest border border-emerald-400/20 disabled:opacity-50"
                     >
                       Force Selected
                     </button>
                     <button 
-                      onClick={() => {
+                      onClick={(e) => {
+                        const target = e.currentTarget;
                         if (confirm("¿INICIAR BACKUP COMPLETO DEL SERVIDOR? Esto ignorará los filtros y respaldará la raíz del host.")) {
-                          handleAction(id, 'force_full');
+                          target.disabled = true;
+                          target.innerText = "SENDING...";
+                          handleAction(id, 'force_full').finally(() => {
+                             target.disabled = false;
+                             target.innerText = "FULL";
+                          });
                         }
                       }}
                       className="bg-emerald-800 hover:bg-emerald-700 text-white text-[10px] px-4 py-2.5 rounded-r-lg font-bold shadow-xl transition-all uppercase tracking-widest border border-emerald-400/10"

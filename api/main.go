@@ -1994,12 +1994,14 @@ fi
 			DB.Model(&agent).Update("maintenance", false)
 		case "kill_sync":
 			DB.Model(&agent).Update("kill_sync", true)
-		case "force_selected", "force_full":
-			// V10: Los disparos manuales ahora son Jobs de alta prioridad
 			forceType := "selected"
 			if req.Action == "force_full" {
 				forceType = "full"
 			}
+			
+			// V15: Compatibilidad Dual - Job para orquestación y PendingForce para reacción inmediata
+			DB.Model(&agent).Update("pending_force", forceType)
+			
 			DB.Create(&Job{
 				AgentID:   id,
 				Token:     agent.Token,
