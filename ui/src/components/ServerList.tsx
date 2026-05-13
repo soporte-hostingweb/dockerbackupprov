@@ -37,6 +37,7 @@ interface AgentStatus {
   protection_level?: string; // V14.2
   has_docker?: boolean; // V14.2
   detected_stack?: Record<string, boolean>; // V14.2
+  wasabi_usage_gb?: string; // V15.0
 }
 
 interface ServerListProps {
