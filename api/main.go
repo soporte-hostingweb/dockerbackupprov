@@ -332,11 +332,14 @@ func CircuitBreakerRateLimit(limitNormal int, limitDegraded int) gin.HandlerFunc
 	redisStore, _ := redis.NewStore(RedisClient)
 	memoryStore := memory.NewStore()
 
-	rateNormal := limiter.Rate{Period: 1 * time.Minute, Limit: int64(limitNormal)}
-	rateDegraded := limiter.Rate{Period: 1 * time.Minute, Limit: int64(limitDegraded)}
+	// V14.3.5: Hardened Rate Limit (300 req/min -> 600 req/min for SaaS Scale)
+	rate := limiter.Rate{
+		Period: 1 * time.Minute,
+		Limit:  600,
+	}
 
-	limitRedis := ginlimiter.NewMiddleware(limiter.New(redisStore, rateNormal))
-	limitMemory := ginlimiter.NewMiddleware(limiter.New(memoryStore, rateDegraded))
+	limitRedis := ginlimiter.NewMiddleware(limiter.New(redisStore, rate))
+	limitMemory := ginlimiter.NewMiddleware(limiter.New(memoryStore, limiter.Rate{Period: 1 * time.Minute, Limit: int64(limitDegraded)}))
 
 	return func(c *gin.Context) {
 		M_RequestsTotal.Inc()

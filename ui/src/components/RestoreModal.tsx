@@ -75,40 +75,47 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
         });
 
         let attempts = 0;
+        const maxAttempts = 60; // V15: 120 segundos de gracia para S3 lento
         const poll = setInterval(async () => {
              attempts++;
+             if (attempts > maxAttempts) {
+                 clearInterval(poll);
+                 setIsLoadingContent(false);
+                 console.error("[POLLING] Timed out after 60 attempts");
+                 return;
+             }
+
              try {
                  const statusResp = await fetch(`https://api.hwperu.com/v1/agent/status?agent_id=${agentId}`, {
                      headers: { "Authorization": token }
                  });
 
                  if (statusResp.status === 429) {
-                    console.warn("[RATE LIMIT] Slower polling due to 429");
-                    return; // No incrementar intentos, esperar al siguiente ciclo
+                    console.warn("[RATE LIMIT] Slower polling due to 429 (Skip attempt)");
+                    return; // Skip this attempt but don't stop the loop
                  }
 
                  const statusData = await statusResp.json();
-                 const agent = statusData[agentId];
+                 // V15: Manejar estructura { agents: {}, plan: {} } o mapa directo
+                 const agentsMap = statusData.agents || statusData;
+                 const agent = agentsMap[agentId];
                  
-                 if (agent && agent.cmd_task === "none") {
+                 if (agent && (agent.cmd_task === "none" || !agent.cmd_task)) {
                      clearInterval(poll);
                      if (agent.cmd_result) {
                          try {
                             const parsed = JSON.parse(agent.cmd_result);
                             setExplorerContent(Array.isArray(parsed) ? parsed : [parsed]);
-                         } catch (e) { console.error(e); }
+                         } catch (e) { 
+                            console.error("Parse Error:", e);
+                            setExplorerContent([]); 
+                         }
                      }
                      setIsLoadingContent(false);
                      if (step === 1) setStep(2);
                  }
              } catch (err) {
-                 console.error("Polling error:", err);
-             }
-
-             if (attempts > 30) { 
-                clearInterval(poll); 
-                setIsLoadingContent(false); 
-                console.log("[POLLING] Timed out after 30 attempts");
+                 console.error("Poll Error:", err);
              }
         }, 2000); // V15: Aumentado a 2s para estabilidad SaaS
     } catch (err) { setIsLoadingContent(false); }
