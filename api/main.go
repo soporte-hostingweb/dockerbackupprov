@@ -52,11 +52,12 @@ var installPsScript []byte
 
 // --- POLICY ENGINE (V10.0: SaaS Pro) ---
 type PlanPolicy struct {
-	MaxRetentionDays int
-	ValidationLvl    string // none, basic, advanced
-	IntegrityLvl     string // none, light, medium, full (V12)
-	Priority         int    // 1 (low), 2 (standard), 3 (high)
-	AllowRestoreAuto bool
+	MaxRetentionDays int      `json:"max_retention_days"`
+	ValidationLvl    string   `json:"validation_lvl"` // none, basic, advanced
+	IntegrityLvl     string   `json:"integrity_lvl"`  // none, light, medium, full (V12)
+	Priority         int      `json:"priority"`       // 1 (low), 2 (standard), 3 (high)
+	AllowRestoreAuto bool     `json:"allow_restore_auto"`
+	Features         []string `json:"features"` // V15: Lista de permisos para el UI
 }
 
 var PolicyEngine = map[string]PlanPolicy{
@@ -65,6 +66,7 @@ var PolicyEngine = map[string]PlanPolicy{
 		ValidationLvl:    "none",
 		Priority:         1,
 		AllowRestoreAuto: false,
+		Features:         []string{"manual_backup", "basic_restore"},
 	},
 	"standard": {
 		MaxRetentionDays: 7,
@@ -72,13 +74,15 @@ var PolicyEngine = map[string]PlanPolicy{
 		IntegrityLvl:     "light",
 		Priority:         2,
 		AllowRestoreAuto: true,
+		Features:         []string{"daily_backup", "restore_wizard", "db_hook"},
 	},
 	"enterprise": {
 		MaxRetentionDays: 30,
 		ValidationLvl:    "advanced",
-		IntegrityLvl:     "medium",
+		IntegrityLvl:     "full",
 		Priority:         3,
 		AllowRestoreAuto: true,
+		Features:         []string{"custom_schedule", "clone_vps", "integrity_audit", "db_hook_pro", "restore_wizard"},
 	},
 }
 
@@ -914,7 +918,18 @@ func main() {
 			}
 		}
 
-		c.JSON(200, resp)
+		// V15: Adjuntar política de plan para el UI
+		var tenantPlan TenantPlan
+		DB.Where("token = ?", clientToken).First(&tenantPlan)
+		policy := GetPolicyForTenant(tenantPlan.Plan)
+
+		c.JSON(200, gin.H{
+			"agents": agentsMap,
+			"plan": gin.H{
+				"name": tenantPlan.Plan,
+				"policy": policy,
+			},
+		})
 	})
 
 	// V6.3: Monitor de Actividad Global (Reemplaza a /history por uno más detallado)

@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<any[]>([]);
   const [onboardingAgent, setOnboardingAgent] = useState<any>(null); // V14.2
+  const [plan, setPlan] = useState<any>({ name: 'basic', policy: { features: [] } }); // V15: Plan Policy Engine
   
   // Restore Modal State
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
@@ -64,8 +65,9 @@ export default function DashboardPage() {
       });
       if (respStatus.ok) {
         const data = await respStatus.json();
-        setAgents(data);
-        setAgentCount(Object.keys(data).length);
+        setAgents(data.agents || {});
+        setPlan(data.plan || { name: 'basic', policy: { features: [] } });
+        setAgentCount(Object.keys(data.agents || {}).length);
 
         // V14.2: Auto-lanzar Onboarding si detectamos un agente nuevo sin config
         if (!onboardingAgent) {

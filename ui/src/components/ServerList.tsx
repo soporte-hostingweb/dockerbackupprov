@@ -41,9 +41,17 @@ interface AgentStatus {
 
 interface ServerListProps {
   onRestore?: (agentId: string, snapshots: any[]) => void;
+  agents?: any;
+  plan?: any;
 }
 
-export default function ServerList({ onRestore }: ServerListProps) {
+const PLAN_BADGES = {
+  basic: { name: "BASIC PROTECTION", color: "bg-gray-800 border-gray-600" },
+  standard: { name: "STANDARD PROTECTION", color: "bg-blue-600 border-blue-400" },
+  enterprise: { name: "TOTAL PROTECTION (DRaaS)", color: "bg-emerald-600 border-emerald-400" }
+};
+
+export default function ServerList({ onRestore, agents: propsAgents, plan }: ServerListProps) {
   const [agents, setAgents] = useState<Record<string, AgentStatus>>({});
   const [loading, setLoading] = useState(true);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
@@ -299,13 +307,9 @@ export default function ServerList({ onRestore }: ServerListProps) {
                       <span className="text-[10px] bg-gray-900 text-gray-500 px-2 py-0.5 rounded-full border border-gray-800">
                         {data.os || 'Linux'}
                       </span>
-                      {data.protection_level && (
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border shadow-sm ${
-                          data.protection_level === 'Advanced' ? 'bg-emerald-600 text-white border-emerald-400' :
-                          data.protection_level === 'Total' ? 'bg-blue-600 text-white border-blue-400' :
-                          'bg-gray-800 text-gray-400 border-gray-700'
-                        }`}>
-                          {data.protection_level.toUpperCase()} PROTECTION
+                      {plan?.name && (
+                        <span className={`text-[10px] font-black px-3 py-1 rounded border italic shadow-lg uppercase tracking-wider ${PLAN_BADGES[plan.name as keyof typeof PLAN_BADGES]?.color || 'bg-gray-800'}`}>
+                          {PLAN_BADGES[plan.name as keyof typeof PLAN_BADGES]?.name || 'BASIC PROTECTION'}
                         </span>
                       )}
                     </h3>
@@ -480,9 +484,15 @@ export default function ServerList({ onRestore }: ServerListProps) {
                     >
 
                        <option value="manual">Básico / Manual (Pausado)</option>
-                       <option value="daily_2am_basic">Estándar (Backup Diario)</option>
-                       <option value="weekly_2am">Pro (Backup Semanal)</option>
-                       <option value="custom">Enterprise / Premium (Personalizado)</option>
+                       <option value="daily_2am_basic" disabled={!plan?.policy?.features?.includes('daily_backup')}>
+                         Estándar (Backup Diario) {!plan?.policy?.features?.includes('daily_backup') ? '🔒' : ''}
+                       </option>
+                       <option value="weekly_2am" disabled={!plan?.policy?.features?.includes('daily_backup')}>
+                         Pro (Backup Semanal) {!plan?.policy?.features?.includes('daily_backup') ? '🔒' : ''}
+                       </option>
+                       <option value="custom" disabled={!plan?.policy?.features?.includes('custom_schedule')}>
+                         Enterprise / Premium (Personalizado) {!plan?.policy?.features?.includes('custom_schedule') ? '🔒' : ''}
+                       </option>
                     </select>
                     
                     <button 
