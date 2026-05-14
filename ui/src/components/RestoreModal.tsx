@@ -101,20 +101,38 @@ export default function RestoreModal({ isOpen, onClose, agentId, snapshots, toke
                  const agentsMap = statusData.agents || statusData;
                  const agent = agentsMap[agentId];
                  
-                 if (agent && (agent.cmd_task === "none" || !agent.cmd_task)) {
-                     clearInterval(poll);
-                     if (agent.cmd_result) {
-                         try {
-                            const parsed = JSON.parse(agent.cmd_result);
-                            setExplorerContent(Array.isArray(parsed) ? parsed : [parsed]);
-                         } catch (e) { 
-                            console.error("Parse Error:", e);
-                            setExplorerContent([]); 
-                         }
-                     }
-                     setIsLoadingContent(false);
-                     if (step === 1) setStep(2);
-                 }
+                  if (agent && (agent.cmd_task === "none" || !agent.cmd_task)) {
+                      clearInterval(poll);
+                      if (agent.cmd_result) {
+                          // V15: Restic devuelve texto plano, no JSON. Parseamos línea por línea.
+                          try {
+                             const lines = agent.cmd_result.split('\n').filter((l: string) => l.trim() !== "");
+                             const mapped = lines.map((line: string) => {
+                                 // Formato: drwxr-xr-x  0  0  0 2026-05-14 08:00:01 /path
+                                 const parts = line.split(/\s+/);
+                                 const fullPath = parts[parts.length - 1];
+                                 const isDir = line.startsWith('d');
+                                 
+                                 // Limpiar nombre: solo el último fragmento
+                                 const pathParts = fullPath.split('/');
+                                 const name = pathParts[pathParts.length - 1] || "/";
+                                 
+                                 return {
+                                     name: name,
+                                     path: fullPath,
+                                     type: isDir ? "dir" : "file"
+                                 };
+                             }).filter((item: any) => item.path !== "/"); // Evitar el root duplicado
+
+                             setExplorerContent(mapped);
+                          } catch (e) { 
+                             console.error("Text Parse Error:", e);
+                             setExplorerContent([]); 
+                          }
+                      }
+                      setIsLoadingContent(false);
+                      if (step === 1) setStep(2);
+                  }
              } catch (err) {
                  console.error("Poll Error:", err);
              }
