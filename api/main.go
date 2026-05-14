@@ -68,7 +68,7 @@ var PolicyEngine = map[string]PlanPolicy{
 		AllowRestoreAuto: false,
 		Features:         []string{"manual_backup", "basic_restore"},
 	},
-	"standard": {
+	"pro": { // Mapeado de 'Standard' (V15.5)
 		MaxRetentionDays: 7,
 		ValidationLvl:    "basic",
 		IntegrityLvl:     "light",
@@ -76,13 +76,29 @@ var PolicyEngine = map[string]PlanPolicy{
 		AllowRestoreAuto: true,
 		Features:         []string{"daily_backup", "restore_wizard", "db_hook"},
 	},
+	"standard": { // Alias para compatibilidad legacy
+		MaxRetentionDays: 7,
+		ValidationLvl:    "basic",
+		IntegrityLvl:     "light",
+		Priority:         2,
+		AllowRestoreAuto: true,
+		Features:         []string{"daily_backup", "restore_wizard", "db_hook"},
+	},
+	"premium": { // Mapeado de Enterprise Lite
+		MaxRetentionDays: 15,
+		ValidationLvl:    "advanced",
+		IntegrityLvl:     "medium",
+		Priority:         3,
+		AllowRestoreAuto: true,
+		Features:         []string{"custom_schedule", "restore_wizard", "db_hook_pro", "integrity_audit"},
+	},
 	"enterprise": {
 		MaxRetentionDays: 30,
 		ValidationLvl:    "advanced",
 		IntegrityLvl:     "full",
 		Priority:         3,
 		AllowRestoreAuto: true,
-		Features:         []string{"custom_schedule", "clone_vps", "integrity_audit", "db_hook_pro", "restore_wizard"},
+		Features:         []string{"custom_schedule", "clone_vps", "integrity_audit", "db_hook_pro", "restore_wizard", "byos_storage"},
 	},
 }
 
