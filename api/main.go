@@ -1994,6 +1994,7 @@ fi
 			DB.Model(&agent).Update("maintenance", false)
 		case "kill_sync":
 			DB.Model(&agent).Update("kill_sync", true)
+		case "force_selected", "force_full":
 			forceType := "selected"
 			if req.Action == "force_full" {
 				forceType = "full"
