@@ -2077,6 +2077,16 @@ fi
 				Message:   fmt.Sprintf("[GUARDÍAN] Iniciando validación pre-restore para snapshot %s...", req.SnapshotID),
 				StartedAt: time.Now().UTC(),
 			})
+		case "prune":
+			// V15.5: Limpieza de Snapshots (Forget & Prune)
+			DB.Create(&Job{
+				AgentID:   id,
+				Token:     agent.Token,
+				Type:      "prune",
+				Param:     "--keep-last 7",
+				Priority:  5,
+				NextRunAt: time.Now().UTC(),
+			})
 		}
 
 		c.JSON(200, gin.H{"status": "Action queued", "action": req.Action})

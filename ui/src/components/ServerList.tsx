@@ -780,7 +780,18 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
                   )}
                 </div>
 
-                <div className="flex gap-4">
+                  <div className="flex gap-4">
+                  <button 
+                    onClick={() => {
+                      if (confirm("¿Limpiar almacenamiento? Se borrarán snapshots antiguos según la política de retención (7 copias).")) {
+                        handleAction(id, 'prune');
+                      }
+                    }}
+                    className="bg-gray-900 text-blue-400 hover:bg-blue-900/20 text-[10px] px-6 py-2.5 rounded-lg font-bold border border-blue-900/30 transition-all uppercase tracking-widest"
+                  >
+                     Clean Storage
+                  </button>
+
                   <button 
                     onClick={() => {
                       if (data.is_syncing) {
