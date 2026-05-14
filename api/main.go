@@ -1475,20 +1475,25 @@ func main() {
 		taskParam := ""
 		var taskJobID uint = 0
 
-		if !hasActive && !payload.IsSyncing {
-			// Buscar el siguiente trabajo pendiente por prioridad y fecha de reintento
-			var nextJobList []Job
-			DB.Order("priority DESC, created_at ASC").
-				Where("agent_id = ? AND status = ? AND next_run_at <= ?", payload.AgentID, "pending", time.Now().UTC()).
-				Limit(1).Find(&nextJobList)
+		// V15: Los comandos de exploración (ls_snapshot) y verificación NO deben bloquearse por backups largos
+		// Buscamos el siguiente trabajo pendiente
+		var nextJobList []Job
+		DB.Order("priority DESC, created_at ASC").
+			Where("agent_id = ? AND status = ?", payload.AgentID, "pending"). // Quitamos next_run_at para comandos manuales
+			Limit(1).Find(&nextJobList)
 
-			if len(nextJobList) > 0 {
-				nextJob := nextJobList[0]
+		if len(nextJobList) > 0 {
+			nextJob := nextJobList[0]
+			
+			// Si es un backup/restore y ya hay algo corriendo, esperamos. 
+			// Pero si es un LS o VERIFY, lo entregamos de inmediato.
+			isInteraction := nextJob.Type == "ls_snapshot" || nextJob.Type == "verify_snapshot"
+			
+			if isInteraction || (!hasActive && !payload.IsSyncing) {
 				taskName = nextJob.Type
 				taskParam = nextJob.Param
 				taskJobID = nextJob.ID
 
-				// Marcar como 'running' para evitar doble entrega (Idempotencia)
 				now := time.Now().UTC()
 				DB.Model(&nextJob).Updates(map[string]interface{}{
 					"status":     "running",
@@ -1496,9 +1501,6 @@ func main() {
 					"attempts":   nextJob.Attempts + 1,
 				})
 			}
-		} else if hasActive {
-			// Si hay un job corriendo, informamos al log pero no enviamos nueva tarea
-			// taskName queda en "none"
 		}
 
 		c.JSON(200, gin.H{
