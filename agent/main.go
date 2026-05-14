@@ -141,6 +141,19 @@ func main() {
 				LogInfo("[TASK] Pre-restore validation finished with status: %s", resMsg)
 			}
 
+			if strings.HasPrefix(taskInfo, "prune:") {
+				params := strings.TrimPrefix(taskInfo, "prune:")
+				LogInfo("[TASK] Executing storage optimization (Prune) with params: %s", params)
+				
+				// V15.5: Ejecutar forget & prune
+				errP := RunResticPrune(repo, pass, key, secret, params)
+				
+				resMsg := "Success"
+				if errP != nil { resMsg = "Error: " + errP.Error() }
+				ReportTaskResult(agentID, "prune", resMsg, currentJobID)
+				LogInfo("[TASK] Storage optimization finished: %s", resMsg)
+			}
+
 			if strings.HasPrefix(taskInfo, "restore:") {
 				params := strings.TrimPrefix(taskInfo, "restore:")
 				parts := strings.Split(params, "|")

@@ -355,5 +355,32 @@ func GetSnapshotContentJSON(snapshotID string, requestPath string, repo string, 
 	return resultJSON
 }
 
+// RunResticPrune ejecuta una limpieza profunda manual (Forget & Prune) (V15.5)
+func RunResticPrune(repo string, password string, s3Key string, s3Secret string, params string) error {
+	if repo == "" {
+		return fmt.Errorf("repository URL is empty")
+	}
 
+	env := os.Environ()
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
 
+	// 1. Unlock preventivo
+	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
+	unlockCmd.Env = env
+	_ = unlockCmd.Run()
+	time.Sleep(1 * time.Second)
+
+	// 2. Ejecutar limpieza
+	finalArgs := []string{"-r", repo, "forget", "--keep-last", "7", "--prune"}
+	cmd := exec.Command("restic", finalArgs...)
+	cmd.Env = env
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("prune failed: %v | %s", err, string(output))
+	}
+
+	return nil
+}
