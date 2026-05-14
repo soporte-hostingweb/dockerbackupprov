@@ -11,33 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Reutilizamos las estructuras mínimas necesarias
-type AgentStatus struct {
-	ID              string    `gorm:"primaryKey"`
-	Token           string
-	HealthStatus    string
-	Maintenance     bool
-	PendingForce    string
-	CmdTask         string
-	CmdResult       string `gorm:"type:text"`
-	UpdatedAt       time.Time
-}
-
-type TenantPlan struct {
-	Token string `gorm:"primaryKey"`
-	Plan  string
-}
-
-type Job struct {
-	ID        uint `gorm:"primaryKey"`
-	AgentID   string
-	Type      string
-	Status    string
-	Param     string
-	Priority  int
-	CreatedAt time.Time
-}
-
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Uso: go run diagnose.go <agent_id>")
