@@ -1668,6 +1668,8 @@ func main() {
 				DB.Model(&agent).Updates(map[string]interface{}{
 					"last_backup_at":    time.Unix(payload.Timestamp, 0).UTC(),
 					"last_backup_bytes": payload.TotalSizeBytes,
+					"pending_force":     "none", // V15.5: Cortamos el bucle
+					"cmd_task":          "none", // Limpiamos tarea activa
 				})
 
 				// V11.6.0: Incrementar Métricas de Éxito

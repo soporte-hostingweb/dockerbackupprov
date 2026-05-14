@@ -11,14 +11,47 @@ export default function ServersPage() {
   const [restoreAgentId, setRestoreAgentId] = useState("");
   const [restoreSnapshots, setRestoreSnapshots] = useState<any[]>([]);
 
+  const [agents, setAgents] = useState({});
+  const [plan, setPlan] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async (ssoToken: string) => {
+    try {
+      const [statusResp, planResp] = await Promise.all([
+        fetch('https://api.hwperu.com/v1/activities', { headers: { 'Authorization': ssoToken } }),
+        fetch('https://api.hwperu.com/v1/tenant/plan', { headers: { 'Authorization': ssoToken } })
+      ]);
+
+      if (statusResp.ok) {
+        const data = await statusResp.json();
+        setAgents(data.agents || {});
+      }
+      if (planResp.ok) {
+        const p = await planResp.json();
+        setPlan(p);
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const sso = searchParams.get('sso');
+    const currentToken = sso || localStorage.getItem('dbp_token');
+    
     if (sso) {
       setToken(sso);
       localStorage.setItem('dbp_token', sso);
-    } else {
-      const stored = localStorage.getItem('dbp_token');
-      if (stored) setToken(stored);
+    } else if (currentToken) {
+      setToken(currentToken);
+    }
+
+    if (currentToken) {
+      fetchData(currentToken);
+      const interval = setInterval(() => fetchData(currentToken), 5000);
+      return () => clearInterval(interval);
     }
   }, [searchParams]);
 
@@ -30,6 +63,8 @@ export default function ServersPage() {
       </div>
       
       <ServerList 
+        agents={agents}
+        plan={plan}
         onRestore={(id, snaps) => {
           setRestoreAgentId(id);
           setRestoreSnapshots(snaps);
