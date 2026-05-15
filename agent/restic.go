@@ -317,12 +317,19 @@ func RunResticForget(repo string, password string, s3Key string, s3Secret string
 	if err != nil {
 		fmt.Printf("[WARNING] First forget attempt failed, retrying in 5s... Error: %v\n", err)
 		time.Sleep(5 * time.Second)
-		exec.Command("restic", "-r", repo, "unlock").Run()
-		output, err = exec.Command("restic", "-r", repo, "forget", snapshotID, "--prune").Output()
+		
+		// Reintento con unlock previo
+		unl := exec.Command("restic", "-r", repo, "unlock")
+		unl.Env = env
+		_ = unl.Run()
+
+		retryCmd := exec.Command("restic", "-r", repo, "forget", snapshotID, "--prune")
+		retryCmd.Env = env
+		output, err = retryCmd.CombinedOutput()
 	}
 
 	if err != nil {
-		return fmt.Errorf("forget failed after retry: %v", err)
+		return fmt.Errorf("forget failed after retry: %v | %s", err, string(output))
 	}
 
 	return nil

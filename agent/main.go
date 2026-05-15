@@ -112,9 +112,9 @@ func main() {
 		}
 
 		// 4. PRIORIDAD: Procesar Tareas Remotas (Wizard / Restore / Verify / Forget / Prune)
-		if strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") || 
+		if (strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") || 
 		   strings.HasPrefix(taskInfo, "verify_snapshot:") || strings.HasPrefix(taskInfo, "forget_snapshot:") || 
-		   strings.HasPrefix(taskInfo, "prune:") {
+		   strings.HasPrefix(taskInfo, "prune:")) {
 			lastWizardActivity = time.Now() // V4.7.1: Marcar actividad para entrar en Modo Turbo
 			
 			if strings.HasPrefix(taskInfo, "ls_snapshot:") {
