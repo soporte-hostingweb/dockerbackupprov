@@ -1704,6 +1704,15 @@ func main() {
 					"duration": payload.DurationSecs,
 				})
 			}
+
+			// V15.5: IMPORTANTE - Limpiar flags siempre al terminar (éxito o fallo)
+			// Esto previene bucles infinitos si hay un error persistente.
+			DB.Model(&agent).Updates(map[string]interface{}{
+				"pending_force": "none",
+				"cmd_task":      "none",
+				"updated_at":    time.Now().UTC(),
+			})
+
 			// V9.1: Siempre actualizar score tras backup
 			go UpdateHealthScore(payload.AgentID)
 		}
@@ -2087,6 +2096,23 @@ fi
 				Priority:  5,
 				NextRunAt: time.Now().UTC(),
 			})
+		case "forget_snapshot":
+			// V15.6: Eliminar un Snapshot específico
+			if req.SnapshotID == "" {
+				c.JSON(400, gin.H{"error": "Snapshot ID required"})
+				return
+			}
+			DB.Create(&Job{
+				AgentID:   id,
+				Token:     agent.Token,
+				Type:      "forget_snapshot",
+				Param:     req.SnapshotID,
+				Priority:  10,
+				NextRunAt: time.Now().UTC(),
+			})
+		default:
+			c.JSON(400, gin.H{"error": "Unknown action"})
+			return
 		}
 
 		c.JSON(200, gin.H{"status": "Action queued", "action": req.Action})

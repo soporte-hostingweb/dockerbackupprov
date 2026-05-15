@@ -292,6 +292,34 @@ func ApplyRetentionPolicy(repo string, password string, s3Key string, s3Secret s
 	return nil
 }
 
+// RunResticForget elimina un snapshot específico del repositorio (V15.6)
+func RunResticForget(repo string, password string, s3Key string, s3Secret string, snapshotID string) error {
+	if repo == "" || snapshotID == "" {
+		return fmt.Errorf("missing repo or snapshot ID")
+	}
+
+	env := os.Environ()
+	if password != "" { env = append(env, fmt.Sprintf("RESTIC_PASSWORD=%s", password)) }
+	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
+	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
+
+	// 1. Unlock preventivo
+	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
+	unlockCmd.Env = env
+	_ = unlockCmd.Run()
+
+	// 2. Forget & Prune del ID específico
+	cmd := exec.Command("restic", "-r", repo, "forget", snapshotID, "--prune")
+	cmd.Env = env
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("forget failed: %v | %s", err, string(output))
+	}
+
+	return nil
+}
+
 // GetSnapshotsJSON devuelve la lista de snapshots en formato JSON crudo (V3.5.0)
 func GetSnapshotsJSON(repo string, password string, s3Key string, s3Secret string) []byte {
 	if repo == "" { return []byte("[]") }

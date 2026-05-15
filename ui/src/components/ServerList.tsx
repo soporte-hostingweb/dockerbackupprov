@@ -765,12 +765,37 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
                           <span className="text-[10px] font-mono text-emerald-500 font-bold">{snap.short_id || snap.id}</span>
                           <span className="text-[10px] text-gray-500">{new Date(snap.time).toLocaleString()}</span>
                         </div>
-                        <button 
-                          onClick={() => onRestore && onRestore(id, data.snapshots || [])}
-                          className="text-[9px] bg-gray-900 hover:bg-blue-600 text-blue-500 hover:text-white px-3 py-1 rounded border border-gray-800 transition-all font-black uppercase tracking-tighter"
-                        >
-                          Restore
-                        </button>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => onRestore && onRestore(id, data.snapshots || [])}
+                            className="text-[9px] bg-gray-900 hover:bg-blue-600 text-blue-500 hover:text-white px-3 py-1 rounded border border-gray-800 transition-all font-black uppercase tracking-tighter"
+                          >
+                            Restore
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                               const target = e.currentTarget;
+                               if (confirm(`¿ELIMINAR PERMANENTEMENTE el snapshot ${snap.short_id || snap.id}? Esta acción no se puede deshacer.`)) {
+                                  target.disabled = true;
+                                  target.innerText = "...";
+                                  // Llamamos a una versión modificada de handleAction o usamos fetch directo
+                                  const token = localStorage.getItem("dbp_token");
+                                  fetch(`https://api.hwperu.com/v1/agent/action/${id}`, {
+                                    method: "POST",
+                                    headers: { "Authorization": token || "", "Content-Type": "application/json" },
+                                    body: JSON.stringify({ action: "forget_snapshot", snapshot_id: snap.id })
+                                  }).finally(() => {
+                                     target.disabled = false;
+                                     target.innerText = "×";
+                                  });
+                               }
+                            }}
+                            className="text-[10px] bg-gray-900 hover:bg-red-600 text-gray-600 hover:text-white px-2 py-1 rounded border border-gray-800 transition-all font-bold"
+                            title="Eliminar Snapshot"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -782,12 +807,18 @@ export default function ServerList({ onRestore, agents: propsAgents, plan }: Ser
 
                   <div className="flex gap-4">
                   <button 
-                    onClick={() => {
+                    onClick={(e) => {
+                      const target = e.currentTarget;
                       if (confirm("¿Limpiar almacenamiento? Se borrarán snapshots antiguos según la política de retención (7 copias).")) {
-                        handleAction(id, 'prune');
+                        target.disabled = true;
+                        target.innerText = "CLEANING...";
+                        handleAction(id, 'prune').finally(() => {
+                           target.disabled = false;
+                           target.innerText = "CLEAN STORAGE";
+                        });
                       }
                     }}
-                    className="bg-gray-900 text-blue-400 hover:bg-blue-900/20 text-[10px] px-6 py-2.5 rounded-lg font-bold border border-blue-900/30 transition-all uppercase tracking-widest"
+                    className="bg-gray-900 text-blue-400 hover:bg-blue-900/20 text-[10px] px-6 py-2.5 rounded-lg font-bold border border-blue-900/30 transition-all uppercase tracking-widest disabled:opacity-50"
                   >
                      Clean Storage
                   </button>

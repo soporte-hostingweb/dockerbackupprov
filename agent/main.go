@@ -154,6 +154,19 @@ func main() {
 				LogInfo("[TASK] Storage optimization finished: %s", resMsg)
 			}
 
+			if strings.HasPrefix(taskInfo, "forget_snapshot:") {
+				snapID := strings.TrimPrefix(taskInfo, "forget_snapshot:")
+				LogInfo("[TASK] Deleting specific snapshot: %s", snapID)
+				
+				// V15.6: Eliminar snapshot puntual
+				errF := RunResticForget(repo, pass, key, secret, snapID)
+				
+				resMsg := "Success"
+				if errF != nil { resMsg = "Error: " + errF.Error() }
+				ReportTaskResult(agentID, "forget_snapshot", resMsg, currentJobID)
+				LogInfo("[TASK] Snapshot deletion finished: %s", resMsg)
+			}
+
 			if strings.HasPrefix(taskInfo, "restore:") {
 				params := strings.TrimPrefix(taskInfo, "restore:")
 				parts := strings.Split(params, "|")
