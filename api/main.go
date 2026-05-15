@@ -2089,12 +2089,13 @@ fi
 		case "prune":
 			// V15.5: Limpieza de Snapshots (Forget & Prune)
 			DB.Create(&Job{
-				AgentID:   id,
-				Token:     agent.Token,
-				Type:      "prune",
-				Param:     "--keep-last 7",
-				Priority:  5,
-				NextRunAt: time.Now().UTC(),
+				AgentID:     id,
+				Token:       agent.Token,
+				Type:        "prune",
+				Param:       "--keep-last 7",
+				Priority:    5,
+				TimeoutSecs: 600, // V15.6: 10 min para Prune S3
+				NextRunAt:   time.Now().UTC(),
 			})
 		case "forget_snapshot":
 			// V15.6: Eliminar un Snapshot específico
@@ -2103,12 +2104,13 @@ fi
 				return
 			}
 			DB.Create(&Job{
-				AgentID:   id,
-				Token:     agent.Token,
-				Type:      "forget_snapshot",
-				Param:     req.SnapshotID,
-				Priority:  10,
-				NextRunAt: time.Now().UTC(),
+				AgentID:     id,
+				Token:       agent.Token,
+				Type:        "forget_snapshot",
+				Param:       req.SnapshotID,
+				Priority:    10,
+				TimeoutSecs: 300, // V15.6: 5 min para borrado puntual
+				NextRunAt:   time.Now().UTC(),
 			})
 		default:
 			c.JSON(400, gin.H{"error": "Unknown action"})
