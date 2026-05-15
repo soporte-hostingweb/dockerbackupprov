@@ -303,18 +303,26 @@ func RunResticForget(repo string, password string, s3Key string, s3Secret string
 	if s3Key != "" { env = append(env, fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", s3Key)) }
 	if s3Secret != "" { env = append(env, fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", s3Secret)) }
 
-	// 1. Unlock preventivo
+	// 1. Unlock preventivo con mayor espera para S3 consistency
 	unlockCmd := exec.Command("restic", "-r", repo, "unlock")
 	unlockCmd.Env = env
 	_ = unlockCmd.Run()
+	time.Sleep(3 * time.Second) // V15.6: Espera extendida para Wasabi Lock
 
-	// 2. Forget & Prune del ID específico
+	// 2. Forget & Prune del ID específico (Con reintento simple)
 	cmd := exec.Command("restic", "-r", repo, "forget", snapshotID, "--prune")
 	cmd.Env = env
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("forget failed: %v | %s", err, string(output))
+		fmt.Printf("[WARNING] First forget attempt failed, retrying in 5s... Error: %v\n", err)
+		time.Sleep(5 * time.Second)
+		exec.Command("restic", "-r", repo, "unlock").Run()
+		output, err = exec.Command("restic", "-r", repo, "forget", snapshotID, "--prune").Output()
+	}
+
+	if err != nil {
+		return fmt.Errorf("forget failed after retry: %v", err)
 	}
 
 	return nil

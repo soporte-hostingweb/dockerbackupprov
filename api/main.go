@@ -1502,8 +1502,8 @@ func main() {
 			nextJob := nextJobList[0]
 			
 			// Si es un backup/restore y ya hay algo corriendo, esperamos. 
-			// Pero si es un LS o VERIFY, lo entregamos de inmediato.
-			isInteraction := nextJob.Type == "ls_snapshot" || nextJob.Type == "verify_snapshot"
+			// Pero si es un LS, VERIFY, FORGET o PRUNE, lo entregamos de inmediato.
+			isInteraction := nextJob.Type == "ls_snapshot" || nextJob.Type == "verify_snapshot" || nextJob.Type == "forget_snapshot" || nextJob.Type == "prune"
 			
 			if isInteraction || (!hasActive && !payload.IsSyncing) {
 				taskName = nextJob.Type
