@@ -111,8 +111,10 @@ func main() {
 			LogInfo("[WARNING] Heartbeat failed: %v", errHeart)
 		}
 
-		// 4. PRIORIDAD: Procesar Tareas Remotas (Wizard / Restore / Verify)
-		if strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") || strings.HasPrefix(taskInfo, "verify_snapshot:") {
+		// 4. PRIORIDAD: Procesar Tareas Remotas (Wizard / Restore / Verify / Forget / Prune)
+		if strings.HasPrefix(taskInfo, "ls_snapshot:") || strings.HasPrefix(taskInfo, "restore:") || 
+		   strings.HasPrefix(taskInfo, "verify_snapshot:") || strings.HasPrefix(taskInfo, "forget_snapshot:") || 
+		   strings.HasPrefix(taskInfo, "prune:") {
 			lastWizardActivity = time.Now() // V4.7.1: Marcar actividad para entrar en Modo Turbo
 			
 			if strings.HasPrefix(taskInfo, "ls_snapshot:") {
